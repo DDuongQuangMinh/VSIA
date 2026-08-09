@@ -1,0 +1,10 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.k1ngtle.vsia.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "vsia.refmap.json",
+  "client": [],
+  "mixins": [],
+  "server": []
+}
