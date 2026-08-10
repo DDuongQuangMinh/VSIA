@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia;
 
+import com.k1ngtle.vsia.network.NVGNetwork;
 import com.k1ngtle.vsia.registry.ModCreativeTabs;
 import com.k1ngtle.vsia.registry.ModItems;
 import net.minecraftforge.common.MinecraftForge;
@@ -21,6 +22,9 @@ public class Vsia {
 
         ModItems.register(modEventBus);
         ModCreativeTabs.register(modEventBus);
+
+        // Register the NVG Network Channel
+        NVGNetwork.register();
 
         modEventBus.addListener(this::commonSetup);
         modEventBus.addListener(this::clientSetup);
