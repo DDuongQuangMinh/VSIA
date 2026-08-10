@@ -18,6 +18,9 @@ public class ModCreativeTabs {
                     .title(Component.translatable("creativetab.vsia_tab"))
                     .displayItems((pParameters, pOutput) -> {
                         pOutput.accept(ModItems.BASE_HELMET.get());
+                        pOutput.accept(ModItems.GHILLIE_HELMET.get());
+                        pOutput.accept(ModItems.SAND_HELMET.get());
+                        pOutput.accept(ModItems.SNOW_HELMET.get());
                     })
                     .build());
 
