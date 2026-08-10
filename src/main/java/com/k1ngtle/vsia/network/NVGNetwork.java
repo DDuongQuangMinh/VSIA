@@ -5,6 +5,10 @@ import com.k1ngtle.vsia.item.HelmetPVS31Item;
 import com.k1ngtle.vsia.item.GhillieHelmetPVS31Item;
 import com.k1ngtle.vsia.item.SandHelmetPVS31Item;
 import com.k1ngtle.vsia.item.SnowHelmetPVS31Item;
+import com.k1ngtle.vsia.item.HelmetGPNVG18Item;
+import com.k1ngtle.vsia.item.GhillieHelmetGPNVG18Item;
+import com.k1ngtle.vsia.item.HelmetGPNVG18SandItem;
+import com.k1ngtle.vsia.item.HelmetGPNVG18SnowItem;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
@@ -53,11 +57,15 @@ public class NVGNetwork {
                 if (player != null) {
                     ItemStack headSlot = player.getItemBySlot(EquipmentSlot.HEAD);
 
-                    // Check if they are wearing ANY of the PVS-31 variants
+                    // Check if they are wearing ANY of the NVG helmet variants
                     if (headSlot.getItem() instanceof HelmetPVS31Item ||
                             headSlot.getItem() instanceof GhillieHelmetPVS31Item ||
                             headSlot.getItem() instanceof SandHelmetPVS31Item ||
-                            headSlot.getItem() instanceof SnowHelmetPVS31Item) {
+                            headSlot.getItem() instanceof SnowHelmetPVS31Item ||
+                            headSlot.getItem() instanceof HelmetGPNVG18Item ||
+                            headSlot.getItem() instanceof GhillieHelmetGPNVG18Item ||
+                            headSlot.getItem() instanceof HelmetGPNVG18SandItem ||
+                            headSlot.getItem() instanceof HelmetGPNVG18SnowItem) {
 
                         boolean isActive = headSlot.hasTag() && headSlot.getTag().getBoolean("nvg_active");
 

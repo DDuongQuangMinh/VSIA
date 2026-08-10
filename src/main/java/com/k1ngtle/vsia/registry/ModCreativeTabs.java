@@ -25,6 +25,10 @@ public class ModCreativeTabs {
                         pOutput.accept(ModItems.PVS31_GHILLIE_HELMET.get());
                         pOutput.accept(ModItems.PVS31_SAND_HELMET.get());
                         pOutput.accept(ModItems.PVS31_SNOW_HELMET.get());
+                        pOutput.accept(ModItems.GPNVG18_HELMET.get());
+                        pOutput.accept(ModItems.GPNVG18_GHILLIE_HELMET.get());
+                        pOutput.accept(ModItems.GPNVG18_SAND_HELMET.get());
+                        pOutput.accept(ModItems.GPNVG18_SNOW_HELMET.get());
                     })
                     .build());
 

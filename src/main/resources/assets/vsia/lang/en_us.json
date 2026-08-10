@@ -1,5 +1,5 @@
 {
-  "item.vsia.base_helmet": "Base Helmet",
+  "item.vsia.base_helmet": "Tactical Helmet",
   "item.vsia.ghillie_helmet": "Ghillie Helmet",
   "item.vsia.sand_helmet": "Sand Helmet",
   "item.vsia.snow_helmet": "Snow Helmet",
@@ -7,7 +7,10 @@
   "item.vsia.helmet_pvs31_ghillie": "PVS-31 Ghillie Helmet",
   "item.vsia.helmet_pvs31_sand": "PVS-31 Sand Helmet",
   "item.vsia.helmet_pvs31_snow": "PVS-31 Snow Helmet",
+  "item.vsia.helmet_gpnvg18": "GPNVG-18 Helmet",
+  "item.vsia.helmet_gpnvg18_ghillie": "GPNVG-18 Ghillie Helmet",
+  "item.vsia.helmet_gpnvg18_sand": "GPNVG-18 Sand Helmet",
+  "item.vsia.helmet_gpnvg18_snow": "GPNVG-18 Snow Helmet",
   "creativetab.vsia_tab": "VSIA Armory",
-  "key.vsia.toggle_nvg": "Toggle NVG",
-  "key.categories.vsia": "VSIA Controls"
+  "key.vsia.toggle_nvg": "Toggle NVG"
 }
