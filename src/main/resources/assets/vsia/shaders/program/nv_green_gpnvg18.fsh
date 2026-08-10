@@ -72,7 +72,7 @@ void main() {
 
     // QUAD LENS (GPNVG-18)
     vec2 screenPos = (texCoord - 0.5)
-        * vec2(OutSize.x / OutSize.y, 1.0);
+    * vec2(OutSize.x / OutSize.y, 1.0);
 
     // Four distinct overlapping circles forming
     // the panoramic shape

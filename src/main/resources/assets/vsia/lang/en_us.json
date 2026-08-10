@@ -12,5 +12,6 @@
   "item.vsia.helmet_gpnvg18_sand": "GPNVG-18 Sand Helmet",
   "item.vsia.helmet_gpnvg18_snow": "GPNVG-18 Snow Helmet",
   "creativetab.vsia_tab": "VSIA Armory",
-  "key.vsia.toggle_nvg": "Toggle NVG"
+  "key.vsia.toggle_nvg": "Toggle NVG",
+  "key.vsia.switch_nvg_color": "Switch NVG Color"
 }

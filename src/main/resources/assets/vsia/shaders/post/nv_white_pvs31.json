@@ -1,0 +1,15 @@
+{
+  "targets": [ "swap" ],
+  "passes": [
+    {
+      "name": "vsia:nv_white_pvs31",
+      "intarget": "minecraft:main",
+      "outtarget": "swap"
+    },
+    {
+      "name": "minecraft:blit",
+      "intarget": "swap",
+      "outtarget": "minecraft:main"
+    }
+  ]
+}

@@ -72,7 +72,7 @@ void main() {
 
     // DUAL LENS (PVS-31)
     vec2 screenPos = (texCoord - 0.5)
-        * vec2(OutSize.x / OutSize.y, 1.0);
+    * vec2(OutSize.x / OutSize.y, 1.0);
 
     float leftLensDist = length(
         screenPos - vec2(-0.22, 0.0)

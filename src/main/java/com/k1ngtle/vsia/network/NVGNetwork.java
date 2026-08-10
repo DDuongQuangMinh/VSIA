@@ -1,14 +1,7 @@
 package com.k1ngtle.vsia.network;
 
 import com.k1ngtle.vsia.Vsia;
-import com.k1ngtle.vsia.item.HelmetPVS31Item;
-import com.k1ngtle.vsia.item.GhillieHelmetPVS31Item;
-import com.k1ngtle.vsia.item.SandHelmetPVS31Item;
-import com.k1ngtle.vsia.item.SnowHelmetPVS31Item;
-import com.k1ngtle.vsia.item.HelmetGPNVG18Item;
-import com.k1ngtle.vsia.item.GhillieHelmetGPNVG18Item;
-import com.k1ngtle.vsia.item.HelmetGPNVG18SandItem;
-import com.k1ngtle.vsia.item.HelmetGPNVG18SnowItem;
+import com.k1ngtle.vsia.item.*;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.FriendlyByteBuf;
@@ -45,6 +38,7 @@ public class NVGNetwork {
     public static void register() {
         int id = 0;
         INSTANCE.registerMessage(id++, TogglePacket.class, TogglePacket::encode, TogglePacket::new, TogglePacket::handle);
+        INSTANCE.registerMessage(id++, SwitchColorPacket.class, SwitchColorPacket::encode, SwitchColorPacket::new, SwitchColorPacket::handle);
     }
 
     public static class TogglePacket {
@@ -73,13 +67,54 @@ public class NVGNetwork {
                         boolean isActive = headSlot.hasTag() && headSlot.getTag().getBoolean("nvg_active");
                         headSlot.getOrCreateTag().putBoolean("nvg_active", !isActive);
 
-                        // Play a physical click sound to the player
                         player.level().playSound(null, player.blockPosition(), SoundEvents.UI_BUTTON_CLICK.get(), SoundSource.PLAYERS, 1.0f, isActive ? 0.8f : 1.2f);
 
-                        // If turning off, instantly clear the potion effect
                         if (isActive) {
                             player.removeEffect(MobEffects.NIGHT_VISION);
                         }
+                    }
+                }
+            });
+            context.setPacketHandled(true);
+        }
+    }
+
+    public static class SwitchColorPacket {
+        public SwitchColorPacket() {}
+
+        public SwitchColorPacket(FriendlyByteBuf buf) {}
+
+        public void encode(FriendlyByteBuf buf) {}
+
+        public void handle(Supplier<NetworkEvent.Context> contextSupplier) {
+            NetworkEvent.Context context = contextSupplier.get();
+            context.enqueueWork(() -> {
+                ServerPlayer player = context.getSender();
+                if (player != null) {
+                    ItemStack headSlot = player.getItemBySlot(EquipmentSlot.HEAD);
+
+                    if (headSlot.getItem() instanceof HelmetPVS31Item ||
+                            headSlot.getItem() instanceof GhillieHelmetPVS31Item ||
+                            headSlot.getItem() instanceof SandHelmetPVS31Item ||
+                            headSlot.getItem() instanceof SnowHelmetPVS31Item ||
+                            headSlot.getItem() instanceof HelmetGPNVG18Item ||
+                            headSlot.getItem() instanceof GhillieHelmetGPNVG18Item ||
+                            headSlot.getItem() instanceof HelmetGPNVG18SandItem ||
+                            headSlot.getItem() instanceof HelmetGPNVG18SnowItem) {
+
+                        boolean isWhite;
+                        if (headSlot.hasTag() && headSlot.getTag().contains("nvg_is_white")) {
+                            isWhite = headSlot.getTag().getBoolean("nvg_is_white");
+                        } else {
+                            // Default behavior fallback if the tag doesn't exist yet
+                            isWhite = headSlot.getItem() instanceof SnowHelmetPVS31Item || headSlot.getItem() instanceof HelmetGPNVG18SnowItem;
+                        }
+
+                        // Flip the color!
+                        headSlot.getOrCreateTag().putBoolean("nvg_is_white", !isWhite);
+
+                        // Play a slightly higher pitched click to distinguish from turning it on/off
+                        player.level().playSound(null, player.blockPosition(), SoundEvents.UI_BUTTON_CLICK.get(), SoundSource.PLAYERS, 1.0f, 1.5f);
                     }
                 }
             });
@@ -94,7 +129,6 @@ public class NVGNetwork {
             if (event.phase == TickEvent.Phase.END && !event.player.level().isClientSide()) {
                 ItemStack headSlot = event.player.getItemBySlot(EquipmentSlot.HEAD);
 
-                // If wearing NVG and it's active, give them actual Night Vision
                 if ((headSlot.getItem() instanceof HelmetPVS31Item ||
                         headSlot.getItem() instanceof GhillieHelmetPVS31Item ||
                         headSlot.getItem() instanceof SandHelmetPVS31Item ||
@@ -105,7 +139,6 @@ public class NVGNetwork {
                         headSlot.getItem() instanceof HelmetGPNVG18SnowItem) &&
                         headSlot.hasTag() && headSlot.getTag().getBoolean("nvg_active")) {
 
-                    // Duration is 250 ticks. This handles the actual illumination of dark areas natively.
                     event.player.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION, 250, 0, false, false, false));
                 }
             }
@@ -120,23 +153,35 @@ public class NVGNetwork {
                 "key.categories.vsia"
         );
 
+        public static final KeyMapping SWITCH_NVG_COLOR_KEY = new KeyMapping(
+                "key.vsia.switch_nvg_color",
+                GLFW.GLFW_KEY_X,
+                "key.categories.vsia"
+        );
+
         @SubscribeEvent
         public static void onKeyRegister(RegisterKeyMappingsEvent event) {
             event.register(TOGGLE_NVG_KEY);
+            event.register(SWITCH_NVG_COLOR_KEY);
         }
     }
 
     @Mod.EventBusSubscriber(modid = Vsia.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
     public static class ClientEvents {
 
-        // Exact paths required by Forge 1.20.1 to prevent FileNotFoundException!
-        private static final ResourceLocation GREEN_SHADER_PVS31 = new ResourceLocation(Vsia.MOD_ID, "shaders/post/nv_green_pvs31.json");
-        private static final ResourceLocation GREEN_SHADER_GPNVG18 = new ResourceLocation(Vsia.MOD_ID, "shaders/post/nv_green_gpnvg18.json");
+        // CRITICAL FIX: The ResourceLocation MUST include "shaders/post/" and ".json" in Forge 1.20.1!
+        private static final ResourceLocation GREEN_PVS31 = new ResourceLocation(Vsia.MOD_ID, "shaders/post/nv_green_pvs31.json");
+        private static final ResourceLocation WHITE_PVS31 = new ResourceLocation(Vsia.MOD_ID, "shaders/post/nv_white_pvs31.json");
+        private static final ResourceLocation GREEN_GPNVG18 = new ResourceLocation(Vsia.MOD_ID, "shaders/post/nv_green_gpnvg18.json");
+        private static final ResourceLocation WHITE_GPNVG18 = new ResourceLocation(Vsia.MOD_ID, "shaders/post/nv_white_gpnvg18.json");
 
         @SubscribeEvent
         public static void onKeyInput(InputEvent.Key event) {
             if (ClientSetupEvents.TOGGLE_NVG_KEY.consumeClick()) {
                 INSTANCE.sendToServer(new TogglePacket());
+            }
+            if (ClientSetupEvents.SWITCH_NVG_COLOR_KEY.consumeClick()) {
+                INSTANCE.sendToServer(new SwitchColorPacket());
             }
         }
 
@@ -148,32 +193,39 @@ public class NVGNetwork {
 
             ItemStack headSlot = mc.player.getItemBySlot(EquipmentSlot.HEAD);
 
-            boolean isPVS31 = (headSlot.getItem() instanceof HelmetPVS31Item ||
-                    headSlot.getItem() instanceof GhillieHelmetPVS31Item ||
-                    headSlot.getItem() instanceof SandHelmetPVS31Item ||
-                    headSlot.getItem() instanceof SnowHelmetPVS31Item);
-
-            boolean isGPNVG18 = (headSlot.getItem() instanceof HelmetGPNVG18Item ||
-                    headSlot.getItem() instanceof GhillieHelmetGPNVG18Item ||
-                    headSlot.getItem() instanceof HelmetGPNVG18SandItem ||
-                    headSlot.getItem() instanceof HelmetGPNVG18SnowItem);
+            boolean isPVS31 = headSlot.getItem() instanceof HelmetPVS31Item || headSlot.getItem() instanceof GhillieHelmetPVS31Item || headSlot.getItem() instanceof SandHelmetPVS31Item || headSlot.getItem() instanceof SnowHelmetPVS31Item;
+            boolean isGPNVG18 = headSlot.getItem() instanceof HelmetGPNVG18Item || headSlot.getItem() instanceof GhillieHelmetGPNVG18Item || headSlot.getItem() instanceof HelmetGPNVG18SandItem || headSlot.getItem() instanceof HelmetGPNVG18SnowItem;
 
             boolean isActive = (isPVS31 || isGPNVG18) && headSlot.hasTag() && headSlot.getTag().getBoolean("nvg_active");
 
-            // Turn Shader ON - NO First Person Check! This forces it to work in Third Person!
             if (isActive) {
-                ResourceLocation targetShader = isGPNVG18 ? GREEN_SHADER_GPNVG18 : GREEN_SHADER_PVS31;
+                // Determine the correct color from NBT, with a default fallback
+                boolean isWhite;
+                if (headSlot.hasTag() && headSlot.getTag().contains("nvg_is_white")) {
+                    isWhite = headSlot.getTag().getBoolean("nvg_is_white");
+                } else {
+                    isWhite = headSlot.getItem() instanceof SnowHelmetPVS31Item || headSlot.getItem() instanceof HelmetGPNVG18SnowItem;
+                }
 
-                // Keep the shader active regardless of camera mode
-                if (mc.gameRenderer.currentEffect() == null || !targetShader.toString().equals(mc.gameRenderer.currentEffect().getName())) {
+                // Select the correct shader
+                ResourceLocation targetShader = null;
+                if (isPVS31) {
+                    targetShader = isWhite ? WHITE_PVS31 : GREEN_PVS31;
+                } else if (isGPNVG18) {
+                    targetShader = isWhite ? WHITE_GPNVG18 : GREEN_GPNVG18;
+                }
+
+                // Hot-swap the shader if it doesn't match the current effect
+                if (targetShader != null && (mc.gameRenderer.currentEffect() == null || !targetShader.toString().equals(mc.gameRenderer.currentEffect().getName()))) {
                     mc.gameRenderer.loadEffect(targetShader);
                 }
-            }
-            // Turn Shader OFF safely
-            else {
+            } else {
+                // Ensure we only shut down OUR shaders, leaving other mods alone
                 if (mc.gameRenderer.currentEffect() != null &&
-                        (GREEN_SHADER_PVS31.toString().equals(mc.gameRenderer.currentEffect().getName()) ||
-                                GREEN_SHADER_GPNVG18.toString().equals(mc.gameRenderer.currentEffect().getName()))) {
+                        (GREEN_PVS31.toString().equals(mc.gameRenderer.currentEffect().getName()) ||
+                                WHITE_PVS31.toString().equals(mc.gameRenderer.currentEffect().getName()) ||
+                                GREEN_GPNVG18.toString().equals(mc.gameRenderer.currentEffect().getName()) ||
+                                WHITE_GPNVG18.toString().equals(mc.gameRenderer.currentEffect().getName()))) {
                     mc.gameRenderer.shutdownEffect();
                 }
             }
