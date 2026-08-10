@@ -6,6 +6,9 @@ import com.k1ngtle.vsia.item.GhillieHelmetItem;
 import com.k1ngtle.vsia.item.SandHelmetItem;
 import com.k1ngtle.vsia.item.SnowHelmetItem;
 import com.k1ngtle.vsia.item.HelmetPVS31Item;
+import com.k1ngtle.vsia.item.GhillieHelmetPVS31Item;
+import com.k1ngtle.vsia.item.SandHelmetPVS31Item;
+import com.k1ngtle.vsia.item.SnowHelmetPVS31Item;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.ArmorMaterials;
 import net.minecraft.world.item.Item;
@@ -31,6 +34,15 @@ public class ModItems {
 
     public static final RegistryObject<Item> PVS31_HELMET = ITEMS.register("helmet_pvs31",
             () -> new HelmetPVS31Item(ArmorMaterials.IRON, ArmorItem.Type.HELMET, new Item.Properties()));
+
+    public static final RegistryObject<Item> PVS31_GHILLIE_HELMET = ITEMS.register("helmet_pvs31_ghillie",
+            () -> new GhillieHelmetPVS31Item(ArmorMaterials.IRON, ArmorItem.Type.HELMET, new Item.Properties()));
+
+    public static final RegistryObject<Item> PVS31_SAND_HELMET = ITEMS.register("helmet_pvs31_sand",
+            () -> new SandHelmetPVS31Item(ArmorMaterials.IRON, ArmorItem.Type.HELMET, new Item.Properties()));
+
+    public static final RegistryObject<Item> PVS31_SNOW_HELMET = ITEMS.register("helmet_pvs31_snow",
+            () -> new SnowHelmetPVS31Item(ArmorMaterials.IRON, ArmorItem.Type.HELMET, new Item.Properties()));
 
     public static void register(IEventBus eventBus) {
         ITEMS.register(eventBus);
