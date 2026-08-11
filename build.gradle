@@ -77,11 +77,37 @@ dependencies {
     implementation fg.deobf("software.bernie.geckolib:geckolib-forge-${minecraft_version}:${geckolib_version}")
 
 
-    compileOnly fg.deobf("blank:valkyrienskies-120:2.3.0-beta.5tt22x2")
-    compileOnly files('libs/api-1.1.0+cf6990a85d.jar')
-    compileOnly files('libs/util-1.1.0+cf6990a85d.jar')
-    compileOnly files('libs/joml-primitives-1.10.0.jar')
-    compileOnly files('libs/kotlinforforge-4.11.0-all.jar')
+    // Valkyrien Skies API available while compiling VSIA.
+    compileOnly fg.deobf(
+            "blank:valkyrienskies-120:2.3.0-beta.5tt22x2"
+    )
+
+    compileOnly files(
+            'libs/api-1.1.0+cf6990a85d.jar'
+    )
+
+    compileOnly files(
+            'libs/util-1.1.0+cf6990a85d.jar'
+    )
+
+    compileOnly files(
+            'libs/joml-primitives-1.10.0.jar'
+    )
+
+    compileOnly files(
+            'libs/kotlinforforge-4.11.0-all.jar'
+    )
+
+// Load the actual VS2 mod only in Forge development runs.
+// runtimeOnly dependencies are not included inside the finished VSIA JAR.
+    runtimeOnly fg.deobf(
+            "blank:valkyrienskies-120:2.3.0-beta.5tt22x2"
+    )
+
+// VS2 is written partly in Kotlin and requires the Kotlin runtime.
+    runtimeOnly files(
+            'libs/kotlinforforge-4.11.0-all.jar'
+    )
 }
 
 tasks.named('processResources', ProcessResources).configure {
