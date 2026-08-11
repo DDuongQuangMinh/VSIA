@@ -15,6 +15,7 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.network.PacketDistributor;
+import software.bernie.geckolib.animatable.GeoItem;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -84,12 +85,35 @@ public final class GunFireLogic {
             consumeAmmoFromInventory(player, gun, roundsToLoad);
         }
 
-        reloadRoundsPending.put(id, roundsToLoad);
-        reloadEndTick.put(id, player.level().getGameTime() + gun.getReloadTicks());
+        reloadRoundsPending.put(
+                id,
+                roundsToLoad
+        );
+
+        reloadEndTick.put(
+                id,
+                player.level().getGameTime() + gun.getReloadTicks()
+        );
+
+        long animationId = GeoItem.getOrAssignId(
+                stack,
+                player.serverLevel()
+        );
+
+        gun.triggerAnim(
+                player,
+                animationId,
+                "main",
+                "reload"
+        );
 
         WeaponNetwork.CHANNEL.send(
                 PacketDistributor.PLAYER.with(() -> player),
-                new S2CGunAmmoSyncPacket(gun.getAmmo(stack), true));
+                new S2CGunAmmoSyncPacket(
+                        gun.getAmmo(stack),
+                        true
+                )
+        );
     }
 
     /** Call once per server tick for every player (see GunServerEvents). */
@@ -148,17 +172,53 @@ public final class GunFireLogic {
         return reloadEndTick.containsKey(id);
     }
 
-    private static void fireSingleShot(ServerPlayer player, ItemStack stack, GunItem gun) {
-        gun.setAmmo(stack, gun.getAmmo(stack) - 1);
-        performHitScan(player, stack, gun);
+    private static void fireSingleShot(
+            ServerPlayer player,
+            ItemStack stack,
+            GunItem gun
+    ) {
+        // This method is entered only after canFire() was checked.
+        gun.setAmmo(
+                stack,
+                gun.getAmmo(stack) - 1
+        );
+
+        performHitScan(
+                player,
+                stack,
+                gun
+        );
+
+        long animationId = GeoItem.getOrAssignId(
+                stack,
+                player.serverLevel()
+        );
+
+        gun.triggerAnim(
+                player,
+                animationId,
+                "main",
+                "fire"
+        );
 
         WeaponNetwork.CHANNEL.send(
-                PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> player),
-                new S2CGunFirePacket(player.getId()));
+                PacketDistributor.TRACKING_ENTITY_AND_SELF.with(
+                        () -> player
+                ),
+                new S2CGunFirePacket(
+                        player.getId()
+                )
+        );
 
         WeaponNetwork.CHANNEL.send(
-                PacketDistributor.PLAYER.with(() -> player),
-                new S2CGunAmmoSyncPacket(gun.getAmmo(stack), false));
+                PacketDistributor.PLAYER.with(
+                        () -> player
+                ),
+                new S2CGunAmmoSyncPacket(
+                        gun.getAmmo(stack),
+                        false
+                )
+        );
     }
 
     private static int countAmmoInInventory(ServerPlayer player, GunItem gun) {

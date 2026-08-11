@@ -4,6 +4,7 @@ import com.k1ngtle.vsia.network.NVGNetwork;
 import com.k1ngtle.vsia.registry.ModCreativeTabs;
 import com.k1ngtle.vsia.registry.ModItems;
 import com.k1ngtle.vsia.weapon.WeaponSystem;
+import com.k1ngtle.vsia.signality.Signality;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.common.Mod;
@@ -23,6 +24,9 @@ public class Vsia {
 
         ModItems.register(modEventBus);
         ModCreativeTabs.register(modEventBus);
+
+        // Embedded Signality radar and electronic-signal subsystem.
+        Signality.initialize(FMLJavaModLoadingContext.get());
 
         // Register the NVG Network Channel
         NVGNetwork.register();

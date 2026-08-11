@@ -106,7 +106,9 @@ public final class ClientGunHandler {
         }
 
         if (RELOAD_KEY != null && RELOAD_KEY.consumeClick()) {
-            WeaponNetwork.CHANNEL.sendToServer(new C2SReloadPacket());
+            WeaponNetwork.CHANNEL.sendToServer(
+                    new C2SReloadPacket()
+            );
         }
 
         // TRIGGER: Fire Mode
@@ -115,7 +117,6 @@ public final class ClientGunHandler {
         }
 
         isAiming = mc.options.keyUse.isDown();
-        boolean isFiring = FIRE_KEY != null && FIRE_KEY.isDown();
 
         if (isAiming) {
             currentAdsProgress = Math.min(1f, currentAdsProgress + 0.15f);
@@ -123,25 +124,24 @@ public final class ClientGunHandler {
             currentAdsProgress = Math.max(0f, currentAdsProgress - 0.15f);
         }
 
-        if (!isFiring) {
-            return;
-        }
-
-        // TRIGGER: Fire
-        boolean automatic = gun.getFireModes().contains(FireMode.AUTOMATIC);
+        FireMode currentMode = gun.getFireMode(held);
         long now = mc.level.getGameTime();
 
-        if (automatic) {
-            if (now - clientLastFireTick >= gun.getTicksBetweenShots()) {
-                clientLastFireTick = now;
-                held.getOrCreateTag().putString("TriggerAnim", "fire");
-                WeaponNetwork.CHANNEL.sendToServer(new C2SFirePacket());
+        switch (currentMode) {
+            case AUTOMATIC -> {
+                if (FIRE_KEY != null
+                        && FIRE_KEY.isDown()
+                        && now - clientLastFireTick >= gun.getTicksBetweenShots()) {
+                    clientLastFireTick = now;
+                    WeaponNetwork.CHANNEL.sendToServer(new C2SFirePacket());
+                }
             }
-        } else {
-            if (FIRE_KEY.consumeClick()) {
-                clientLastFireTick = now;
-                held.getOrCreateTag().putString("TriggerAnim", "fire");
-                WeaponNetwork.CHANNEL.sendToServer(new C2SFirePacket());
+
+            case SINGLE, BURST -> {
+                if (FIRE_KEY != null && FIRE_KEY.consumeClick()) {
+                    clientLastFireTick = now;
+                    WeaponNetwork.CHANNEL.sendToServer(new C2SFirePacket());
+                }
             }
         }
     }

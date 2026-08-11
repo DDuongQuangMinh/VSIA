@@ -5,11 +5,13 @@ import com.k1ngtle.vsia.weapon.attachment.AttachmentItem;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import software.bernie.geckolib.animatable.GeoItem;
 import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.core.animation.AnimatableManager;
+import software.bernie.geckolib.core.animation.Animation;
 import software.bernie.geckolib.core.animation.AnimationController;
 import software.bernie.geckolib.core.animation.RawAnimation;
 import software.bernie.geckolib.core.object.PlayState;
@@ -23,16 +25,28 @@ import java.util.function.Supplier;
 public class GunItem extends Item implements GeoItem {
 
     private static final RawAnimation ANIM_DRAW =
-            RawAnimation.begin().thenPlayAndHold("animation.model.draw");
+            RawAnimation.begin().then(
+                    "animation.model.draw",
+                    Animation.LoopType.HOLD_ON_LAST_FRAME
+            );
 
     private static final RawAnimation ANIM_FIRE =
-            RawAnimation.begin().thenPlayAndHold("animation.model.fire");
+            RawAnimation.begin().then(
+                    "animation.model.fire",
+                    Animation.LoopType.PLAY_ONCE
+            );
 
     private static final RawAnimation ANIM_RELOAD =
-            RawAnimation.begin().thenPlayAndHold("animation.model.reload");
+            RawAnimation.begin().then(
+                    "animation.model.reload",
+                    Animation.LoopType.PLAY_ONCE
+            );
 
     private static final RawAnimation ANIM_INSPECT =
-            RawAnimation.begin().thenPlayAndHold("animation.model.inspect");
+            RawAnimation.begin().then(
+                    "animation.model.inspect",
+                    Animation.LoopType.PLAY_ONCE
+            );
 
     private static final String TAG_AMMO = "Ammo";
     private static final String TAG_ATTACHMENTS = "Attachments";
@@ -58,9 +72,11 @@ public class GunItem extends Item implements GeoItem {
     private final double aimingZoom;
     private final Set<Supplier<? extends Item>> compatibleAmmo;
     private final Set<AttachmentCategory> attachmentSlots;
+    private final Supplier<SoundEvent> fireSound;
 
     protected GunItem(Builder builder) {
         super(builder.properties);
+        GeoItem.registerSyncedAnimatable(this);
         this.name = builder.name;
         this.compatibilityGroup = builder.compatibilityGroup;
         this.rpm = builder.rpm;
@@ -77,6 +93,11 @@ public class GunItem extends Item implements GeoItem {
         this.aimingZoom = builder.aimingZoom;
         this.compatibleAmmo = builder.compatibleAmmo;
         this.attachmentSlots = builder.attachmentSlots;
+        this.fireSound = builder.fireSound;
+    }
+
+    public SoundEvent getFireSound() {
+        return fireSound != null ? fireSound.get() : net.minecraft.sounds.SoundEvents.GENERIC_EXPLODE;
     }
 
     public String getGunName() {
@@ -334,6 +355,14 @@ public class GunItem extends Item implements GeoItem {
                         0,
                         this::animationPredicate
                 )
+                        .triggerableAnim(
+                                "fire",
+                                ANIM_FIRE
+                        )
+                        .triggerableAnim(
+                                "reload",
+                                ANIM_RELOAD
+                        )
         );
     }
 
@@ -390,6 +419,18 @@ public class GunItem extends Item implements GeoItem {
     }
 
     @Override
+    public boolean shouldCauseReequipAnimation(
+            ItemStack oldStack,
+            ItemStack newStack,
+            boolean slotChanged
+    ) {
+        // Re-equip only when changing slots or switching to a different item.
+        // Ammo, fire-mode, and attachment NBT updates must not lower the gun.
+        return slotChanged
+                || oldStack.getItem() != newStack.getItem();
+    }
+
+    @Override
     public void initializeClient(
             java.util.function.Consumer<
                     net.minecraftforge.client.extensions.common.IClientItemExtensions
@@ -420,6 +461,7 @@ public class GunItem extends Item implements GeoItem {
         private double recoilRecoverySpeed = 0.15;
         private double baseInaccuracy = 2.0;
         private double aimingZoom = 1.0;
+        private Supplier<SoundEvent> fireSound = () -> net.minecraft.sounds.SoundEvents.GENERIC_EXPLODE;
 
         private final Set<Supplier<? extends Item>> compatibleAmmo =
                 new HashSet<>();
@@ -504,6 +546,11 @@ public class GunItem extends Item implements GeoItem {
                 double aimingZoom
         ) {
             this.aimingZoom = aimingZoom;
+            return this;
+        }
+
+        public Builder withFireSound(Supplier<SoundEvent> fireSound) {
+            this.fireSound = fireSound;
             return this;
         }
 

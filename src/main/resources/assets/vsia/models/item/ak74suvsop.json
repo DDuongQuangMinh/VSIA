@@ -110,7 +110,7 @@
     "gui": {
       "parent": "item/generated",
       "textures": {
-        "layer0": "vsia:item/m4a1.icon"
+        "layer0": "vsia:item/ak74suvsop.icon"
       }
     }
   }
