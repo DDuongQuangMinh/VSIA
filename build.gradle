@@ -75,8 +75,6 @@ dependencies {
     // GeckoLib
     implementation fg.deobf("software.bernie.geckolib:geckolib-forge-${minecraft_version}:${geckolib_version}")
 
-    // Vic's Point Blank
-    implementation fg.deobf("maven.modrinth:vics-point-blank:${vpb_version}")
 
     compileOnly fg.deobf("blank:valkyrienskies-120:2.3.0-beta.5tt22x2")
     compileOnly files('libs/api-1.1.0+cf6990a85d.jar')
