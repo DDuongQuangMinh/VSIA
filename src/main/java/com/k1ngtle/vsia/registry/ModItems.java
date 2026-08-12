@@ -69,6 +69,10 @@ public class ModItems {
             ITEMS.register("5_56x45", () ->
                     new Item(new Item.Properties()));
 
+    public static final RegistryObject<Item> AMMO_545 =
+            ITEMS.register("5_45x39", () ->
+                    new Item(new Item.Properties()));
+
     public static void register(IEventBus eventBus) {
         ITEMS.register(eventBus);
     }

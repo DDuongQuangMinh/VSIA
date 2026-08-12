@@ -61,6 +61,17 @@ public class ModCreativeTabs {
                                 }
 
                                 output.accept(m4a1);
+                                ItemStack ak74m = new ItemStack(ModItems.GENERIC_GUN.get());
+                                if (ak74m.getItem() instanceof ModernGunItem gun) {
+                                    gun.setWeaponId(ak74m, new ResourceLocation(Vsia.MOD_ID, "ak74m"));
+                                    WeaponRuntimeState state = gun.getRuntimeState(ak74m);
+                                    state.setMagazineAmmo(29);
+                                    state.setChamberLoaded(true);
+                                    state.setFireMode(FireMode.SEMI);
+                                    state.setBoltLocked(false);
+                                }
+                                output.accept(ak74m);
+                                output.accept(ModItems.AMMO_545.get());
                                 output.accept(ModItems.AMMO_556.get());
                             })
                             .build());

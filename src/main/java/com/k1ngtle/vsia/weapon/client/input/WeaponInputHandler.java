@@ -27,9 +27,15 @@ public final class WeaponInputHandler {
     @SubscribeEvent
     public static void tick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
+        com.k1ngtle.vsia.weapon.client.animation.WeaponAnimationBridge.initialize();
+        com.k1ngtle.vsia.weapon.client.feedback.WeaponFeedbackController.initialize();
         Minecraft minecraft = Minecraft.getInstance();
         boolean weapon = minecraft.player != null
                 && VSIAWeaponAPI.getWeapon(minecraft.player.getMainHandItem()).isPresent();
+        if (weapon) {
+            if (minecraft.player.isUsingItem()) minecraft.player.stopUsingItem();
+            cancelWeaponSwing(minecraft);
+        }
         boolean active = weapon && minecraft.screen == null;
         boolean fireDown = active && minecraft.options.keyAttack.isDown();
         boolean aimDown = active && minecraft.options.keyUse.isDown();
@@ -53,6 +59,17 @@ public final class WeaponInputHandler {
     public static void cancelVanilla(InputEvent.InteractionKeyMappingTriggered event) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null || VSIAWeaponAPI.getWeapon(minecraft.player.getMainHandItem()).isEmpty()) return;
-        if (event.isAttack() || event.isUseItem()) { event.setSwingHand(false); event.setCanceled(true); }
+        if (event.isAttack() || event.isUseItem()) {
+            event.setSwingHand(false);
+            event.setCanceled(true);
+            cancelWeaponSwing(minecraft);
+        }
+    }
+
+    private static void cancelWeaponSwing(Minecraft minecraft) {
+        minecraft.player.swinging = false;
+        minecraft.player.swingTime = 0;
+        minecraft.player.attackAnim = 0.0F;
+        minecraft.player.oAttackAnim = 0.0F;
     }
 }

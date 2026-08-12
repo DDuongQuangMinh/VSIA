@@ -18,5 +18,7 @@
   "key.categories.vsia.weapon": "VS:IA Weapons",
   "key.vsia.reload": "Reload",
   "key.vsia.fire_mode": "Change Fire Mode",
-  "key.vsia.debug_hud": "Toggle Weapon Debug HUD"
+  "key.vsia.debug_hud": "Toggle Weapon Debug HUD",
+  "item.vsia.gun": "VS:IA Weapon",
+  "item.vsia.5_56x45": "5.56x45mm Ammunition"
 }
