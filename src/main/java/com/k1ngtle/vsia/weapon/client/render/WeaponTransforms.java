@@ -34,8 +34,8 @@ public final class WeaponTransforms {
         } else if (context == ItemDisplayContext.THIRD_PERSON_RIGHT_HAND
                 || context == ItemDisplayContext.THIRD_PERSON_LEFT_HAND) {
             float side = context == ItemDisplayContext.THIRD_PERSON_LEFT_HAND ? -1.0F : 1.0F;
-            pose.translate(0.05D * side, 1.10D, 0.30D);
-            pose.mulPose(Axis.YP.rotationDegrees(180.0F * side));
+            pose.translate(0.35D * side, 0.30D, 0.40D);
+            pose.mulPose(Axis.YP.rotationDegrees(0.0F));
             pose.mulPose(Axis.ZP.rotationDegrees(-12.0F * side));
             pose.scale(0.18F, 0.18F, 0.18F);
         } else if (context == ItemDisplayContext.GUI) {
