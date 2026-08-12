@@ -11,16 +11,8 @@
   "item.vsia.helmet_gpnvg18_ghillie": "GPNVG-18 Ghillie Helmet",
   "item.vsia.helmet_gpnvg18_sand": "GPNVG-18 Sand Helmet",
   "item.vsia.helmet_gpnvg18_snow": "GPNVG-18 Snow Helmet",
-  "item.vsia.ammo_556": "5.56x45mm NATO",
-  "item.vsia.ammo_545": "5.45x39mm",
-  "item.vsia.ak74suvsop": "AK-74SU VSOP",
-  "item.vsia.scope_reflex": "Reflex Sight",
-  "item.vsia.muzzle_compensator": "Compensator",
   "creativetab.vsia_tab": "VSIA Armory",
   "creativetab.vsia_weapon_tab": "VS:IA Weapons",
   "key.vsia.toggle_nvg": "Toggle NVG",
-  "key.vsia.switch_nvg_color": "Switch NVG Color",
-  "key.vsia.fire": "Fire Weapon",
-  "key.vsia.reload": "Reload Weapon",
-  "key.vsia.fire_mode": "Toggle Fire Mode"
+  "key.vsia.switch_nvg_color": "Switch NVG Color"
 }

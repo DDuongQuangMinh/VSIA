@@ -3,7 +3,6 @@ package com.k1ngtle.vsia;
 import com.k1ngtle.vsia.network.NVGNetwork;
 import com.k1ngtle.vsia.registry.ModCreativeTabs;
 import com.k1ngtle.vsia.registry.ModItems;
-import com.k1ngtle.vsia.weapon.WeaponSystem;
 import com.k1ngtle.vsia.signality.Signality;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -32,7 +31,6 @@ public class Vsia {
         NVGNetwork.register();
 
         // Initialize the comprehensive Weapon System
-        WeaponSystem.init(modEventBus);
 
         modEventBus.addListener(this::commonSetup);
         modEventBus.addListener(this::clientSetup);
