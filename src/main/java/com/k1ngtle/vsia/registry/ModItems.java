@@ -13,6 +13,7 @@ import com.k1ngtle.vsia.item.HelmetGPNVG18Item;
 import com.k1ngtle.vsia.item.GhillieHelmetGPNVG18Item;
 import com.k1ngtle.vsia.item.HelmetGPNVG18SandItem;
 import com.k1ngtle.vsia.item.HelmetGPNVG18SnowItem;
+import com.k1ngtle.vsia.weapon.item.ModernGunItem;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.ArmorMaterials;
 import net.minecraft.world.item.Item;
@@ -59,6 +60,14 @@ public class ModItems {
 
     public static final RegistryObject<Item> GPNVG18_SNOW_HELMET = ITEMS.register("helmet_gpnvg18_snow",
             () -> new HelmetGPNVG18SnowItem(ArmorMaterials.IRON, ArmorItem.Type.HELMET, new Item.Properties()));
+
+    public static final RegistryObject<Item> GENERIC_GUN =
+            ITEMS.register("gun", () ->
+                    new ModernGunItem(new Item.Properties().stacksTo(1)));
+
+    public static final RegistryObject<Item> AMMO_556 =
+            ITEMS.register("5_56x45", () ->
+                    new Item(new Item.Properties()));
 
     public static void register(IEventBus eventBus) {
         ITEMS.register(eventBus);

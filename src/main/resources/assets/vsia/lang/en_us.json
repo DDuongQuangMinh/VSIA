@@ -14,5 +14,9 @@
   "creativetab.vsia_tab": "VSIA Armory",
   "creativetab.vsia_weapon_tab": "VS:IA Weapons",
   "key.vsia.toggle_nvg": "Toggle NVG",
-  "key.vsia.switch_nvg_color": "Switch NVG Color"
+  "key.vsia.switch_nvg_color": "Switch NVG Color",
+  "key.categories.vsia.weapon": "VS:IA Weapons",
+  "key.vsia.reload": "Reload",
+  "key.vsia.fire_mode": "Change Fire Mode",
+  "key.vsia.debug_hud": "Toggle Weapon Debug HUD"
 }
