@@ -34,16 +34,16 @@ public final class WeaponTransforms {
         } else if (context == ItemDisplayContext.THIRD_PERSON_RIGHT_HAND
                 || context == ItemDisplayContext.THIRD_PERSON_LEFT_HAND) {
             float side = context == ItemDisplayContext.THIRD_PERSON_LEFT_HAND ? -1.0F : 1.0F;
-            pose.translate(0.35D * side, 0.30D, 0.40D);
+            pose.translate(0.35D * side, 0.30D, 0.50D);
             pose.mulPose(Axis.YP.rotationDegrees(0.0F));
             pose.mulPose(Axis.ZP.rotationDegrees(-12.0F * side));
             pose.scale(0.18F, 0.18F, 0.18F);
         } else if (context == ItemDisplayContext.GUI) {
-            pose.translate(0.12D, -0.01D, 0.0D);
+            pose.translate(0.24D, -0.01D, 0.0D);
             pose.mulPose(Axis.YP.rotationDegrees(58.0F));
             pose.mulPose(Axis.XP.rotationDegrees(-22.0F));
             pose.mulPose(Axis.ZP.rotationDegrees(-38.0F));
-            pose.scale(0.18F, 0.18F, 0.18F);
+            pose.scale(0.21F, 0.21F, 0.21F);
         } else if (context == ItemDisplayContext.GROUND) {
             pose.translate(0.0D, 0.10D, 0.0D);
             pose.mulPose(Axis.YP.rotationDegrees(90.0F));

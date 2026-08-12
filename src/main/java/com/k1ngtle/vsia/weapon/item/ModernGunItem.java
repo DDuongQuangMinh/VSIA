@@ -17,10 +17,12 @@ import software.bernie.geckolib.core.animation.AnimatableManager;
 import software.bernie.geckolib.core.animation.AnimationController;
 import software.bernie.geckolib.core.animation.RawAnimation;
 import software.bernie.geckolib.core.object.PlayState;
+import software.bernie.geckolib.constant.DataTickets;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
 public class ModernGunItem extends AbstractWeaponItem implements GeoItem {
     public static final String CONTROLLER = "weapon";
+    public static final String HUD_PREVIEW_TAG = "VSIAHudPreview";
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
     public ModernGunItem(Properties properties) {
@@ -70,6 +72,10 @@ public class ModernGunItem extends AbstractWeaponItem implements GeoItem {
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         controllers.add(new AnimationController<>(this, CONTROLLER, state -> {
+            ItemStack renderedStack = state.getData(DataTickets.ITEMSTACK);
+            if (renderedStack != null && renderedStack.getOrCreateTag().getBoolean(HUD_PREVIEW_TAG)) {
+                return PlayState.STOP;
+            }
             state.setAndContinue(RawAnimation.begin().thenLoop("animation.weapon.idle"));
             return PlayState.CONTINUE;
         }).triggerableAnim("fire", RawAnimation.begin().thenPlay("animation.weapon.fire"))
