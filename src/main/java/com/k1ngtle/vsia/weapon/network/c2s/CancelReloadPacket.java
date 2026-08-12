@@ -7,14 +7,14 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraftforge.network.NetworkEvent;
 
-public record FirePacket(InteractionHand hand) {
-    public static void encode(FirePacket packet, FriendlyByteBuf buffer) { buffer.writeEnum(packet.hand); }
-    public static FirePacket decode(FriendlyByteBuf buffer) { return new FirePacket(buffer.readEnum(InteractionHand.class)); }
-    public static void handle(FirePacket packet, Supplier<NetworkEvent.Context> supplier) {
+public record CancelReloadPacket(InteractionHand hand) {
+    public static void encode(CancelReloadPacket packet, FriendlyByteBuf buffer) { buffer.writeEnum(packet.hand); }
+    public static CancelReloadPacket decode(FriendlyByteBuf buffer) { return new CancelReloadPacket(buffer.readEnum(InteractionHand.class)); }
+    public static void handle(CancelReloadPacket packet, Supplier<NetworkEvent.Context> supplier) {
         NetworkEvent.Context context = supplier.get();
         context.enqueueWork(() -> {
             ServerPlayer sender = context.getSender();
-            if (sender != null) ServerWeaponOperations.tryFire(sender, packet.hand);
+            if (sender != null) ServerWeaponOperations.cancelReload(sender, packet.hand);
         });
         context.setPacketHandled(true);
     }
