@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "vsia:block/server_rack" },
+    "facing=east":  { "model": "vsia:block/server_rack", "y": 90 },
+    "facing=south": { "model": "vsia:block/server_rack", "y": 180 },
+    "facing=west":  { "model": "vsia:block/server_rack", "y": 270 }
+  }
+}

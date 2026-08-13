@@ -13,6 +13,7 @@
   "item.vsia.helmet_gpnvg18_snow": "GPNVG-18 Snow Helmet",
   "creativetab.vsia_tab": "VSIA Armory",
   "creativetab.vsia_weapon_tab": "VS:IA Weapons",
+  "creativetab.vsia_network_tab": "VSIA Network Infrastructure",
   "key.vsia.toggle_nvg": "Toggle NVG",
   "key.vsia.switch_nvg_color": "Switch NVG Color",
   "key.categories.vsia.weapon": "VS:IA Weapons",
@@ -20,5 +21,5 @@
   "key.vsia.fire_mode": "Change Fire Mode",
   "key.vsia.debug_hud": "Toggle Weapon Debug HUD",
   "item.vsia.gun": "VS:IA Weapon",
-  "item.vsia.5_56x45": "5.56x45mm Ammunition"
+  "block.vsia.server_rack": "Server Rack"
 }
