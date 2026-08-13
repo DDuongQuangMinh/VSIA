@@ -20,7 +20,7 @@ public final class ServerRackDirectory {
     }
     public static synchronized ServerRackBlockEntity byIp(ServerLevel level, String ip) {
         Map<BlockPos, ServerRackBlockEntity> racks=RACKS.get(level); if(racks==null)return null;
-        return racks.values().stream().filter(r->r.ipAddress().equals(ip)).findFirst().orElse(null);
+        return racks.values().stream().filter(r->r.ipAddress().equalsIgnoreCase(ip)||r.ipv6Address().equalsIgnoreCase(ip)).findFirst().orElse(null);
     }
     public static synchronized String resolve(ServerLevel level,String domain) {
         Map<BlockPos, ServerRackBlockEntity> racks=RACKS.get(level); if(racks==null)return null;

@@ -17,7 +17,7 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class ServerRackNetwork {
-    private static final String VERSION = "12";
+    private static final String VERSION = "15";
     private static int nextId;
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(Vsia.MOD_ID, "server_rack"),
@@ -67,6 +67,15 @@ public final class ServerRackNetwork {
         CHANNEL.registerMessage(nextId++, HttpFileResultPacket.class,HttpFileResultPacket::encode,HttpFileResultPacket::decode,HttpFileResultPacket::handle);
         CHANNEL.registerMessage(nextId++, TransferFileCommandPacket.class,TransferFileCommandPacket::encode,TransferFileCommandPacket::decode,TransferFileCommandPacket::handle);
         CHANNEL.registerMessage(nextId++, TransferFileResultPacket.class,TransferFileResultPacket::encode,TransferFileResultPacket::decode,TransferFileResultPacket::handle);
+        CHANNEL.registerMessage(nextId++, MailClientCommandPacket.class,MailClientCommandPacket::encode,MailClientCommandPacket::decode,MailClientCommandPacket::handle);
+        CHANNEL.registerMessage(nextId++, MailClientResultPacket.class,MailClientResultPacket::encode,MailClientResultPacket::decode,MailClientResultPacket::handle);
+        CHANNEL.registerMessage(nextId++, DesktopNetworkConfigPacket.class,DesktopNetworkConfigPacket::encode,DesktopNetworkConfigPacket::decode,DesktopNetworkConfigPacket::handle);
+        CHANNEL.registerMessage(nextId++, TextFileCommandPacket.class,TextFileCommandPacket::encode,TextFileCommandPacket::decode,TextFileCommandPacket::handle);
+        CHANNEL.registerMessage(nextId++, TextFileResultPacket.class,TextFileResultPacket::encode,TextFileResultPacket::decode,TextFileResultPacket::handle);
+        CHANNEL.registerMessage(nextId++, FtpClientCommandPacket.class,FtpClientCommandPacket::encode,FtpClientCommandPacket::decode,FtpClientCommandPacket::handle);
+        CHANNEL.registerMessage(nextId++, FtpClientResultPacket.class,FtpClientResultPacket::encode,FtpClientResultPacket::decode,FtpClientResultPacket::handle);
+        CHANNEL.registerMessage(nextId++, TftpClientCommandPacket.class,TftpClientCommandPacket::encode,TftpClientCommandPacket::decode,TftpClientCommandPacket::handle);
+        CHANNEL.registerMessage(nextId++, TftpClientResultPacket.class,TftpClientResultPacket::encode,TftpClientResultPacket::decode,TftpClientResultPacket::handle);
     }
 
     public static void openFor(ServerPlayer player, ServerRackBlockEntity rack) {
@@ -279,5 +288,50 @@ public final class ServerRackNetwork {
         static void encode(TransferFileResultPacket p,FriendlyByteBuf b){b.writeUtf(p.protocol,8);b.writeUtf(p.message,256);b.writeUtf(p.files,16384);b.writeUtf(p.users,4096);b.writeUtf(p.filename,64);b.writeUtf(p.content,32768);b.writeBoolean(p.readable);b.writeBoolean(p.writable);b.writeVarInt(p.port);}
         static TransferFileResultPacket decode(FriendlyByteBuf b){return new TransferFileResultPacket(b.readUtf(8),b.readUtf(256),b.readUtf(16384),b.readUtf(4096),b.readUtf(64),b.readUtf(32768),b.readBoolean(),b.readBoolean(),b.readVarInt());}
         static void handle(TransferFileResultPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptTransferFileResult(p.protocol,p.message,p.files,p.users,p.filename,p.content,p.readable,p.writable,p.port)));c.setPacketHandled(true);}
+    }
+    public record MailClientCommandPacket(BlockPos pos,String action,String address,String password,String folder,String messageId,String to,String subject,String body){
+        static void encode(MailClientCommandPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeUtf(p.action,16);b.writeUtf(p.address,286);b.writeUtf(p.password,64);b.writeUtf(p.folder,8);b.writeUtf(p.messageId,64);b.writeUtf(p.to,286);b.writeUtf(p.subject,128);b.writeUtf(p.body,8192);}
+        static MailClientCommandPacket decode(FriendlyByteBuf b){return new MailClientCommandPacket(b.readBlockPos(),b.readUtf(16),b.readUtf(286),b.readUtf(64),b.readUtf(8),b.readUtf(64),b.readUtf(286),b.readUtf(128),b.readUtf(8192));}
+        static void handle(MailClientCommandPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;net.minecraft.nbt.CompoundTag r=rack.manageMailClient(p.action,p.address,p.password,p.folder,p.messageId,p.to,p.subject,p.body);CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new MailClientResultPacket(r.getString("Message"),r.getBoolean("Authenticated"),r.getString("Address"),r.getString("Folder"),r.getString("Data"),r.getString("Id"),r.getString("From"),r.getString("To"),r.getString("Subject"),r.getString("Body"),r.getLong("SentAt")));}});c.setPacketHandled(true);}
+    }
+    public record MailClientResultPacket(String message,boolean authenticated,String address,String folder,String data,String id,String from,String to,String subject,String body,long sentAt){
+        static void encode(MailClientResultPacket p,FriendlyByteBuf b){b.writeUtf(p.message,256);b.writeBoolean(p.authenticated);b.writeUtf(p.address,286);b.writeUtf(p.folder,8);b.writeUtf(p.data,32767);b.writeUtf(p.id,64);b.writeUtf(p.from,286);b.writeUtf(p.to,286);b.writeUtf(p.subject,128);b.writeUtf(p.body,8192);b.writeLong(p.sentAt);}
+        static MailClientResultPacket decode(FriendlyByteBuf b){return new MailClientResultPacket(b.readUtf(256),b.readBoolean(),b.readUtf(286),b.readUtf(8),b.readUtf(32767),b.readUtf(64),b.readUtf(286),b.readUtf(286),b.readUtf(128),b.readUtf(8192),b.readLong());}
+        static void handle(MailClientResultPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptMailClientResult(p.message,p.authenticated,p.address,p.folder,p.data,p.id,p.from,p.to,p.subject,p.body,p.sentAt)));c.setPacketHandled(true);}
+    }
+    public record DesktopNetworkConfigPacket(BlockPos pos,boolean automatic,String address,String mask,String gateway,String dns,String address6,int prefix,String gateway6,String dns6){
+        static void encode(DesktopNetworkConfigPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeBoolean(p.automatic);b.writeUtf(p.address,15);b.writeUtf(p.mask,15);b.writeUtf(p.gateway,15);b.writeUtf(p.dns,15);b.writeUtf(p.address6,45);b.writeVarInt(p.prefix);b.writeUtf(p.gateway6,45);b.writeUtf(p.dns6,45);}
+        static DesktopNetworkConfigPacket decode(FriendlyByteBuf b){return new DesktopNetworkConfigPacket(b.readBlockPos(),b.readBoolean(),b.readUtf(15),b.readUtf(15),b.readUtf(15),b.readUtf(15),b.readUtf(45),b.readVarInt(),b.readUtf(45),b.readUtf(45));}
+        static void handle(DesktopNetworkConfigPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;String result=rack.configureDesktopNetwork(p.automatic,p.address,p.mask,p.gateway,p.dns,p.address6,p.prefix,p.gateway6,p.dns6);CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new DesktopResultPacket("IP Configuration",result+"\n\n"+rack.executeDesktopTool("IP Configuration","",player.serverLevel())));}});c.setPacketHandled(true);}
+    }
+    public record TextFileCommandPacket(BlockPos pos,String action,String filename,String content){
+        static void encode(TextFileCommandPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeUtf(p.action,16);b.writeUtf(p.filename,64);b.writeUtf(p.content,32768);}
+        static TextFileCommandPacket decode(FriendlyByteBuf b){return new TextFileCommandPacket(b.readBlockPos(),b.readUtf(16),b.readUtf(64),b.readUtf(32768));}
+        static void handle(TextFileCommandPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;net.minecraft.nbt.CompoundTag result=rack.manageDesktopTextFile(p.action,p.filename,p.content);CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new TextFileResultPacket(result.getString("Message"),result.getString("Files"),result.getString("Name"),result.getString("Content")));}});c.setPacketHandled(true);}
+    }
+    public record TextFileResultPacket(String message,String files,String filename,String content){
+        static void encode(TextFileResultPacket p,FriendlyByteBuf b){b.writeUtf(p.message,256);b.writeUtf(p.files,16384);b.writeUtf(p.filename,64);b.writeUtf(p.content,32768);}
+        static TextFileResultPacket decode(FriendlyByteBuf b){return new TextFileResultPacket(b.readUtf(256),b.readUtf(16384),b.readUtf(64),b.readUtf(32768));}
+        static void handle(TextFileResultPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptTextFileResult(p.message,p.files,p.filename,p.content)));c.setPacketHandled(true);}
+    }
+    public record FtpClientCommandPacket(BlockPos pos,String action,String server,String username,String password,String remoteName,String localName){
+        static void encode(FtpClientCommandPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeUtf(p.action,16);b.writeUtf(p.server,15);b.writeUtf(p.username,32);b.writeUtf(p.password,64);b.writeUtf(p.remoteName,64);b.writeUtf(p.localName,64);}
+        static FtpClientCommandPacket decode(FriendlyByteBuf b){return new FtpClientCommandPacket(b.readBlockPos(),b.readUtf(16),b.readUtf(15),b.readUtf(32),b.readUtf(64),b.readUtf(64),b.readUtf(64));}
+        static void handle(FtpClientCommandPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;net.minecraft.nbt.CompoundTag r=rack.manageDesktopFtp(p.action,p.server,p.username,p.password,p.remoteName,p.localName,player.serverLevel());CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new FtpClientResultPacket(r.getString("Message"),r.getBoolean("Connected"),r.getString("Server"),r.getString("Username"),r.getString("RemoteFiles"),r.getString("LocalFiles")));}});c.setPacketHandled(true);}
+    }
+    public record FtpClientResultPacket(String message,boolean connected,String server,String username,String remoteFiles,String localFiles){
+        static void encode(FtpClientResultPacket p,FriendlyByteBuf b){b.writeUtf(p.message,512);b.writeBoolean(p.connected);b.writeUtf(p.server,15);b.writeUtf(p.username,32);b.writeUtf(p.remoteFiles,32767);b.writeUtf(p.localFiles,16384);}
+        static FtpClientResultPacket decode(FriendlyByteBuf b){return new FtpClientResultPacket(b.readUtf(512),b.readBoolean(),b.readUtf(15),b.readUtf(32),b.readUtf(32767),b.readUtf(16384));}
+        static void handle(FtpClientResultPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptFtpClientResult(p.message,p.connected,p.server,p.username,p.remoteFiles,p.localFiles)));c.setPacketHandled(true);}
+    }
+    public record TftpClientCommandPacket(BlockPos pos,String action,String server,String remoteName,String localName){
+        static void encode(TftpClientCommandPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeUtf(p.action,16);b.writeUtf(p.server,15);b.writeUtf(p.remoteName,64);b.writeUtf(p.localName,64);}
+        static TftpClientCommandPacket decode(FriendlyByteBuf b){return new TftpClientCommandPacket(b.readBlockPos(),b.readUtf(16),b.readUtf(15),b.readUtf(64),b.readUtf(64));}
+        static void handle(TftpClientCommandPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;net.minecraft.nbt.CompoundTag r=rack.manageDesktopTftp(p.action,p.server,p.remoteName,p.localName,player.serverLevel());CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new TftpClientResultPacket(r.getString("Message"),r.getBoolean("Connected"),r.getString("Server"),r.getString("RemoteFiles"),r.getString("LocalFiles")));}});c.setPacketHandled(true);}
+    }
+    public record TftpClientResultPacket(String message,boolean connected,String server,String remoteFiles,String localFiles){
+        static void encode(TftpClientResultPacket p,FriendlyByteBuf b){b.writeUtf(p.message,512);b.writeBoolean(p.connected);b.writeUtf(p.server,15);b.writeUtf(p.remoteFiles,32767);b.writeUtf(p.localFiles,16384);}
+        static TftpClientResultPacket decode(FriendlyByteBuf b){return new TftpClientResultPacket(b.readUtf(512),b.readBoolean(),b.readUtf(15),b.readUtf(32767),b.readUtf(16384));}
+        static void handle(TftpClientResultPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptTftpClientResult(p.message,p.connected,p.server,p.remoteFiles,p.localFiles)));c.setPacketHandled(true);}
     }
 }
