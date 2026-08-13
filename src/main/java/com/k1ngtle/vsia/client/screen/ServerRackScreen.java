@@ -19,7 +19,7 @@ public final class ServerRackScreen extends Screen {
     private final List<Button> pageButtons = new ArrayList<>();
     private Tab tab = Tab.PHYSICAL;
     private String configPage = "Settings", servicePage = "HTTP", desktopPage = "";
-    private EditBox name, ip, subnet, gateway, dns, ipv6, prefix6, gateway6, dns6, clockOffset, dnsName, dnsDetail, dnsTtl, poolName, poolStart, poolEnd, poolPrefix, poolGateway, poolDns, poolLease, poolExclusions, mailDomainField, mailUserField, mailPasswordField, mailQuotaField, ntpStratumField, ntpPollField, ntpSourceField, ntpDriftField, syslogMinField, syslogFacilityField, syslogSeverityField, syslogMessageField, aaaUserField, aaaPasswordField, aaaPrivilegeField, aaaServiceField, radiusNameField, radiusAddressField, radiusSecretField, radiusUserField, radiusPasswordField, radiusPrivilegeField, toolInput, programInput;
+    private EditBox name, ip, subnet, gateway, dns, ipv6, prefix6, gateway6, dns6, clockOffset, dnsName, dnsDetail, dnsTtl, poolName, poolStart, poolEnd, poolPrefix, poolGateway, poolDns, poolLease, poolExclusions, mailDomainField, mailUserField, mailPasswordField, mailQuotaField, ntpStratumField, ntpPollField, ntpSourceField, ntpDriftField, syslogMinField, syslogFacilityField, syslogSeverityField, syslogMessageField, aaaUserField, aaaPasswordField, aaaPrivilegeField, aaaServiceField, radiusNameField, radiusAddressField, radiusSecretField, radiusUserField, radiusPasswordField, radiusPrivilegeField, iotIdField, iotNameField, iotTypeField, iotValueField, vmNameField, vmOsField, vmCpuField, vmMemoryField, vmStorageField, prpPeerField, httpFileNameField, httpContentField, httpPortField, httpsPortField, toolInput, programInput;
     private String desktopOutput = "Ready.";
     private String programOutput = "Ready. Separate commands with semicolons. Type help for commands.";
     private boolean dhcp, http, dnsService, dhcpService, mail;
@@ -29,6 +29,8 @@ public final class ServerRackScreen extends Screen {
     private String dnsRecordData, dnsRecordType="A", dnsStatus="Ready.";
     private String dhcp4Data,dhcp6Data,dhcpStatus="Ready.";
     private boolean https=true,pop3=true;
+    private boolean httpReadable=true,httpWritable=true;
+    private String httpFiles="",httpStatus="Press Refresh to load hosted files.";
     private String serviceStatus="Ready.";
     private boolean ntpServer,ntpClient;
     private String ntpStatus;
@@ -39,6 +41,10 @@ public final class ServerRackScreen extends Screen {
     private boolean aaaUserEnabled=true;
     private String radiusClients="",radiusEvents="",radiusStatus="Press Refresh to load RADIUS data.";
     private boolean radiusClientEnabled=true;
+    private String iotDevices="",iotStatus="Press Refresh to load IoT devices.";
+    private String virtualMachines="",vmStatus="Press Refresh to load virtual machines.";
+    private String prpStatus="Press Refresh to load PRP supervision.",prpData="";
+    private boolean prpEnabled,prpLaneA=true,prpLaneB=true;
     private int x, y, w, h, side;
 
     public ServerRackScreen(OpenRackPacket state) {
@@ -144,7 +150,22 @@ public final class ServerRackScreen extends Screen {
             poolExclusions.setX(inputStart + columnWidth + gap);
             poolExclusions.setWidth(columnWidth * 2 + gap);
         }
-        if(selected==ServerRackService.HTTP){pageButton(https?"HTTPS   [ON]    Off":"HTTPS   On    [OFF]",cx+330,y+64,260,()->{https=!https;init();});pageButton("New File",x+w-220,y+h-55,85,()->serviceStatus="New file editor will open here.");pageButton("Import",x+w-129,y+h-55,85,()->serviceStatus="Import file selector will open here.");}
+        if(selected==ServerRackService.HTTP){
+            int right=x+w-28, gap=16, half=(right-cx-gap)/2;
+            pageButton(https?"HTTPS   [ON]    Off":"HTTPS   On    [OFF]",cx+half+gap,y+64,half,()->{https=!https;httpStatus="HTTPS changed. Save web settings to apply.";});
+            httpPortField=field(cx,y+126,half,"80",5);httpsPortField=field(cx+half+gap,y+126,half,"443",5);
+            httpFileNameField=field(cx,y+180,right-cx,"index.html",64);
+            httpContentField=field(cx,y+234,right-cx,"",32768);
+            pageButton(httpReadable?"Readable   [YES]    No":"Readable   Yes    [NO]",cx,y+268,half,()->{httpReadable=!httpReadable;httpStatus="Readable permission changed. Press Save to apply.";});
+            pageButton(httpWritable?"Writable   [YES]    No":"Writable   Yes    [NO]",cx+half+gap,y+268,half,()->{httpWritable=!httpWritable;httpStatus="Writable permission changed. Press Save to apply.";});
+            pageButton("New",cx,y+302,70,()->{httpFileNameField.setValue("");httpContentField.setValue("");httpReadable=true;httpWritable=true;httpStatus="New file ready.";});
+            pageButton("Load",cx+80,y+302,70,()->sendHttp("OPEN"));
+            pageButton("Save",cx+160,y+302,70,()->sendHttp("SAVE"));
+            pageButton("Delete",cx+240,y+302,70,()->sendHttp("DELETE"));
+            pageButton("Import Clipboard",cx+320,y+302,120,()->importHttpClipboard());
+            pageButton("Refresh",cx+450,y+302,80,()->sendHttp("QUERY"));
+            pageButton("Save Web Settings",cx,y+336,150,()->sendHttp("CONFIG"));
+        }
         if(selected==ServerRackService.EMAIL){
             int right=x+w-28;
             int contentWidth=right-cx;
@@ -224,6 +245,44 @@ public final class ServerRackScreen extends Screen {
             pageButton("Refresh",cx+120,y+261,90,()->sendRadius("QUERY"));
             pageButton("Clear Events",cx+220,y+261,110,()->sendRadius("CLEAR"));
         }
+        if(selected==ServerRackService.IOT){
+            int right=x+w-28,gap=16,total=right-cx,third=(total-gap*2)/3;
+            iotIdField=field(cx,y+139,third,"sensor-01",32);
+            iotNameField=field(cx+third+gap,y+139,third,"Temperature Sensor",32);
+            iotTypeField=field(cx+(third+gap)*2,y+139,third,"SENSOR",24);
+            iotValueField=field(cx,y+193,total,"temperature=22.5C",128);
+            pageButton("Register / Update",cx,y+227,140,()->sendIot("REGISTER"));
+            pageButton("Apply Control",cx+150,y+227,120,()->sendIot("CONTROL"));
+            pageButton("Update Telemetry",cx+280,y+227,130,()->sendIot("TELEMETRY"));
+            pageButton("Mark Offline",cx+420,y+227,110,()->sendIot("OFFLINE"));
+            pageButton("Remove Device",cx,y+261,120,()->sendIot("REMOVE"));
+            pageButton("Refresh",cx+130,y+261,90,()->sendIot("QUERY"));
+            pageButton("Clear Offline",cx+230,y+261,110,()->sendIot("CLEAR_OFFLINE"));
+        }
+        if(selected==ServerRackService.VM_MANAGEMENT){
+            int right=x+w-28,gap=16,total=right-cx,third=(total-gap*2)/3;
+            vmNameField=field(cx,y+139,third,"web-vm-01",32);
+            vmOsField=field(cx+third+gap,y+139,third*2+gap,"VSIA Linux",32);
+            vmCpuField=field(cx,y+193,third,"2",2);
+            vmMemoryField=field(cx+third+gap,y+193,third,"4096",5);
+            vmStorageField=field(cx+(third+gap)*2,y+193,third,"64",4);
+            pageButton("Create / Update",cx,y+227,130,()->sendVm("CREATE"));
+            pageButton("Start",cx+140,y+227,80,()->sendVm("START"));
+            pageButton("Stop",cx+230,y+227,80,()->sendVm("STOP"));
+            pageButton("Restart",cx+320,y+227,90,()->sendVm("RESTART"));
+            pageButton("Delete",cx+420,y+227,80,()->sendVm("DELETE"));
+            pageButton("Refresh",cx,y+261,90,()->sendVm("QUERY"));
+        }
+        if(selected==ServerRackService.PRP){
+            int right=x+w-28,total=right-cx;
+            prpPeerField=field(cx,y+181,total,"192.168.1.3",15);
+            pageButton(prpEnabled?"PRP   [ENABLED]    Disabled":"PRP   Enabled    [DISABLED]",cx,y+126,total,()->{prpEnabled=!prpEnabled;init();});
+            pageButton(prpLaneA?"LAN A   [UP]    Down":"LAN A   Up    [DOWN]",cx,y+227,(total-16)/2,()->{prpLaneA=!prpLaneA;init();});
+            pageButton(prpLaneB?"LAN B   [UP]    Down":"LAN B   Up    [DOWN]",cx+(total-16)/2+16,y+227,(total-16)/2,()->{prpLaneB=!prpLaneB;init();});
+            pageButton("Apply PRP Configuration",cx,y+261,180,()->sendPrp("CONFIG"));
+            pageButton("Refresh Supervision",cx+190,y+261,150,()->sendPrp("QUERY"));
+            pageButton("Clear Counters",cx+350,y+261,120,()->sendPrp("CLEAR_COUNTERS"));
+        }
         pageButton("Save Services",x+w-137,y+h-29,125,()->save());
     }
 
@@ -279,6 +338,15 @@ public final class ServerRackScreen extends Screen {
     public static void acceptAaaResult(String message,String users,String accounting){if(net.minecraft.client.Minecraft.getInstance().screen instanceof ServerRackScreen screen){screen.aaaStatus=message;screen.aaaUsers=users;screen.aaaAccounting=accounting;}}
     private void sendRadius(String action){ServerRackNetwork.CHANNEL.sendToServer(new ServerRackNetwork.RadiusCommandPacket(state.pos(),action,radiusNameField==null?"":radiusNameField.getValue(),radiusAddressField==null?"":radiusAddressField.getValue(),radiusSecretField==null?"":radiusSecretField.getValue(),radiusClientEnabled,radiusUserField==null?"":radiusUserField.getValue(),radiusPasswordField==null?"":radiusPasswordField.getValue(),parseInt(radiusPrivilegeField,1)));}
     public static void acceptRadiusResult(String message,String clients,String events){if(net.minecraft.client.Minecraft.getInstance().screen instanceof ServerRackScreen screen){screen.radiusStatus=message;screen.radiusClients=clients;screen.radiusEvents=events;}}
+    private void sendIot(String action){ServerRackNetwork.CHANNEL.sendToServer(new ServerRackNetwork.IotCommandPacket(state.pos(),action,iotIdField==null?"":iotIdField.getValue(),iotNameField==null?"":iotNameField.getValue(),iotTypeField==null?"":iotTypeField.getValue(),iotValueField==null?"":iotValueField.getValue()));}
+    public static void acceptIotResult(String message,String devices){if(net.minecraft.client.Minecraft.getInstance().screen instanceof ServerRackScreen screen){screen.iotStatus=message;screen.iotDevices=devices;}}
+    private void sendVm(String action){ServerRackNetwork.CHANNEL.sendToServer(new ServerRackNetwork.VmCommandPacket(state.pos(),action,vmNameField==null?"":vmNameField.getValue(),vmOsField==null?"":vmOsField.getValue(),parseInt(vmCpuField,2),parseInt(vmMemoryField,4096),parseInt(vmStorageField,64)));}
+    public static void acceptVmResult(String message,String machines){if(net.minecraft.client.Minecraft.getInstance().screen instanceof ServerRackScreen screen){screen.vmStatus=message;screen.virtualMachines=machines;}}
+    private void sendPrp(String action){ServerRackNetwork.CHANNEL.sendToServer(new ServerRackNetwork.PrpCommandPacket(state.pos(),action,prpEnabled,prpLaneA,prpLaneB,prpPeerField==null?"":prpPeerField.getValue()));}
+    public static void acceptPrpResult(String message,String status){if(net.minecraft.client.Minecraft.getInstance().screen instanceof ServerRackScreen screen){screen.prpStatus=message;screen.prpData=status;String[] p=status.split("\\t",-1);if(p.length>=4){screen.prpEnabled=p[0].equals("ENABLED");screen.prpLaneA=p[1].equals("UP");screen.prpLaneB=p[2].equals("UP");if(screen.prpPeerField!=null)screen.prpPeerField.setValue(p[3]);}}}
+    private void sendHttp(String action){ServerRackNetwork.CHANNEL.sendToServer(new ServerRackNetwork.HttpFileCommandPacket(state.pos(),action,httpFileNameField==null?"":httpFileNameField.getValue(),httpContentField==null?"":httpContentField.getValue(),httpReadable,httpWritable,https,parseInt(httpPortField,80),parseInt(httpsPortField,443)));}
+    private void importHttpClipboard(){String value=net.minecraft.client.Minecraft.getInstance().keyboardHandler.getClipboard();if(value.length()>32768)value=value.substring(0,32768);httpContentField.setValue(value);httpStatus="Clipboard imported. Press Save to store it on the rack.";}
+    public static void acceptHttpFileResult(String message,String files,String filename,String content,boolean readable,boolean writable,boolean secure,int httpPort,int httpsPort){if(net.minecraft.client.Minecraft.getInstance().screen instanceof ServerRackScreen screen){screen.httpStatus=message;screen.httpFiles=files;screen.httpReadable=readable;screen.httpWritable=writable;screen.https=secure;if(screen.httpPortField!=null)screen.httpPortField.setValue(Integer.toString(httpPort));if(screen.httpsPortField!=null)screen.httpsPortField.setValue(Integer.toString(httpsPort));if(!filename.isEmpty()&&screen.httpFileNameField!=null){screen.httpFileNameField.setValue(filename);screen.httpContentField.setValue(content);}}}
     private void sendProgram(String action){programOutput=action.equals("run")?"Running...":"Working...";ServerRackNetwork.CHANNEL.sendToServer(new ServerRackNetwork.ProgramPacket(state.pos(),action,programInput==null?"":programInput.getValue()));}
     public static void acceptProgramResult(String source,String result){if(net.minecraft.client.Minecraft.getInstance().screen instanceof ServerRackScreen screen){if(screen.programInput!=null)screen.programInput.setValue(source);screen.programOutput=result;}}
 
@@ -328,6 +396,9 @@ public final class ServerRackScreen extends Screen {
         if(servicePage.equals("SYSLOG")){renderSyslogService(g,cx);return;}
         if(servicePage.equals("AAA")){renderAaaService(g,cx);return;}
         if(servicePage.equals("Radius EAP")){renderRadiusService(g,cx);return;}
+        if(servicePage.equals("IoT")){renderIotService(g,cx);return;}
+        if(servicePage.equals("VM Management")){renderVmService(g,cx);return;}
+        if(servicePage.equals("PRP")){renderPrpService(g,cx);return;}
         sectionLine(g,cx,y+103,"Service Configuration");
         if(servicePage.equals("HTTP")){g.drawString(font,"Hosted Files",cx,y+130,0xCCCCCC);table(g,cx,y+148,"File Name","Action",new String[][]{{"index.html","Edit","Delete"},{"styles.css","Edit","Delete"},{"script.js","Edit","Delete"}});}
         else if(servicePage.equals("DNS")){g.drawString(font,"Name",cx,y+117,0xCCCCCC);g.drawString(font,"Detail",cx,y+145,0xCCCCCC);g.drawString(font,"TTL",cx,y+173,0xCCCCCC);g.drawString(font,dnsStatus,cx+305,y+201,0xAADDFF);g.drawString(font,"Resource Records",cx,y+231,0xCCCCCC);table(g,cx,y+245,"Name / Type","Detail / TTL",dnsRows());}
@@ -359,7 +430,7 @@ public final class ServerRackScreen extends Screen {
     private String[][] dnsRows(){if(dnsRecordData==null||dnsRecordData.isBlank())return new String[][]{{"No records","",""}};String[] lines=dnsRecordData.strip().split("\\n");int count=Math.min(lines.length,12);String[][] rows=new String[count][3];for(int i=0;i<count;i++){String[] p=lines[i].split("\\t",4);rows[i][0]=p.length>1?p[0]+"  ["+p[1]+"]":lines[i];rows[i][1]=p.length>2?p[2]:"";rows[i][2]=p.length>3?"TTL "+p[3]:"";}return rows;}
     private void table(GuiGraphics g,int tx,int ty,String firstHeader,String secondHeader,String[][] rows){int tw=w-(tx-x)-25;g.fill(tx,ty,tx+tw,ty+20,0xFF464646);g.drawString(font,firstHeader,tx+8,ty+6,0xFFFFFF);g.drawString(font,secondHeader,tx+tw/2,ty+6,0xFFFFFF);for(int i=0;i<rows.length;i++){int ry=ty+21+i*20;g.fill(tx,ry,tx+tw,ry+19,(i&1)==0?0xFF292929:0xFF252525);g.drawString(font,rows[i][0],tx+8,ry+5,0xEEEEEE);if(rows[i].length>1)g.drawString(font,rows[i][1],tx+tw/2,ry+5,0xDDDDDD);if(rows[i].length>2)g.drawString(font,rows[i][2],tx+tw-75,ry+5,0xDDDDDD);}}
     private String[][] dhcpRows(String data){if(data==null||data.isBlank())return new String[][]{{"No data","",""}};String[] lines=data.strip().split("\\n");List<String[]> rows=new ArrayList<>();String section="";for(String line:lines){if(line.equals("POOLS")||line.equals("LEASES")){section=line;continue;}String[] p=line.split("\\t",-1);if(section.equals("POOLS")&&p.length>=7)rows.add(new String[]{"Pool "+p[0],p[1]+" - "+p[2],"Lease "+p[6]+"s"});else if(section.equals("LEASES")&&p.length>=4)rows.add(new String[]{"Lease "+p[0],p[1],p[2]});if(rows.size()>=12)break;}return rows.isEmpty()?new String[][]{{"No active entries","",""}}:rows.toArray(new String[0][]);}
-    private void renderHttpService(GuiGraphics g,int cx){int right=x+w-24;sectionLine(g,cx,y+98,"Web Services");g.drawString(font,"HTTP",cx,y+113,0xFFFFFF);g.drawString(font,"HTTPS",cx+330,y+113,0xFFFFFF);g.drawString(font,"File Manager",cx,y+145,0xDDDDDD);int top=y+162;g.fill(cx,top,right,top+20,0xFF464646);g.drawString(font,"File Name",cx+10,top+6,0xFFFFFF);g.drawString(font,"Permissions",cx+(right-cx)/2,top+6,0xFFFFFF);g.drawString(font,"Actions",right-145,top+6,0xFFFFFF);String[][] files={{"index.html","Read / Write","Edit     Delete"},{"styles.css","Read / Write","Edit     Delete"},{"script.js","Read / Write","Edit     Delete"}};for(int i=0;i<files.length;i++){int ry=top+21+i*22;g.fill(cx,ry,right,ry+21,(i&1)==0?0xFF292929:0xFF252525);g.drawString(font,files[i][0],cx+10,ry+6,0xEEEEEE);g.drawString(font,files[i][1],cx+(right-cx)/2,ry+6,0xDDDDDD);g.drawString(font,files[i][2],right-145,ry+6,0xDDDDDD);}g.drawString(font,serviceStatus,cx,y+h-62,0x88CCFF);}
+    private void renderHttpService(GuiGraphics g,int cx){int right=x+w-28,half=(right-cx-16)/2;sectionLine(g,cx,y+98,"Web Service Settings");g.drawString(font,"HTTP Port",cx,y+115,0xCCCCCC);g.drawString(font,"HTTPS Port",cx+half+16,y+115,0xCCCCCC);sectionLine(g,cx,y+153,"Interactive File Editor");g.drawString(font,"File Name",cx,y+169,0xCCCCCC);g.drawString(font,"Content (paste text, then Save)",cx,y+223,0xCCCCCC);sectionLine(g,cx,y+370,"Hosted Files");int top=y+386;g.fill(cx,top,right,top+20,0xFF464646);g.drawString(font,"File Name",cx+8,top+6,0xFFFFFF);g.drawString(font,"Permissions",cx+half,top+6,0xFFFFFF);g.drawString(font,"Size",right-75,top+6,0xFFFFFF);String[] lines=httpFiles==null?new String[0]:httpFiles.strip().split("\\n");for(int i=0;i<Math.min(lines.length,7);i++){String[] p=lines[i].split("\\t",-1);int ry=top+21+i*19;g.fill(cx,ry,right,ry+18,(i&1)==0?0xFF292929:0xFF252525);g.drawString(font,p[0],cx+8,ry+5,0xEEEEEE);g.drawString(font,p.length>2?((p[1].equals("true")?"R":"-")+(p[2].equals("true")?"W":"-")):"--",cx+half,ry+5,0xDDDDDD);g.drawString(font,p.length>3?p[3]+" B":"",right-75,ry+5,0xDDDDDD);}g.drawString(font,httpStatus,cx,y+h-48,0x88CCFF);}
     private void renderEmailService(GuiGraphics g,int cx){
         int right=x+w-28;
         int contentWidth=right-cx;
@@ -525,6 +596,80 @@ public final class ServerRackScreen extends Screen {
             g.drawString(font,"No RADIUS authentication events",cx+8,row+5,0xAAAAAA);
         }
         else {String[] lines=radiusEvents.strip().split("\\n");int count=Math.min(lines.length,5);for(int i=lines.length-count;i<lines.length;i++){String[] p=lines[i].split("\\t",4);g.fill(cx,row,right,row+19,(i&1)==0?0xFF292929:0xFF252525);String time=p.length>0?java.time.Instant.ofEpochMilli(parseLongText(p[0])).toString():"";g.drawString(font,time.length()>19?time.substring(0,19):time,cx+8,row+5,0xDDDDDD);g.drawString(font,p.length>2?p[1]+" / "+p[2]:"",cx+170,row+5,0xDDDDDD);g.drawString(font,p.length>3?p[3]:"",cx+390,row+5,0xEEEEEE);row+=20;if(row>y+h-36)break;}}
+    }
+    private void renderIotService(GuiGraphics g,int cx){
+        int right=x+w-28;
+        int gap=16;
+        int third=(right-cx-gap*2)/3;
+        sectionLine(g,cx,y+98,"IoT Device Registration and Control");
+        g.drawString(font,"Device ID",cx,y+118,0xFFFFFF);
+        g.drawString(font,"Display Name",cx+third+gap,y+118,0xFFFFFF);
+        g.drawString(font,"Device Type",cx+(third+gap)*2,y+118,0xFFFFFF);
+        g.drawString(font,"Control State or Telemetry",cx,y+172,0xFFFFFF);
+        g.drawString(font,iotStatus,cx,y+294,0x88CCFF);
+        int top=y+312;
+        g.fill(cx,top,right,top+20,0xFF464646);
+        g.drawString(font,"Device / Type",cx+8,top+6,0xFFFFFF);
+        g.drawString(font,"Connectivity",cx+235,top+6,0xFFFFFF);
+        g.drawString(font,"State / Telemetry",cx+375,top+6,0xFFFFFF);
+        int row=top+21;
+        if(iotDevices==null||iotDevices.isBlank()){
+            g.fill(cx,row,right,row+19,0xFF292929);
+            g.drawString(font,"No IoT devices registered",cx+8,row+5,0xAAAAAA);
+            return;
+        }
+        for(String line:iotDevices.strip().split("\\n")){
+            String[] p=line.split("\\t",7);
+            g.fill(cx,row,right,row+19,(row/20&1)==0?0xFF292929:0xFF252525);
+            g.drawString(font,p.length>2?p[1]+" ["+p[2]+"]":p[0],cx+8,row+5,0xEEEEEE);
+            g.drawString(font,p.length>3&&Boolean.parseBoolean(p[3])?"Online":"Offline",cx+235,row+5,p.length>3&&Boolean.parseBoolean(p[3])?0x88FF88:0xFF8888);
+            g.drawString(font,p.length>5?p[4]+" / "+p[5]:"",cx+375,row+5,0xDDDDDD);
+            row+=20;if(row>y+h-42)break;
+        }
+    }
+    private void renderVmService(GuiGraphics g,int cx){
+        int right=x+w-28,gap=16,third=(right-cx-gap*2)/3;
+        sectionLine(g,cx,y+98,"Virtual Machine Management");
+        g.drawString(font,"VM Name",cx,y+118,0xFFFFFF);
+        g.drawString(font,"Operating System",cx+third+gap,y+118,0xFFFFFF);
+        g.drawString(font,"CPU Cores (1-16)",cx,y+172,0xFFFFFF);
+        g.drawString(font,"Memory MB (256-32768)",cx+third+gap,y+172,0xFFFFFF);
+        g.drawString(font,"Storage GB (1-1024)",cx+(third+gap)*2,y+172,0xFFFFFF);
+        g.drawString(font,"Rack Capacity: 16 CPU cores / 32768 MB RAM / 1024 GB storage",cx,y+294,0xAAAAAA);
+        g.drawString(font,vmStatus,cx,y+306,0x88CCFF);
+        int top=y+324;
+        g.fill(cx,top,right,top+20,0xFF464646);
+        g.drawString(font,"Virtual Machine / OS",cx+8,top+6,0xFFFFFF);
+        g.drawString(font,"Resources",cx+255,top+6,0xFFFFFF);
+        g.drawString(font,"State / Console",cx+430,top+6,0xFFFFFF);
+        int row=top+21;
+        if(virtualMachines==null||virtualMachines.isBlank()){
+            g.fill(cx,row,right,row+19,0xFF292929);
+            g.drawString(font,"No virtual machines configured",cx+8,row+5,0xAAAAAA);
+            return;
+        }
+        for(String line:virtualMachines.strip().split("\\n")){
+            String[] p=line.split("\\t",7);
+            g.fill(cx,row,right,row+19,(row/20&1)==0?0xFF292929:0xFF252525);
+            g.drawString(font,p.length>1?p[0]+" ["+p[1]+"]":p[0],cx+8,row+5,0xEEEEEE);
+            g.drawString(font,p.length>4?p[2]+" CPU / "+p[3]+" MB / "+p[4]+" GB":"",cx+255,row+5,0xDDDDDD);
+            g.drawString(font,p.length>6?p[5]+" / "+p[6]:"",cx+430,row+5,p.length>5&&p[5].equals("RUNNING")?0x88FF88:0xCCCCCC);
+            row+=20;if(row>y+h-42)break;
+        }
+    }
+    private void renderPrpService(GuiGraphics g,int cx){
+        int right=x+w-28;
+        sectionLine(g,cx,y+98,"Parallel Redundancy Protocol");
+        g.drawString(font,"PRP sends identical frames over LAN A and LAN B with zero-time recovery.",cx,y+112,0xAAAAAA);
+        g.drawString(font,"Redundancy Peer IPv4 Address",cx,y+160,0xFFFFFF);
+        g.drawString(font,prpStatus,cx,y+294,0x88CCFF);
+        int top=y+322;
+        g.fill(cx,top,right,top+20,0xFF464646);
+        g.drawString(font,"Supervision",cx+8,top+6,0xFFFFFF);
+        g.drawString(font,"Value",cx+260,top+6,0xFFFFFF);
+        String[] p=prpData.split("\\t",-1);
+        String[][] rows={{"PRP Service",p.length>0?p[0]:"Unknown"},{"LAN A",p.length>1?p[1]:"Unknown"},{"LAN B",p.length>2?p[2]:"Unknown"},{"Redundancy Peer",p.length>3&&!p[3].isBlank()?p[3]:"Not configured"},{"Frames Transmitted",p.length>4?p[4]:"0"},{"Duplicate Frames Discarded",p.length>5?p[5]:"0"}};
+        for(int i=0;i<rows.length;i++){int row=top+21+i*20;g.fill(cx,row,right,row+19,(i&1)==0?0xFF292929:0xFF252525);g.drawString(font,rows[i][0],cx+8,row+5,0xEEEEEE);int color=(rows[i][1].equals("UP")||rows[i][1].equals("ENABLED"))?0x88FF88:rows[i][1].equals("DOWN")?0xFF8888:0xDDDDDD;g.drawString(font,rows[i][1],cx+260,row+5,color);}
     }
     @Override public boolean isPauseScreen(){return false;}
 }

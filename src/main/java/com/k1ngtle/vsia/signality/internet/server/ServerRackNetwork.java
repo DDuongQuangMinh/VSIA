@@ -17,7 +17,7 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class ServerRackNetwork {
-    private static final String VERSION = "7";
+    private static final String VERSION = "11";
     private static int nextId;
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(Vsia.MOD_ID, "server_rack"),
@@ -57,6 +57,14 @@ public final class ServerRackNetwork {
         CHANNEL.registerMessage(nextId++, AaaResultPacket.class,AaaResultPacket::encode,AaaResultPacket::decode,AaaResultPacket::handle);
         CHANNEL.registerMessage(nextId++, RadiusCommandPacket.class,RadiusCommandPacket::encode,RadiusCommandPacket::decode,RadiusCommandPacket::handle);
         CHANNEL.registerMessage(nextId++, RadiusResultPacket.class,RadiusResultPacket::encode,RadiusResultPacket::decode,RadiusResultPacket::handle);
+        CHANNEL.registerMessage(nextId++, IotCommandPacket.class,IotCommandPacket::encode,IotCommandPacket::decode,IotCommandPacket::handle);
+        CHANNEL.registerMessage(nextId++, IotResultPacket.class,IotResultPacket::encode,IotResultPacket::decode,IotResultPacket::handle);
+        CHANNEL.registerMessage(nextId++, VmCommandPacket.class,VmCommandPacket::encode,VmCommandPacket::decode,VmCommandPacket::handle);
+        CHANNEL.registerMessage(nextId++, VmResultPacket.class,VmResultPacket::encode,VmResultPacket::decode,VmResultPacket::handle);
+        CHANNEL.registerMessage(nextId++, PrpCommandPacket.class,PrpCommandPacket::encode,PrpCommandPacket::decode,PrpCommandPacket::handle);
+        CHANNEL.registerMessage(nextId++, PrpResultPacket.class,PrpResultPacket::encode,PrpResultPacket::decode,PrpResultPacket::handle);
+        CHANNEL.registerMessage(nextId++, HttpFileCommandPacket.class,HttpFileCommandPacket::encode,HttpFileCommandPacket::decode,HttpFileCommandPacket::handle);
+        CHANNEL.registerMessage(nextId++, HttpFileResultPacket.class,HttpFileResultPacket::encode,HttpFileResultPacket::decode,HttpFileResultPacket::handle);
     }
 
     public static void openFor(ServerPlayer player, ServerRackBlockEntity rack) {
@@ -219,5 +227,45 @@ public final class ServerRackNetwork {
         static void encode(RadiusResultPacket p,FriendlyByteBuf b){b.writeUtf(p.message,256);b.writeUtf(p.clients,16384);b.writeUtf(p.events,32767);}
         static RadiusResultPacket decode(FriendlyByteBuf b){return new RadiusResultPacket(b.readUtf(256),b.readUtf(16384),b.readUtf(32767));}
         static void handle(RadiusResultPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptRadiusResult(p.message,p.clients,p.events)));c.setPacketHandled(true);}
+    }
+    public record IotCommandPacket(BlockPos pos,String action,String id,String name,String type,String value){
+        static void encode(IotCommandPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeUtf(p.action,16);b.writeUtf(p.id,32);b.writeUtf(p.name,32);b.writeUtf(p.type,24);b.writeUtf(p.value,128);}
+        static IotCommandPacket decode(FriendlyByteBuf b){return new IotCommandPacket(b.readBlockPos(),b.readUtf(16),b.readUtf(32),b.readUtf(32),b.readUtf(24),b.readUtf(128));}
+        static void handle(IotCommandPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;String result=rack.manageIot(p.action,p.id,p.name,p.type,p.value);CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new IotResultPacket(result,rack.iotDeviceData()));}});c.setPacketHandled(true);}
+    }
+    public record IotResultPacket(String message,String devices){
+        static void encode(IotResultPacket p,FriendlyByteBuf b){b.writeUtf(p.message,256);b.writeUtf(p.devices,32767);}
+        static IotResultPacket decode(FriendlyByteBuf b){return new IotResultPacket(b.readUtf(256),b.readUtf(32767));}
+        static void handle(IotResultPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptIotResult(p.message,p.devices)));c.setPacketHandled(true);}
+    }
+    public record VmCommandPacket(BlockPos pos,String action,String name,String operatingSystem,int cpuCores,int memoryMb,int storageGb){
+        static void encode(VmCommandPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeUtf(p.action,16);b.writeUtf(p.name,32);b.writeUtf(p.operatingSystem,32);b.writeVarInt(p.cpuCores);b.writeVarInt(p.memoryMb);b.writeVarInt(p.storageGb);}
+        static VmCommandPacket decode(FriendlyByteBuf b){return new VmCommandPacket(b.readBlockPos(),b.readUtf(16),b.readUtf(32),b.readUtf(32),b.readVarInt(),b.readVarInt(),b.readVarInt());}
+        static void handle(VmCommandPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;String result=rack.manageVirtualMachine(p.action,p.name,p.operatingSystem,p.cpuCores,p.memoryMb,p.storageGb);CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new VmResultPacket(result,rack.virtualMachineData()));}});c.setPacketHandled(true);}
+    }
+    public record VmResultPacket(String message,String machines){
+        static void encode(VmResultPacket p,FriendlyByteBuf b){b.writeUtf(p.message,256);b.writeUtf(p.machines,32767);}
+        static VmResultPacket decode(FriendlyByteBuf b){return new VmResultPacket(b.readUtf(256),b.readUtf(32767));}
+        static void handle(VmResultPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptVmResult(p.message,p.machines)));c.setPacketHandled(true);}
+    }
+    public record PrpCommandPacket(BlockPos pos,String action,boolean enabled,boolean laneA,boolean laneB,String peerIp){
+        static void encode(PrpCommandPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeUtf(p.action,24);b.writeBoolean(p.enabled);b.writeBoolean(p.laneA);b.writeBoolean(p.laneB);b.writeUtf(p.peerIp,15);}
+        static PrpCommandPacket decode(FriendlyByteBuf b){return new PrpCommandPacket(b.readBlockPos(),b.readUtf(24),b.readBoolean(),b.readBoolean(),b.readBoolean(),b.readUtf(15));}
+        static void handle(PrpCommandPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;String result=rack.managePrp(p.action,p.enabled,p.laneA,p.laneB,p.peerIp);CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new PrpResultPacket(result,rack.prpStatusData()));}});c.setPacketHandled(true);}
+    }
+    public record PrpResultPacket(String message,String status){
+        static void encode(PrpResultPacket p,FriendlyByteBuf b){b.writeUtf(p.message,256);b.writeUtf(p.status,1024);}
+        static PrpResultPacket decode(FriendlyByteBuf b){return new PrpResultPacket(b.readUtf(256),b.readUtf(1024));}
+        static void handle(PrpResultPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptPrpResult(p.message,p.status)));c.setPacketHandled(true);}
+    }
+    public record HttpFileCommandPacket(BlockPos pos,String action,String filename,String content,boolean readable,boolean writable,boolean https,int httpPort,int httpsPort){
+        static void encode(HttpFileCommandPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeUtf(p.action,16);b.writeUtf(p.filename,64);b.writeUtf(p.content,32768);b.writeBoolean(p.readable);b.writeBoolean(p.writable);b.writeBoolean(p.https);b.writeVarInt(p.httpPort);b.writeVarInt(p.httpsPort);}
+        static HttpFileCommandPacket decode(FriendlyByteBuf b){return new HttpFileCommandPacket(b.readBlockPos(),b.readUtf(16),b.readUtf(64),b.readUtf(32768),b.readBoolean(),b.readBoolean(),b.readBoolean(),b.readVarInt(),b.readVarInt());}
+        static void handle(HttpFileCommandPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;String message;ServerRackHostedFile file=null;if(p.action.equals("QUERY")){message="Web files refreshed.";}else if(p.action.equals("CONFIG")){message=rack.configureWebServices(p.https,p.httpPort,p.httpsPort);}else if(p.action.equals("OPEN")){file=rack.hostedFile(p.filename);message=file==null?"File not found.":"File loaded.";}else{message=rack.manageHostedFile(p.action,"HTTP",p.filename,p.content,p.readable,p.writable);if(p.action.equals("SAVE"))file=rack.hostedFile(p.filename);}CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new HttpFileResultPacket(message,rack.hostedFileData(),file==null?"":file.name(),file==null?"":file.content(),file==null||file.readable(),file==null||file.writable(),rack.httpsEnabled(),rack.httpPort(),rack.httpsPort()));}});c.setPacketHandled(true);}
+    }
+    public record HttpFileResultPacket(String message,String files,String filename,String content,boolean readable,boolean writable,boolean https,int httpPort,int httpsPort){
+        static void encode(HttpFileResultPacket p,FriendlyByteBuf b){b.writeUtf(p.message,256);b.writeUtf(p.files,16384);b.writeUtf(p.filename,64);b.writeUtf(p.content,32768);b.writeBoolean(p.readable);b.writeBoolean(p.writable);b.writeBoolean(p.https);b.writeVarInt(p.httpPort);b.writeVarInt(p.httpsPort);}
+        static HttpFileResultPacket decode(FriendlyByteBuf b){return new HttpFileResultPacket(b.readUtf(256),b.readUtf(16384),b.readUtf(64),b.readUtf(32768),b.readBoolean(),b.readBoolean(),b.readBoolean(),b.readVarInt(),b.readVarInt());}
+        static void handle(HttpFileResultPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptHttpFileResult(p.message,p.files,p.filename,p.content,p.readable,p.writable,p.https,p.httpPort,p.httpsPort)));c.setPacketHandled(true);}
     }
 }

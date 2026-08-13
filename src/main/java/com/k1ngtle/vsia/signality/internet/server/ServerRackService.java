@@ -11,10 +11,10 @@ public enum ServerRackService {
     NTP("NTP", 123, false),
     EMAIL("EMAIL", 25, true),
     FTP("FTP", 21, false),
-    IOT("IoT", 0, false),
-    VM_MANAGEMENT("VM Management", 0, false),
+    IOT("IoT", 1883, true),
+    VM_MANAGEMENT("VM Management", 16509, true),
     RADIUS_EAP("Radius EAP", 1812, true),
-    PRP("PRP", 0, false);
+    PRP("PRP", 0, true);
 
     private final String displayName;
     private final int defaultPort;
