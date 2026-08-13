@@ -27,5 +27,10 @@ public interface ISignalReceiver {
       return null;
    }
 
+   /** Maximum physical delivery distance in blocks. */
+   default double maximumReceptionRangeBlocks() {
+      return Double.POSITIVE_INFINITY;
+   }
+
    void onReceive(SignalPacket var1, double var2);
 }

@@ -55,6 +55,10 @@ public final class SignalBus {
                   range = 0.001;
                }
 
+               if (range > rx.maximumReceptionRangeBlocks()) {
+                  continue;
+               }
+
                double freeSpace = PathLossModel.freeSpacePower(packet.transmitPowerWatts(), packet.antennaGain(), rx.antennaGain(), packet.frequencyHz(), range);
                if (!(freeSpace < rx.sensitivityWatts())) {
                   double blockedFraction = sampleBlockedFraction(level, occlusion, from, to);
