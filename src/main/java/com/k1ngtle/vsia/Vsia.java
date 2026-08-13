@@ -4,7 +4,6 @@ import com.k1ngtle.vsia.network.NVGNetwork;
 import com.k1ngtle.vsia.registry.ModCreativeTabs;
 import com.k1ngtle.vsia.registry.ModItems;
 import com.k1ngtle.vsia.signality.Signality;
-import com.k1ngtle.vsia.weapon.VSIAWeaponBootstrap;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.common.Mod;
@@ -27,8 +26,6 @@ public class Vsia {
 
         Signality.initialize(FMLJavaModLoadingContext.get());
         NVGNetwork.register();
-
-        VSIAWeaponBootstrap.initialize(Vsia.MOD_ID);
 
         modEventBus.addListener(this::commonSetup);
         modEventBus.addListener(this::clientSetup);
