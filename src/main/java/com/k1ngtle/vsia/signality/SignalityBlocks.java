@@ -16,6 +16,7 @@ import com.k1ngtle.vsia.signality.example.TrackingRadarBlock;
 import com.k1ngtle.vsia.signality.example.TrackingRadarBlockEntity;
 import com.k1ngtle.vsia.signality.internet.server.ServerRackBlock;
 import com.k1ngtle.vsia.signality.internet.server.ServerRackBlockEntity;
+import com.k1ngtle.vsia.signality.internet.server.NetworkCableItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
@@ -115,6 +116,10 @@ public final class SignalityBlocks {
                            new Item.Properties()
                    )
            );
+
+   public static final RegistryObject<Item> NETWORK_CABLE = ITEMS.register(
+           "network_cable", () -> new NetworkCableItem(new Item.Properties().stacksTo(1))
+   );
 
    public static final RegistryObject<BlockEntityType<ServerRackBlockEntity>>
            SERVER_RACK_BE = BLOCK_ENTITIES.register(

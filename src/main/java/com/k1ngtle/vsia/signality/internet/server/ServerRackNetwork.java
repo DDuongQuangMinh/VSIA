@@ -17,13 +17,20 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class ServerRackNetwork {
-    private static final String VERSION = "4";
+    private static final String VERSION = "7";
     private static int nextId;
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(Vsia.MOD_ID, "server_rack"),
             () -> VERSION, VERSION::equals, VERSION::equals);
 
     private ServerRackNetwork() {}
+
+    private static boolean authorize(ServerPlayer player, ServerRackBlockEntity rack) {
+        if (rack.canConfigure(player)) return true;
+        player.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                "Access denied. This rack is owned by " + rack.ownerName()), true);
+        return false;
+    }
 
     public static void register() {
         CHANNEL.registerMessage(nextId++, OpenRackPacket.class, OpenRackPacket::encode,
@@ -44,6 +51,12 @@ public final class ServerRackNetwork {
         CHANNEL.registerMessage(nextId++, DhcpResultPacket.class,DhcpResultPacket::encode,DhcpResultPacket::decode,DhcpResultPacket::handle);
         CHANNEL.registerMessage(nextId++, NtpConfigPacket.class,NtpConfigPacket::encode,NtpConfigPacket::decode,NtpConfigPacket::handle);
         CHANNEL.registerMessage(nextId++, NtpResultPacket.class,NtpResultPacket::encode,NtpResultPacket::decode,NtpResultPacket::handle);
+        CHANNEL.registerMessage(nextId++, SyslogCommandPacket.class,SyslogCommandPacket::encode,SyslogCommandPacket::decode,SyslogCommandPacket::handle);
+        CHANNEL.registerMessage(nextId++, SyslogResultPacket.class,SyslogResultPacket::encode,SyslogResultPacket::decode,SyslogResultPacket::handle);
+        CHANNEL.registerMessage(nextId++, AaaCommandPacket.class,AaaCommandPacket::encode,AaaCommandPacket::decode,AaaCommandPacket::handle);
+        CHANNEL.registerMessage(nextId++, AaaResultPacket.class,AaaResultPacket::encode,AaaResultPacket::decode,AaaResultPacket::handle);
+        CHANNEL.registerMessage(nextId++, RadiusCommandPacket.class,RadiusCommandPacket::encode,RadiusCommandPacket::decode,RadiusCommandPacket::handle);
+        CHANNEL.registerMessage(nextId++, RadiusResultPacket.class,RadiusResultPacket::encode,RadiusResultPacket::decode,RadiusResultPacket::handle);
     }
 
     public static void openFor(ServerPlayer player, ServerRackBlockEntity rack) {
@@ -117,6 +130,7 @@ public final class ServerRackNetwork {
                 if (player == null || player.distanceToSqr(p.pos.getX() + 0.5,
                         p.pos.getY() + 0.5, p.pos.getZ() + 0.5) > 64.0) return;
                 if (player.level().getBlockEntity(p.pos) instanceof ServerRackBlockEntity rack) {
+                    if (!authorize(player, rack)) return;
                     String error = rack.applyGuiConfiguration(p.displayName, p.ip, p.subnet,
                             p.gateway, p.dns,p.ipv6,p.ipv6Prefix,p.gateway6,p.dns6,p.automatic6,p.clockOffset,p.ptpMode,p.ptpProfile, p.dhcp, p.http, p.dnsService,
                             p.dhcpService, p.mail);
@@ -133,7 +147,7 @@ public final class ServerRackNetwork {
     public record DesktopToolPacket(BlockPos pos,String tool,String input){
         public static void encode(DesktopToolPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeUtf(p.tool,32);b.writeUtf(p.input,256);}
         static DesktopToolPacket decode(FriendlyByteBuf b){return new DesktopToolPacket(b.readBlockPos(),b.readUtf(32),b.readUtf(256));}
-        static void handle(DesktopToolPacket p,Supplier<NetworkEvent.Context> supplier){NetworkEvent.Context c=supplier.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){String result=rack.executeDesktopTool(p.tool,p.input,player.serverLevel());CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new DesktopResultPacket(p.tool,result));}});c.setPacketHandled(true);}
+        static void handle(DesktopToolPacket p,Supplier<NetworkEvent.Context> supplier){NetworkEvent.Context c=supplier.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;String result=rack.executeDesktopTool(p.tool,p.input,player.serverLevel());CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new DesktopResultPacket(p.tool,result));}});c.setPacketHandled(true);}
     }
     public record DesktopResultPacket(String tool,String result){
         static void encode(DesktopResultPacket p,FriendlyByteBuf b){b.writeUtf(p.tool,32);b.writeUtf(p.result,8192);}
@@ -143,7 +157,7 @@ public final class ServerRackNetwork {
     public record ProgramPacket(BlockPos pos,String action,String source){
         public static void encode(ProgramPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeUtf(p.action,8);b.writeUtf(p.source,16384);}
         static ProgramPacket decode(FriendlyByteBuf b){return new ProgramPacket(b.readBlockPos(),b.readUtf(8),b.readUtf(16384));}
-        static void handle(ProgramPacket p,Supplier<NetworkEvent.Context> supplier){NetworkEvent.Context c=supplier.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){String result;String source=p.source;if(p.action.equals("open")){source=rack.programSource();result=rack.programOutput();}else if(p.action.equals("save"))result=rack.saveProgram(source);else result=rack.runProgram(source,player.serverLevel());CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new ProgramResultPacket(source,result));}});c.setPacketHandled(true);}
+        static void handle(ProgramPacket p,Supplier<NetworkEvent.Context> supplier){NetworkEvent.Context c=supplier.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;String result;String source=p.source;if(p.action.equals("open")){source=rack.programSource();result=rack.programOutput();}else if(p.action.equals("save"))result=rack.saveProgram(source);else result=rack.runProgram(source,player.serverLevel());CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new ProgramResultPacket(source,result));}});c.setPacketHandled(true);}
     }
     public record ProgramResultPacket(String source,String result){
         static void encode(ProgramResultPacket p,FriendlyByteBuf b){b.writeUtf(p.source,16384);b.writeUtf(p.result,16384);}
@@ -153,7 +167,7 @@ public final class ServerRackNetwork {
     public record DnsRecordPacket(BlockPos pos,String action,String name,String type,String detail,int ttl){
         public static void encode(DnsRecordPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeUtf(p.action,16);b.writeUtf(p.name,253);b.writeUtf(p.type,8);b.writeUtf(p.detail,253);b.writeVarInt(p.ttl);}
         static DnsRecordPacket decode(FriendlyByteBuf b){return new DnsRecordPacket(b.readBlockPos(),b.readUtf(16),b.readUtf(253),b.readUtf(8),b.readUtf(253),b.readVarInt());}
-        static void handle(DnsRecordPacket p,Supplier<NetworkEvent.Context> supplier){NetworkEvent.Context c=supplier.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){String message=rack.manageDnsRecord(p.action,p.name,p.type,p.detail,p.ttl);CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new DnsResultPacket(message,rack.dnsRecordData()));}});c.setPacketHandled(true);}
+        static void handle(DnsRecordPacket p,Supplier<NetworkEvent.Context> supplier){NetworkEvent.Context c=supplier.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;String message=rack.manageDnsRecord(p.action,p.name,p.type,p.detail,p.ttl);CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new DnsResultPacket(message,rack.dnsRecordData()));}});c.setPacketHandled(true);}
     }
     public record DnsResultPacket(String message,String records){
         static void encode(DnsResultPacket p,FriendlyByteBuf b){b.writeUtf(p.message,256);b.writeUtf(p.records,16384);}
@@ -163,17 +177,47 @@ public final class ServerRackNetwork {
     public record DhcpPoolPacket(BlockPos pos,String action,String name,boolean ipv6,String start,String end,String prefix,String gateway,String dns,int lease,String exclusions){
         public static void encode(DhcpPoolPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeUtf(p.action,16);b.writeUtf(p.name,32);b.writeBoolean(p.ipv6);b.writeUtf(p.start,45);b.writeUtf(p.end,45);b.writeUtf(p.prefix,15);b.writeUtf(p.gateway,45);b.writeUtf(p.dns,45);b.writeVarInt(p.lease);b.writeUtf(p.exclusions,1024);}
         static DhcpPoolPacket decode(FriendlyByteBuf b){return new DhcpPoolPacket(b.readBlockPos(),b.readUtf(16),b.readUtf(32),b.readBoolean(),b.readUtf(45),b.readUtf(45),b.readUtf(15),b.readUtf(45),b.readUtf(45),b.readVarInt(),b.readUtf(1024));}
-        static void handle(DhcpPoolPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){String m=rack.manageDhcpPool(p.action,p.name,p.ipv6,p.start,p.end,p.prefix,p.gateway,p.dns,p.lease,p.exclusions);CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new DhcpResultPacket(m,rack.dhcpData(p.ipv6),p.ipv6));}});c.setPacketHandled(true);}
+        static void handle(DhcpPoolPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;String m=rack.manageDhcpPool(p.action,p.name,p.ipv6,p.start,p.end,p.prefix,p.gateway,p.dns,p.lease,p.exclusions);CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new DhcpResultPacket(m,rack.dhcpData(p.ipv6),p.ipv6));}});c.setPacketHandled(true);}
     }
     public record DhcpResultPacket(String message,String data,boolean ipv6){static void encode(DhcpResultPacket p,FriendlyByteBuf b){b.writeUtf(p.message,256);b.writeUtf(p.data,16384);b.writeBoolean(p.ipv6);}static DhcpResultPacket decode(FriendlyByteBuf b){return new DhcpResultPacket(b.readUtf(256),b.readUtf(16384),b.readBoolean());}static void handle(DhcpResultPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptDhcpResult(p.message,p.data,p.ipv6)));c.setPacketHandled(true);}}
     public record NtpConfigPacket(BlockPos pos,boolean server,boolean client,int stratum,int poll,String source,int drift){
         public static void encode(NtpConfigPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeBoolean(p.server);b.writeBoolean(p.client);b.writeVarInt(p.stratum);b.writeVarInt(p.poll);b.writeUtf(p.source,45);b.writeInt(p.drift);}
         static NtpConfigPacket decode(FriendlyByteBuf b){return new NtpConfigPacket(b.readBlockPos(),b.readBoolean(),b.readBoolean(),b.readVarInt(),b.readVarInt(),b.readUtf(45),b.readInt());}
-        static void handle(NtpConfigPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){String message=rack.configureNtp(p.server,p.client,p.stratum,p.poll,p.source,p.drift);CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new NtpResultPacket(message,rack.clockSyncStatus(),rack.deviceTimeMillis(),rack.lastNtpSyncMillis()));}});c.setPacketHandled(true);}
+        static void handle(NtpConfigPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;String message=rack.configureNtp(p.server,p.client,p.stratum,p.poll,p.source,p.drift);CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new NtpResultPacket(message,rack.clockSyncStatus(),rack.deviceTimeMillis(),rack.lastNtpSyncMillis()));}});c.setPacketHandled(true);}
     }
     public record NtpResultPacket(String message,String status,long deviceTime,long lastSync){
         static void encode(NtpResultPacket p,FriendlyByteBuf b){b.writeUtf(p.message,256);b.writeUtf(p.status,256);b.writeLong(p.deviceTime);b.writeLong(p.lastSync);}
         static NtpResultPacket decode(FriendlyByteBuf b){return new NtpResultPacket(b.readUtf(256),b.readUtf(256),b.readLong(),b.readLong());}
         static void handle(NtpResultPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptNtpResult(p.message,p.status,p.deviceTime,p.lastSync)));c.setPacketHandled(true);}
+    }
+    public record SyslogCommandPacket(BlockPos pos,String action,int minimumSeverity,boolean acceptRemote,String facility,int severity,String message){
+        public static void encode(SyslogCommandPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeUtf(p.action,16);b.writeVarInt(p.minimumSeverity);b.writeBoolean(p.acceptRemote);b.writeUtf(p.facility,16);b.writeVarInt(p.severity);b.writeUtf(p.message,512);}
+        static SyslogCommandPacket decode(FriendlyByteBuf b){return new SyslogCommandPacket(b.readBlockPos(),b.readUtf(16),b.readVarInt(),b.readBoolean(),b.readUtf(16),b.readVarInt(),b.readUtf(512));}
+        static void handle(SyslogCommandPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;String result=p.action.equals("QUERY")?"Syslog refreshed.":rack.manageSyslog(p.action,p.minimumSeverity,p.acceptRemote,p.facility,p.severity,p.message,player.getGameProfile().getName());CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new SyslogResultPacket(result,rack.syslogData(),rack.syslogMinimumSeverity(),rack.syslogAcceptRemote()));}});c.setPacketHandled(true);}
+    }
+    public record SyslogResultPacket(String message,String data,int minimumSeverity,boolean acceptRemote){
+        static void encode(SyslogResultPacket p,FriendlyByteBuf b){b.writeUtf(p.message,256);b.writeUtf(p.data,32767);b.writeVarInt(p.minimumSeverity);b.writeBoolean(p.acceptRemote);}
+        static SyslogResultPacket decode(FriendlyByteBuf b){return new SyslogResultPacket(b.readUtf(256),b.readUtf(32767),b.readVarInt(),b.readBoolean());}
+        static void handle(SyslogResultPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptSyslogResult(p.message,p.data,p.minimumSeverity,p.acceptRemote)));c.setPacketHandled(true);}
+    }
+    public record AaaCommandPacket(BlockPos pos,String action,String username,String password,int privilege,boolean enabled,String service){
+        public static void encode(AaaCommandPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeUtf(p.action,24);b.writeUtf(p.username,32);b.writeUtf(p.password,64);b.writeVarInt(p.privilege);b.writeBoolean(p.enabled);b.writeUtf(p.service,32);}
+        static AaaCommandPacket decode(FriendlyByteBuf b){return new AaaCommandPacket(b.readBlockPos(),b.readUtf(24),b.readUtf(32),b.readUtf(64),b.readVarInt(),b.readBoolean(),b.readUtf(32));}
+        static void handle(AaaCommandPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;String result=p.action.equals("QUERY")?"AAA data refreshed.":rack.manageAaa(p.action,p.username,p.password,p.privilege,p.enabled,p.service,player.getGameProfile().getName());CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new AaaResultPacket(result,rack.aaaUserData(),rack.aaaAccountingData()));}});c.setPacketHandled(true);}
+    }
+    public record AaaResultPacket(String message,String users,String accounting){
+        static void encode(AaaResultPacket p,FriendlyByteBuf b){b.writeUtf(p.message,256);b.writeUtf(p.users,16384);b.writeUtf(p.accounting,32767);}
+        static AaaResultPacket decode(FriendlyByteBuf b){return new AaaResultPacket(b.readUtf(256),b.readUtf(16384),b.readUtf(32767));}
+        static void handle(AaaResultPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptAaaResult(p.message,p.users,p.accounting)));c.setPacketHandled(true);}
+    }
+    public record RadiusCommandPacket(BlockPos pos,String action,String name,String address,String secret,boolean enabled,String username,String password,int privilege){
+        public static void encode(RadiusCommandPacket p,FriendlyByteBuf b){b.writeBlockPos(p.pos);b.writeUtf(p.action,16);b.writeUtf(p.name,32);b.writeUtf(p.address,15);b.writeUtf(p.secret,64);b.writeBoolean(p.enabled);b.writeUtf(p.username,32);b.writeUtf(p.password,64);b.writeVarInt(p.privilege);}
+        static RadiusCommandPacket decode(FriendlyByteBuf b){return new RadiusCommandPacket(b.readBlockPos(),b.readUtf(16),b.readUtf(32),b.readUtf(15),b.readUtf(64),b.readBoolean(),b.readUtf(32),b.readUtf(64),b.readVarInt());}
+        static void handle(RadiusCommandPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;String result=p.action.equals("QUERY")?"RADIUS data refreshed.":rack.manageRadius(p.action,p.name,p.address,p.secret,p.enabled,p.username,p.password,p.privilege);CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new RadiusResultPacket(result,rack.radiusClientData(),rack.radiusEventData()));}});c.setPacketHandled(true);}
+    }
+    public record RadiusResultPacket(String message,String clients,String events){
+        static void encode(RadiusResultPacket p,FriendlyByteBuf b){b.writeUtf(p.message,256);b.writeUtf(p.clients,16384);b.writeUtf(p.events,32767);}
+        static RadiusResultPacket decode(FriendlyByteBuf b){return new RadiusResultPacket(b.readUtf(256),b.readUtf(16384),b.readUtf(32767));}
+        static void handle(RadiusResultPacket p,Supplier<NetworkEvent.Context>s){NetworkEvent.Context c=s.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptRadiusResult(p.message,p.clients,p.events)));c.setPacketHandled(true);}
     }
 }

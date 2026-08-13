@@ -19,7 +19,7 @@ public final class ServerRackScreen extends Screen {
     private final List<Button> pageButtons = new ArrayList<>();
     private Tab tab = Tab.PHYSICAL;
     private String configPage = "Settings", servicePage = "HTTP", desktopPage = "";
-    private EditBox name, ip, subnet, gateway, dns, ipv6, prefix6, gateway6, dns6, clockOffset, dnsName, dnsDetail, dnsTtl, poolName, poolStart, poolEnd, poolPrefix, poolGateway, poolDns, poolLease, poolExclusions, mailDomainField, mailUserField, mailPasswordField, mailQuotaField, ntpStratumField, ntpPollField, ntpSourceField, ntpDriftField, toolInput, programInput;
+    private EditBox name, ip, subnet, gateway, dns, ipv6, prefix6, gateway6, dns6, clockOffset, dnsName, dnsDetail, dnsTtl, poolName, poolStart, poolEnd, poolPrefix, poolGateway, poolDns, poolLease, poolExclusions, mailDomainField, mailUserField, mailPasswordField, mailQuotaField, ntpStratumField, ntpPollField, ntpSourceField, ntpDriftField, syslogMinField, syslogFacilityField, syslogSeverityField, syslogMessageField, aaaUserField, aaaPasswordField, aaaPrivilegeField, aaaServiceField, radiusNameField, radiusAddressField, radiusSecretField, radiusUserField, radiusPasswordField, radiusPrivilegeField, toolInput, programInput;
     private String desktopOutput = "Ready.";
     private String programOutput = "Ready. Separate commands with semicolons. Type help for commands.";
     private boolean dhcp, http, dnsService, dhcpService, mail;
@@ -33,6 +33,12 @@ public final class ServerRackScreen extends Screen {
     private boolean ntpServer,ntpClient;
     private String ntpStatus;
     private long ntpDeviceTime,lastNtpSync;
+    private String syslogData="",syslogStatus="Press Refresh to load entries.";
+    private boolean syslogAcceptRemote=true;
+    private String aaaUsers="",aaaAccounting="",aaaStatus="Press Refresh to load AAA data.";
+    private boolean aaaUserEnabled=true;
+    private String radiusClients="",radiusEvents="",radiusStatus="Press Refresh to load RADIUS data.";
+    private boolean radiusClientEnabled=true;
     private int x, y, w, h, side;
 
     public ServerRackScreen(OpenRackPacket state) {
@@ -139,15 +145,84 @@ public final class ServerRackScreen extends Screen {
             poolExclusions.setWidth(columnWidth * 2 + gap);
         }
         if(selected==ServerRackService.HTTP){pageButton(https?"HTTPS   [ON]    Off":"HTTPS   On    [OFF]",cx+330,y+64,260,()->{https=!https;init();});pageButton("New File",x+w-220,y+h-55,85,()->serviceStatus="New file editor will open here.");pageButton("Import",x+w-129,y+h-55,85,()->serviceStatus="Import file selector will open here.");}
-        if(selected==ServerRackService.EMAIL){int right=x+w-30;mailDomainField=field(cx+110,y+122,right-cx-190,"vsia-net.com",253);pageButton("Set",right-70,y+122,70,()->serviceStatus="Mail domain updated.");mailUserField=field(cx+55,y+168,180,"",32);mailPasswordField=field(cx+315,y+168,260,"",64);mailQuotaField=field(cx+655,y+168,90,"100",4);pageButton(pop3?"POP3   [ON]    Off":"POP3   On    [OFF]",cx+330,y+64,260,()->{pop3=!pop3;init();});pageButton("+",right-80,y+225,70,()->serviceStatus="Mailbox account added.");pageButton("-",right-80,y+255,70,()->serviceStatus="Selected account removed.");pageButton("Change Password",right-110,y+285,100,()->serviceStatus="Password changed.");}
+        if(selected==ServerRackService.EMAIL){
+            int right=x+w-28;
+            int contentWidth=right-cx;
+            int gap=16;
+            int serviceWidth=(contentWidth-gap)/2;
+            int setWidth=76;
+            int domainWidth=contentWidth-setWidth-gap;
+            int quotaWidth=Math.max(90,contentWidth/8);
+            int userWidth=Math.max(170,contentWidth/4);
+            int passwordWidth=contentWidth-userWidth-quotaWidth-gap*2;
+            pageButton(pop3?"POP3 Service   [ON]    Off":"POP3 Service   On    [OFF]",cx+serviceWidth+gap,y+64,serviceWidth,()->{pop3=!pop3;init();});
+            mailDomainField=field(cx,y+151,domainWidth,"vsia-net.com",253);
+            pageButton("Set Domain",cx+domainWidth+gap,y+151,setWidth,()->serviceStatus="Mail domain updated.");
+            mailUserField=field(cx,y+211,userWidth,"",32);
+            mailPasswordField=field(cx+userWidth+gap,y+211,passwordWidth,"",64);
+            mailQuotaField=field(cx+userWidth+gap+passwordWidth+gap,y+211,quotaWidth,"100",4);
+            pageButton("Add Account",cx,y+245,110,()->serviceStatus="Mailbox account added.");
+            pageButton("Remove Account",cx+120,y+245,120,()->serviceStatus="Selected account removed.");
+            pageButton("Change Password",cx+250,y+245,125,()->serviceStatus="Password changed.");
+        }
         if(selected==ServerRackService.NTP){
-            pageButton(ntpServer?"Server Role   [ON]    Off":"Server Role   On    [OFF]",cx,y+106,260,()->{ntpServer=!ntpServer;init();});
-            pageButton(ntpClient?"Client Role   [ON]    Off":"Client Role   On    [OFF]",cx+280,y+106,260,()->{ntpClient=!ntpClient;init();});
-            ntpStratumField=field(cx+145,y+154,90,Integer.toString(state.ntpStratum()),2);
-            ntpPollField=field(cx+425,y+154,110,Integer.toString(state.ntpPoll()),4);
-            ntpSourceField=field(cx+145,y+188,220,state.ntpSource(),45);
-            ntpDriftField=field(cx+425,y+188,110,Integer.toString(state.clockDrift()),5);
-            pageButton("Apply NTP Configuration",cx,y+232,190,()->sendNtp());
+            int right=x+w-28;
+            int gap=24;
+            int columnWidth=Math.max(180,(right-cx-gap)/2);
+            int secondColumn=cx+columnWidth+gap;
+            pageButton(ntpServer?"Server Role   [ON]    Off":"Server Role   On    [OFF]",cx,y+126,columnWidth,()->{ntpServer=!ntpServer;init();});
+            pageButton(ntpClient?"Client Role   [ON]    Off":"Client Role   On    [OFF]",secondColumn,y+126,columnWidth,()->{ntpClient=!ntpClient;init();});
+            ntpStratumField=field(cx,y+181,columnWidth,Integer.toString(state.ntpStratum()),2);
+            ntpPollField=field(secondColumn,y+181,columnWidth,Integer.toString(state.ntpPoll()),4);
+            ntpSourceField=field(cx,y+235,columnWidth,state.ntpSource(),45);
+            ntpDriftField=field(secondColumn,y+235,columnWidth,Integer.toString(state.clockDrift()),5);
+            pageButton("Apply NTP Configuration",cx,y+269,190,()->sendNtp());
+        }
+        if(selected==ServerRackService.SYSLOG){
+            int right=x+w-28;
+            int gap=20;
+            int columnWidth=Math.max(180,(right-cx-gap)/2);
+            int secondColumn=cx+columnWidth+gap;
+            syslogMinField=field(cx,y+145,columnWidth,"7",1);
+            pageButton(syslogAcceptRemote?"Remote Messages   [ON]    Off":"Remote Messages   On    [OFF]",secondColumn,y+145,columnWidth,()->{syslogAcceptRemote=!syslogAcceptRemote;init();});
+            syslogFacilityField=field(cx,y+199,columnWidth,"LOCAL0",16);
+            syslogSeverityField=field(secondColumn,y+199,columnWidth,"6",1);
+            syslogMessageField=field(cx,y+253,right-cx,"Server rack syslog test message",512);
+            pageButton("Save Configuration",cx,y+287,150,()->sendSyslog("CONFIG"));
+            pageButton("Send Test",cx+160,y+287,100,()->sendSyslog("TEST"));
+            pageButton("Refresh",cx+270,y+287,90,()->sendSyslog("QUERY"));
+            pageButton("Clear Log",cx+370,y+287,90,()->sendSyslog("CLEAR"));
+        }
+        if(selected==ServerRackService.AAA){
+            int right=x+w-28;
+            int gap=20;
+            int columnWidth=Math.max(180,(right-cx-gap)/2);
+            int secondColumn=cx+columnWidth+gap;
+            aaaUserField=field(cx,y+139,columnWidth,"",32);
+            aaaPasswordField=field(secondColumn,y+139,columnWidth,"",64);
+            aaaPrivilegeField=field(cx,y+193,columnWidth,"1",2);
+            aaaServiceField=field(secondColumn,y+193,columnWidth,"LOGIN",32);
+            pageButton(aaaUserEnabled?"Account   [ENABLED]    Disabled":"Account   Enabled    [DISABLED]",cx,y+227,columnWidth,()->{aaaUserEnabled=!aaaUserEnabled;init();});
+            pageButton("Add / Update User",secondColumn,y+227,columnWidth,()->sendAaa("SAVE"));
+            pageButton("Remove User",cx,y+261,110,()->sendAaa("DELETE"));
+            pageButton("Test Login",cx+120,y+261,100,()->sendAaa("TEST"));
+            pageButton("Refresh",cx+230,y+261,90,()->sendAaa("QUERY"));
+            pageButton("Clear Accounting",cx+330,y+261,130,()->sendAaa("CLEAR_ACCOUNTING"));
+        }
+        if(selected==ServerRackService.RADIUS_EAP){
+            int right=x+w-28, gap=16, total=right-cx, third=(total-gap*2)/3;
+            radiusNameField=field(cx,y+139,third,"Campus NAS",32);
+            radiusAddressField=field(cx+third+gap,y+139,third,"192.168.1.10",15);
+            radiusSecretField=field(cx+(third+gap)*2,y+139,third,"vsia-radius",64);
+            radiusUserField=field(cx,y+193,third,"admin",32);
+            radiusPasswordField=field(cx+third+gap,y+193,third,"admin",64);
+            radiusPrivilegeField=field(cx+(third+gap)*2,y+193,third,"1",2);
+            pageButton(radiusClientEnabled?"NAS Client   [ENABLED]    Disabled":"NAS Client   Enabled    [DISABLED]",cx,y+227,third,()->{radiusClientEnabled=!radiusClientEnabled;init();});
+            pageButton("Add / Update NAS",cx+third+gap,y+227,third,()->sendRadius("SAVE"));
+            pageButton("Test EAP Login",cx+(third+gap)*2,y+227,third,()->sendRadius("TEST"));
+            pageButton("Remove NAS",cx,y+261,110,()->sendRadius("DELETE"));
+            pageButton("Refresh",cx+120,y+261,90,()->sendRadius("QUERY"));
+            pageButton("Clear Events",cx+220,y+261,110,()->sendRadius("CLEAR"));
         }
         pageButton("Save Services",x+w-137,y+h-29,125,()->save());
     }
@@ -176,7 +251,8 @@ public final class ServerRackScreen extends Screen {
         pageButton("Open",x+64,y+34,50,()->sendProgram("open"));
         pageButton("Save",x+118,y+34,50,()->sendProgram("save"));
         pageButton("Run",x+w-118,y+34,50,()->sendProgram("run"));
-        programInput=field(x+side,y+82,w-side-20,"hostname Server0; show config",16384);
+        int editorX=x+180;
+        programInput=field(editorX,y+92,x+w-editorX-22,"hostname Server0; show config",16384);
     }
 
     private EditBox field(int bx,int by,int bw,String value,int max){EditBox e=new EditBox(font,bx,by,Math.max(60,bw),18,Component.empty());e.setMaxLength(max);e.setValue(value);addRenderableWidget(e);return e;}
@@ -197,6 +273,12 @@ public final class ServerRackScreen extends Screen {
     public static void acceptDhcpResult(String message,String data,boolean ipv6){if(net.minecraft.client.Minecraft.getInstance().screen instanceof ServerRackScreen screen){screen.dhcpStatus=message;if(ipv6)screen.dhcp6Data=data;else screen.dhcp4Data=data;}}
     private void sendNtp(){serviceStatus="Saving NTP configuration...";ServerRackNetwork.CHANNEL.sendToServer(new ServerRackNetwork.NtpConfigPacket(state.pos(),ntpServer,ntpClient,parseInt(ntpStratumField,state.ntpStratum()),parseInt(ntpPollField,state.ntpPoll()),ntpSourceField.getValue(),parseInt(ntpDriftField,state.clockDrift())));}
     public static void acceptNtpResult(String message,String status,long deviceTime,long lastSync){if(net.minecraft.client.Minecraft.getInstance().screen instanceof ServerRackScreen screen){screen.serviceStatus=message;screen.ntpStatus=status;screen.ntpDeviceTime=deviceTime;screen.lastNtpSync=lastSync;}}
+    private void sendSyslog(String action){ServerRackNetwork.CHANNEL.sendToServer(new ServerRackNetwork.SyslogCommandPacket(state.pos(),action,parseInt(syslogMinField,7),syslogAcceptRemote,syslogFacilityField==null?"LOCAL0":syslogFacilityField.getValue(),parseInt(syslogSeverityField,6),syslogMessageField==null?"":syslogMessageField.getValue()));}
+    public static void acceptSyslogResult(String message,String data,int minimumSeverity,boolean acceptRemote){if(net.minecraft.client.Minecraft.getInstance().screen instanceof ServerRackScreen screen){screen.syslogStatus=message;screen.syslogData=data;screen.syslogAcceptRemote=acceptRemote;if(screen.syslogMinField!=null)screen.syslogMinField.setValue(Integer.toString(minimumSeverity));}}
+    private void sendAaa(String action){ServerRackNetwork.CHANNEL.sendToServer(new ServerRackNetwork.AaaCommandPacket(state.pos(),action,aaaUserField==null?"":aaaUserField.getValue(),aaaPasswordField==null?"":aaaPasswordField.getValue(),parseInt(aaaPrivilegeField,1),aaaUserEnabled,aaaServiceField==null?"LOGIN":aaaServiceField.getValue()));}
+    public static void acceptAaaResult(String message,String users,String accounting){if(net.minecraft.client.Minecraft.getInstance().screen instanceof ServerRackScreen screen){screen.aaaStatus=message;screen.aaaUsers=users;screen.aaaAccounting=accounting;}}
+    private void sendRadius(String action){ServerRackNetwork.CHANNEL.sendToServer(new ServerRackNetwork.RadiusCommandPacket(state.pos(),action,radiusNameField==null?"":radiusNameField.getValue(),radiusAddressField==null?"":radiusAddressField.getValue(),radiusSecretField==null?"":radiusSecretField.getValue(),radiusClientEnabled,radiusUserField==null?"":radiusUserField.getValue(),radiusPasswordField==null?"":radiusPasswordField.getValue(),parseInt(radiusPrivilegeField,1)));}
+    public static void acceptRadiusResult(String message,String clients,String events){if(net.minecraft.client.Minecraft.getInstance().screen instanceof ServerRackScreen screen){screen.radiusStatus=message;screen.radiusClients=clients;screen.radiusEvents=events;}}
     private void sendProgram(String action){programOutput=action.equals("run")?"Running...":"Working...";ServerRackNetwork.CHANNEL.sendToServer(new ServerRackNetwork.ProgramPacket(state.pos(),action,programInput==null?"":programInput.getValue()));}
     public static void acceptProgramResult(String source,String result){if(net.minecraft.client.Minecraft.getInstance().screen instanceof ServerRackScreen screen){if(screen.programInput!=null)screen.programInput.setValue(source);screen.programOutput=result;}}
 
@@ -243,6 +325,9 @@ public final class ServerRackScreen extends Screen {
         if(servicePage.equals("HTTP")){renderHttpService(g,cx);return;}
         if(servicePage.equals("EMAIL")){renderEmailService(g,cx);return;}
         if(servicePage.equals("NTP")){renderNtpService(g,cx);return;}
+        if(servicePage.equals("SYSLOG")){renderSyslogService(g,cx);return;}
+        if(servicePage.equals("AAA")){renderAaaService(g,cx);return;}
+        if(servicePage.equals("Radius EAP")){renderRadiusService(g,cx);return;}
         sectionLine(g,cx,y+103,"Service Configuration");
         if(servicePage.equals("HTTP")){g.drawString(font,"Hosted Files",cx,y+130,0xCCCCCC);table(g,cx,y+148,"File Name","Action",new String[][]{{"index.html","Edit","Delete"},{"styles.css","Edit","Delete"},{"script.js","Edit","Delete"}});}
         else if(servicePage.equals("DNS")){g.drawString(font,"Name",cx,y+117,0xCCCCCC);g.drawString(font,"Detail",cx,y+145,0xCCCCCC);g.drawString(font,"TTL",cx,y+173,0xCCCCCC);g.drawString(font,dnsStatus,cx+305,y+201,0xAADDFF);g.drawString(font,"Resource Records",cx,y+231,0xCCCCCC);table(g,cx,y+245,"Name / Type","Detail / TTL",dnsRows());}
@@ -251,14 +336,195 @@ public final class ServerRackScreen extends Screen {
         else{ServerRackService service=ServerRackService.byDisplayName(servicePage);g.drawString(font,"Default Port: "+(service.defaultPort()==0?"Protocol-managed":service.defaultPort()),cx,y+130,0xCCCCCC);g.drawString(font,"Configuration module: ready for the "+service.displayName()+" service milestone",cx,y+150,0xBBBBBB);g.drawString(font,"This switch is persistent. Protocol rules, records, accounts, and logs are added in the dedicated milestone.",cx,y+170,0x999999);}}
     private void desktop(GuiGraphics g){if(desktopPage.isEmpty())return;g.drawCenteredString(font,desktopPage,x+w/2,y+45,0xFFFFFF);g.drawString(font,inputLabel(),x+125,y+70,0xCCCCCC);g.drawString(font,"Output",x+25,y+120,0xFFFFFF);g.fill(x+25,y+136,x+w-25,y+h-25,0xFF080808);int lineY=y+145;for(String raw:desktopOutput.split("\\n",-1)){for(FormattedCharSequence line:font.split(Component.literal(raw),w-70)){g.drawString(font,line,x+35,lineY,0xB8FFB8);lineY+=12;if(lineY>y+h-38)return;}}}
     private String inputLabel(){return switch(desktopPage){case "Ping"->"Target IPv4 address";case "DNS Lookup"->"Domain name";case "Web Browser"->"URL or IPv4 address";case "Email"->"Mailbox address";case "Terminal","Command Prompt"->"Command";default->"Input";};}
-    private void programming(GuiGraphics g){g.drawString(font,"Project",x+12,y+67,0x222222);g.drawString(font,"server-config",x+12,y+83,0x444444);g.drawString(font,"Configuration Script (separate commands with semicolons)",x+side,y+67,0x222222);g.drawString(font,"Console Output",x+14,y+h-108,0xCCCCCC);int lineY=y+h-92;for(String raw:programOutput.split("\\n",-1)){for(FormattedCharSequence line:font.split(Component.literal(raw),w-38)){g.drawString(font,line,x+16,lineY,0xB8FFB8);lineY+=11;if(lineY>y+h-18)return;}}}
+    private void programming(GuiGraphics g){
+        int editorX=x+180;
+        g.fill(x+8,y+59,editorX-10,y+h-119,0xFFE2E2E2);
+        g.vLine(editorX-9,y+59,y+h-119,0xFF999999);
+        g.drawString(font,"Project",x+18,y+70,0xFF222222);
+        g.drawString(font,"server-config",x+18,y+94,0xFF444444);
+        g.drawString(font,"Configuration Script",editorX,y+70,0xFF222222);
+        g.drawString(font,"Separate commands with semicolons",editorX,y+81,0xFF666666);
+        g.drawString(font,"Console Output",x+18,y+h-105,0xFFCCCCCC);
+        int lineY=y+h-86;
+        for(String raw:programOutput.split("\\n",-1)){
+            for(FormattedCharSequence line:font.split(Component.literal(raw),w-48)){
+                g.drawString(font,line,x+20,lineY,0xFFB8FFB8);
+                lineY+=12;
+                if(lineY>y+h-18)return;
+            }
+        }
+    }
     private void attributes(GuiGraphics g){g.drawString(font,"Device Attributes",x+16,y+39,0xFFFFFF);String[][] a={{"Mean Time Between Failures","61,320 hours"},{"Cost","2,000"},{"Power Source","Internal"},{"Rack Units","3U"},{"Power Consumption","200 W"},{"Device Model","VSIA Server Rack"},{"IPv4 Address",state.ip()},{"IPv6 Address",state.ipv6()+"/"+state.ipv6Prefix()},{"PTP",state.ptpMode()+" / "+state.ptpProfile()},{"World Position",state.pos().toShortString()}};table(g,x+20,y+62,"Attribute","Value",a);}
     private void sectionLine(GuiGraphics g,int sx,int sy,String text){g.drawString(font,text,sx,sy,0xDDDDDD);int start=sx+font.width(text)+8;g.hLine(start,x+w-24,sy+4,0xFF555555);}
     private String[][] dnsRows(){if(dnsRecordData==null||dnsRecordData.isBlank())return new String[][]{{"No records","",""}};String[] lines=dnsRecordData.strip().split("\\n");int count=Math.min(lines.length,12);String[][] rows=new String[count][3];for(int i=0;i<count;i++){String[] p=lines[i].split("\\t",4);rows[i][0]=p.length>1?p[0]+"  ["+p[1]+"]":lines[i];rows[i][1]=p.length>2?p[2]:"";rows[i][2]=p.length>3?"TTL "+p[3]:"";}return rows;}
     private void table(GuiGraphics g,int tx,int ty,String firstHeader,String secondHeader,String[][] rows){int tw=w-(tx-x)-25;g.fill(tx,ty,tx+tw,ty+20,0xFF464646);g.drawString(font,firstHeader,tx+8,ty+6,0xFFFFFF);g.drawString(font,secondHeader,tx+tw/2,ty+6,0xFFFFFF);for(int i=0;i<rows.length;i++){int ry=ty+21+i*20;g.fill(tx,ry,tx+tw,ry+19,(i&1)==0?0xFF292929:0xFF252525);g.drawString(font,rows[i][0],tx+8,ry+5,0xEEEEEE);if(rows[i].length>1)g.drawString(font,rows[i][1],tx+tw/2,ry+5,0xDDDDDD);if(rows[i].length>2)g.drawString(font,rows[i][2],tx+tw-75,ry+5,0xDDDDDD);}}
     private String[][] dhcpRows(String data){if(data==null||data.isBlank())return new String[][]{{"No data","",""}};String[] lines=data.strip().split("\\n");List<String[]> rows=new ArrayList<>();String section="";for(String line:lines){if(line.equals("POOLS")||line.equals("LEASES")){section=line;continue;}String[] p=line.split("\\t",-1);if(section.equals("POOLS")&&p.length>=7)rows.add(new String[]{"Pool "+p[0],p[1]+" - "+p[2],"Lease "+p[6]+"s"});else if(section.equals("LEASES")&&p.length>=4)rows.add(new String[]{"Lease "+p[0],p[1],p[2]});if(rows.size()>=12)break;}return rows.isEmpty()?new String[][]{{"No active entries","",""}}:rows.toArray(new String[0][]);}
     private void renderHttpService(GuiGraphics g,int cx){int right=x+w-24;sectionLine(g,cx,y+98,"Web Services");g.drawString(font,"HTTP",cx,y+113,0xFFFFFF);g.drawString(font,"HTTPS",cx+330,y+113,0xFFFFFF);g.drawString(font,"File Manager",cx,y+145,0xDDDDDD);int top=y+162;g.fill(cx,top,right,top+20,0xFF464646);g.drawString(font,"File Name",cx+10,top+6,0xFFFFFF);g.drawString(font,"Permissions",cx+(right-cx)/2,top+6,0xFFFFFF);g.drawString(font,"Actions",right-145,top+6,0xFFFFFF);String[][] files={{"index.html","Read / Write","Edit     Delete"},{"styles.css","Read / Write","Edit     Delete"},{"script.js","Read / Write","Edit     Delete"}};for(int i=0;i<files.length;i++){int ry=top+21+i*22;g.fill(cx,ry,right,ry+21,(i&1)==0?0xFF292929:0xFF252525);g.drawString(font,files[i][0],cx+10,ry+6,0xEEEEEE);g.drawString(font,files[i][1],cx+(right-cx)/2,ry+6,0xDDDDDD);g.drawString(font,files[i][2],right-145,ry+6,0xDDDDDD);}g.drawString(font,serviceStatus,cx,y+h-62,0x88CCFF);}
-    private void renderEmailService(GuiGraphics g,int cx){int right=x+w-24;sectionLine(g,cx,y+98,"Mail Services");g.drawString(font,"SMTP Service",cx,y+113,0xFFFFFF);g.drawString(font,"POP3 Service",cx+330,y+113,0xFFFFFF);g.drawString(font,"Domain Name",cx,y+127,0xDDDDDD);g.drawString(font,"User Setup",cx,y+157,0xDDDDDD);g.drawString(font,"User",cx,y+173,0xBBBBBB);g.drawString(font,"Password",cx+245,y+173,0xBBBBBB);g.drawString(font,"Quota",cx+600,y+173,0xBBBBBB);int top=y+205;g.fill(cx,top,right-120,top+20,0xFF464646);g.drawString(font,"Mailbox Account",cx+10,top+6,0xFFFFFF);g.drawString(font,"Quota",cx+(right-cx)/2,top+6,0xFFFFFF);g.drawString(font,"Messages",right-270,top+6,0xFFFFFF);String[][] users={{"admin@vsia-net.com","100","0"},{"player@vsia-net.com","100","0"}};for(int i=0;i<users.length;i++){int ry=top+21+i*22;g.fill(cx,ry,right-120,ry+21,(i&1)==0?0xFF292929:0xFF252525);g.drawString(font,users[i][0],cx+10,ry+6,0xEEEEEE);g.drawString(font,users[i][1],cx+(right-cx)/2,ry+6,0xDDDDDD);g.drawString(font,users[i][2],right-270,ry+6,0xDDDDDD);}g.drawString(font,serviceStatus,cx,y+h-62,0x88CCFF);}
-    private void renderNtpService(GuiGraphics g,int cx){sectionLine(g,cx,y+98,"Network Time Protocol");g.drawString(font,"NTP Roles",cx,y+120,0xDDDDDD);g.drawString(font,"Stratum (1-15)",cx,y+159,0xCCCCCC);g.drawString(font,"Poll Interval (16-4096 seconds)",cx+280,y+159,0xCCCCCC);g.drawString(font,"Preferred Source IPv4",cx,y+193,0xCCCCCC);g.drawString(font,"Clock Drift (ppm)",cx+280,y+193,0xCCCCCC);sectionLine(g,cx,y+270,"Clock Status");g.drawString(font,"Device Time (UTC): "+java.time.Instant.ofEpochMilli(ntpDeviceTime+(System.currentTimeMillis()-openedAtMillis)),cx,y+292,0xFFFFFF);g.drawString(font,"Synchronization: "+ntpStatus,cx,y+312,0xB8FFB8);g.drawString(font,"Last Sync: "+(lastNtpSync==0?"Never":java.time.Instant.ofEpochMilli(lastNtpSync).toString()),cx,y+332,0xCCCCCC);g.drawString(font,"PTP mode: "+ptpMode+" / "+ptpProfile+" (PTP has priority over NTP)",cx,y+352,0xCCCCCC);g.drawString(font,serviceStatus,cx,y+h-62,0x88CCFF);}
+    private void renderEmailService(GuiGraphics g,int cx){
+        int right=x+w-28;
+        int contentWidth=right-cx;
+        int gap=16;
+        int quotaWidth=Math.max(90,contentWidth/8);
+        int userWidth=Math.max(170,contentWidth/4);
+        int passwordWidth=contentWidth-userWidth-quotaWidth-gap*2;
+        int passwordX=cx+userWidth+gap;
+        int quotaX=passwordX+passwordWidth+gap;
+        sectionLine(g,cx,y+98,"Mail Services");
+        g.drawString(font,"SMTP Service",cx,y+113,0xFFFFFF);
+        g.drawString(font,"POP3 Service",cx+(contentWidth+gap)/2,y+113,0xFFFFFF);
+        sectionLine(g,cx,y+130,"Domain Configuration");
+        g.drawString(font,"Domain Name",cx,y+140,0xBBBBBB);
+        sectionLine(g,cx,y+184,"User Setup");
+        g.drawString(font,"Username",cx,y+200,0xBBBBBB);
+        g.drawString(font,"Password",passwordX,y+200,0xBBBBBB);
+        g.drawString(font,"Quota",quotaX,y+200,0xBBBBBB);
+        sectionLine(g,cx,y+282,"Mailbox Accounts");
+        int top=y+299;
+        g.fill(cx,top,right,top+20,0xFF464646);
+        int quotaColumn=cx+(int)(contentWidth*0.62F);
+        int messageColumn=cx+(int)(contentWidth*0.78F);
+        g.drawString(font,"Mailbox Account",cx+10,top+6,0xFFFFFF);
+        g.drawString(font,"Quota",quotaColumn,top+6,0xFFFFFF);
+        g.drawString(font,"Messages",messageColumn,top+6,0xFFFFFF);
+        String[][] users={{"admin@vsia-net.com","100","0"},{"player@vsia-net.com","100","0"}};
+        for(int i=0;i<users.length;i++){
+            int ry=top+21+i*22;
+            g.fill(cx,ry,right,ry+21,(i&1)==0?0xFF292929:0xFF252525);
+            g.drawString(font,users[i][0],cx+10,ry+6,0xEEEEEE);
+            g.drawString(font,users[i][1],quotaColumn,ry+6,0xDDDDDD);
+            g.drawString(font,users[i][2],messageColumn,ry+6,0xDDDDDD);
+        }
+        g.drawString(font,serviceStatus,cx,y+h-62,0x88CCFF);
+    }
+    private void renderNtpService(GuiGraphics g,int cx){
+        int right=x+w-28;
+        int gap=24;
+        int columnWidth=Math.max(180,(right-cx-gap)/2);
+        int secondColumn=cx+columnWidth+gap;
+        sectionLine(g,cx,y+98,"Network Time Protocol");
+        g.drawString(font,"NTP Roles",cx,y+113,0xDDDDDD);
+        g.drawString(font,"Stratum",cx,y+160,0xFFFFFF);
+        g.drawString(font,"Valid range: 1-15",cx,y+170,0x999999);
+        g.drawString(font,"Poll Interval",secondColumn,y+160,0xFFFFFF);
+        g.drawString(font,"Valid range: 16-4096 seconds",secondColumn,y+170,0x999999);
+        g.drawString(font,"Preferred Source IPv4",cx,y+214,0xFFFFFF);
+        g.drawString(font,"Leave blank to select the best available source",cx,y+224,0x999999);
+        g.drawString(font,"Clock Drift",secondColumn,y+214,0xFFFFFF);
+        g.drawString(font,"Range: -500 to 500 ppm",secondColumn,y+224,0x999999);
+        sectionLine(g,cx,y+307,"Clock Status");
+        g.drawString(font,"Device Time (UTC)",cx,y+326,0xBBBBBB);
+        g.drawString(font,java.time.Instant.ofEpochMilli(ntpDeviceTime+(System.currentTimeMillis()-openedAtMillis)).toString(),cx+130,y+326,0xFFFFFF);
+        g.drawString(font,"Synchronization",cx,y+346,0xBBBBBB);
+        g.drawString(font,ntpStatus,cx+130,y+346,0xB8FFB8);
+        g.drawString(font,"Last Sync",cx,y+366,0xBBBBBB);
+        g.drawString(font,lastNtpSync==0?"Never":java.time.Instant.ofEpochMilli(lastNtpSync).toString(),cx+130,y+366,0xCCCCCC);
+        g.drawString(font,"PTP Priority",cx,y+386,0xBBBBBB);
+        g.drawString(font,ptpMode+" / "+ptpProfile,cx+130,y+386,0xCCCCCC);
+        g.drawString(font,serviceStatus,cx,y+h-62,0x88CCFF);
+    }
+    private void renderSyslogService(GuiGraphics g,int cx){
+        int right=x+w-28;
+        int gap=20;
+        int columnWidth=Math.max(180,(right-cx-gap)/2);
+        int secondColumn=cx+columnWidth+gap;
+        sectionLine(g,cx,y+98,"Syslog Service");
+        g.drawString(font,"Minimum Severity",cx,y+124,0xFFFFFF);
+        g.drawString(font,"0 Emergency - 7 Debug",cx,y+134,0x999999);
+        g.drawString(font,"Remote Message Reception",secondColumn,y+124,0xFFFFFF);
+        g.drawString(font,"Facility",cx,y+178,0xFFFFFF);
+        g.drawString(font,"Example: LOCAL0, AUTH, DAEMON",cx,y+188,0x999999);
+        g.drawString(font,"Test Severity",secondColumn,y+178,0xFFFFFF);
+        g.drawString(font,"Test Message",cx,y+232,0xFFFFFF);
+        sectionLine(g,cx,y+325,"Stored Messages");
+        g.drawString(font,syslogStatus,cx,y+340,0x88CCFF);
+        int top=y+356;
+        g.fill(cx,top,right,top+20,0xFF464646);
+        g.drawString(font,"Time",cx+6,top+6,0xFFFFFF);
+        g.drawString(font,"Source / Facility",cx+145,top+6,0xFFFFFF);
+        g.drawString(font,"Severity / Message",cx+330,top+6,0xFFFFFF);
+        if(syslogData==null||syslogData.isBlank()){g.drawString(font,"No syslog entries",cx+8,top+27,0xAAAAAA);return;}
+        String[] lines=syslogData.strip().split("\\n");
+        int count=Math.min(lines.length,Math.max(1,(y+h-top-78)/20));
+        for(int i=0;i<count;i++){
+            String[] p=lines[lines.length-count+i].split("\\t",5);
+            int row=top+21+i*20;
+            g.fill(cx,row,right,row+19,(i&1)==0?0xFF292929:0xFF252525);
+            String time=p.length>0?java.time.Instant.ofEpochMilli(parseLongText(p[0])).toString():"";
+            g.drawString(font,time.length()>19?time.substring(0,19):time,cx+6,row+5,0xDDDDDD);
+            g.drawString(font,(p.length>2?p[1]+" / "+p[2]:""),cx+145,row+5,0xDDDDDD);
+            g.drawString(font,(p.length>4?severityName(parseIntText(p[3]))+" / "+p[4]:""),cx+330,row+5,0xEEEEEE);
+        }
+    }
+    private long parseLongText(String value){try{return Long.parseLong(value);}catch(Exception e){return 0;}}
+    private int parseIntText(String value){try{return Integer.parseInt(value);}catch(Exception e){return 7;}}
+    private String severityName(int value){return switch(value){case 0->"Emergency";case 1->"Alert";case 2->"Critical";case 3->"Error";case 4->"Warning";case 5->"Notice";case 6->"Informational";default->"Debug";};}
+    private void renderAaaService(GuiGraphics g,int cx){
+        int right=x+w-28;
+        int gap=20;
+        int columnWidth=Math.max(180,(right-cx-gap)/2);
+        int secondColumn=cx+columnWidth+gap;
+        sectionLine(g,cx,y+98,"Authentication, Authorization and Accounting");
+        g.drawString(font,"Username",cx,y+118,0xFFFFFF);
+        g.drawString(font,"Password",secondColumn,y+118,0xFFFFFF);
+        g.drawString(font,"Required / Assigned Privilege",cx,y+172,0xFFFFFF);
+        g.drawString(font,"Range: 0-15",cx,y+182,0x999999);
+        g.drawString(font,"Service",secondColumn,y+172,0xFFFFFF);
+        g.drawString(font,"Examples: LOGIN, CONSOLE, CONFIG",secondColumn,y+182,0x999999);
+        g.drawString(font,aaaStatus,cx,y+294,0x88CCFF);
+        int usersTop=y+312;
+        g.fill(cx,usersTop,right,usersTop+20,0xFF464646);
+        g.drawString(font,"AAA Users",cx+8,usersTop+6,0xFFFFFF);
+        g.drawString(font,"Privilege",cx+220,usersTop+6,0xFFFFFF);
+        g.drawString(font,"Status",cx+330,usersTop+6,0xFFFFFF);
+        int row=usersTop+21;
+        if(aaaUsers==null||aaaUsers.isBlank()){
+            g.fill(cx,row,right,row+19,0xFF292929);
+            g.drawString(font,"No AAA users loaded",cx+8,row+5,0xAAAAAA);
+            row+=20;
+        }
+        else for(String line:aaaUsers.strip().split("\\n")){String[] p=line.split("\\t",3);g.fill(cx,row,right,row+19,0xFF292929);g.drawString(font,p[0],cx+8,row+5,0xEEEEEE);g.drawString(font,p.length>1?p[1]:"",cx+220,row+5,0xDDDDDD);g.drawString(font,p.length>2&&Boolean.parseBoolean(p[2])?"Enabled":"Disabled",cx+330,row+5,0xDDDDDD);row+=20;if(row>y+h-190)break;}
+        int accountingTop=row+14;
+        g.fill(cx,accountingTop,right,accountingTop+20,0xFF464646);
+        g.drawString(font,"Recent Accounting",cx+8,accountingTop+6,0xFFFFFF);
+        g.drawString(font,"User / Service",cx+170,accountingTop+6,0xFFFFFF);
+        g.drawString(font,"Result / Source",cx+365,accountingTop+6,0xFFFFFF);
+        row=accountingTop+21;
+        if(aaaAccounting==null||aaaAccounting.isBlank()){
+            g.fill(cx,row,right,row+19,0xFF292929);
+            g.drawString(font,"No AAA accounting records",cx+8,row+5,0xAAAAAA);
+        }
+        else {String[] lines=aaaAccounting.strip().split("\\n");int count=Math.min(lines.length,5);for(int i=lines.length-count;i<lines.length;i++){String[] p=lines[i].split("\\t",6);g.fill(cx,row,right,row+19,(i&1)==0?0xFF292929:0xFF252525);String time=p.length>0?java.time.Instant.ofEpochMilli(parseLongText(p[0])).toString():"";g.drawString(font,time.length()>19?time.substring(0,19):time,cx+8,row+5,0xDDDDDD);g.drawString(font,p.length>2?p[1]+" / "+p[2]:"",cx+170,row+5,0xDDDDDD);g.drawString(font,p.length>5?(Boolean.parseBoolean(p[4])?"Accepted":"Rejected")+" / "+p[5]:"",cx+365,row+5,0xEEEEEE);row+=20;if(row>y+h-36)break;}}
+    }
+    private void renderRadiusService(GuiGraphics g,int cx){
+        int right=x+w-28,gap=16,total=right-cx,third=(total-gap*2)/3;
+        sectionLine(g,cx,y+98,"RADIUS EAP Authentication");
+        g.drawString(font,"NAS Client Name",cx,y+118,0xFFFFFF);
+        g.drawString(font,"NAS IPv4 Address",cx+third+gap,y+118,0xFFFFFF);
+        g.drawString(font,"Shared Secret",cx+(third+gap)*2,y+118,0xFFFFFF);
+        g.drawString(font,"AAA Username",cx,y+172,0xFFFFFF);
+        g.drawString(font,"AAA Password",cx+third+gap,y+172,0xFFFFFF);
+        g.drawString(font,"Required Privilege (0-15)",cx+(third+gap)*2,y+172,0xFFFFFF);
+        g.drawString(font,radiusStatus,cx,y+294,0x88CCFF);
+        int top=y+312;
+        g.fill(cx,top,right,top+20,0xFF464646);
+        g.drawString(font,"Registered NAS Clients",cx+8,top+6,0xFFFFFF);
+        g.drawString(font,"Address",cx+230,top+6,0xFFFFFF);
+        g.drawString(font,"Status",cx+390,top+6,0xFFFFFF);
+        int row=top+21;
+        if(radiusClients==null||radiusClients.isBlank()){
+            g.fill(cx,row,right,row+19,0xFF292929);
+            g.drawString(font,"No registered NAS clients",cx+8,row+5,0xAAAAAA);
+            row+=20;
+        } else for(String line:radiusClients.strip().split("\\n")){String[] p=line.split("\\t",3);g.fill(cx,row,right,row+19,0xFF292929);g.drawString(font,p[0],cx+8,row+5,0xEEEEEE);g.drawString(font,p.length>1?p[1]:"",cx+230,row+5,0xDDDDDD);g.drawString(font,p.length>2&&Boolean.parseBoolean(p[2])?"Enabled":"Disabled",cx+390,row+5,0xDDDDDD);row+=20;if(row>y+h-175)break;}
+        int eventTop=row+14;
+        g.fill(cx,eventTop,right,eventTop+20,0xFF464646);
+        g.drawString(font,"Recent RADIUS Events",cx+8,eventTop+6,0xFFFFFF);
+        row=eventTop+21;
+        if(radiusEvents==null||radiusEvents.isBlank()){
+            g.fill(cx,row,right,row+19,0xFF292929);
+            g.drawString(font,"No RADIUS authentication events",cx+8,row+5,0xAAAAAA);
+        }
+        else {String[] lines=radiusEvents.strip().split("\\n");int count=Math.min(lines.length,5);for(int i=lines.length-count;i<lines.length;i++){String[] p=lines[i].split("\\t",4);g.fill(cx,row,right,row+19,(i&1)==0?0xFF292929:0xFF252525);String time=p.length>0?java.time.Instant.ofEpochMilli(parseLongText(p[0])).toString():"";g.drawString(font,time.length()>19?time.substring(0,19):time,cx+8,row+5,0xDDDDDD);g.drawString(font,p.length>2?p[1]+" / "+p[2]:"",cx+170,row+5,0xDDDDDD);g.drawString(font,p.length>3?p[3]:"",cx+390,row+5,0xEEEEEE);row+=20;if(row>y+h-36)break;}}
+    }
     @Override public boolean isPauseScreen(){return false;}
 }

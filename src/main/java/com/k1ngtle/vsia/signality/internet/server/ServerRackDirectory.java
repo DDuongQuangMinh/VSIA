@@ -38,5 +38,9 @@ public final class ServerRackDirectory {
         }
         return nearest;
     }
+    public static synchronized boolean arePhysicallyLinked(ServerRackBlockEntity first,ServerRackBlockEntity second){
+        if(first==null||second==null||first.getLevel()!=second.getLevel())return false;
+        return first.hasCableLinkTo(second.getBlockPos())&&second.hasCableLinkTo(first.getBlockPos());
+    }
     public static synchronized ServerRackBlockEntity ntpSource(ServerRackBlockEntity client,String preferredIp){if(!(client.getLevel() instanceof ServerLevel level))return null;if(preferredIp!=null&&!preferredIp.isBlank()){ServerRackBlockEntity preferred=byIp(level,preferredIp);if(preferred!=null&&preferred.ntpServerEnabled())return preferred;}Map<BlockPos,ServerRackBlockEntity> racks=RACKS.get(level);if(racks==null)return null;return racks.values().stream().filter(r->r!=client&&r.ntpServerEnabled()).min(java.util.Comparator.comparingInt(ServerRackBlockEntity::ntpStratum).thenComparingDouble(r->r.getBlockPos().distSqr(client.getBlockPos()))).orElse(null);}
 }

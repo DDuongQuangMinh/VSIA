@@ -6,14 +6,14 @@ public enum ServerRackService {
     DHCPV6("DHCPv6", 547, false),
     TFTP("TFTP", 69, false),
     DNS("DNS", 53, true),
-    SYSLOG("SYSLOG", 514, false),
-    AAA("AAA", 0, false),
+    SYSLOG("SYSLOG", 514, true),
+    AAA("AAA", 0, true),
     NTP("NTP", 123, false),
     EMAIL("EMAIL", 25, true),
     FTP("FTP", 21, false),
     IOT("IoT", 0, false),
     VM_MANAGEMENT("VM Management", 0, false),
-    RADIUS_EAP("Radius EAP", 1812, false),
+    RADIUS_EAP("Radius EAP", 1812, true),
     PRP("PRP", 0, false);
 
     private final String displayName;

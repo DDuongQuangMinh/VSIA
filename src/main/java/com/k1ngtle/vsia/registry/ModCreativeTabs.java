@@ -87,9 +87,8 @@ public class ModCreativeTabs {
                                     "creativetab.vsia_network_tab"
                             ))
                             .displayItems((parameters, output) -> {
-                                output.accept(
-                                        SignalityBlocks.SERVER_RACK_ITEM.get()
-                                );
+                                output.accept(SignalityBlocks.SERVER_RACK_ITEM.get());
+                                output.accept(SignalityBlocks.NETWORK_CABLE.get());
                             })
                             .build()
             );

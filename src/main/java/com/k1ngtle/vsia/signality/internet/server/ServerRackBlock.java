@@ -74,6 +74,7 @@ public final class ServerRackBlock extends HorizontalDirectionalBlock implements
 
         if (!level.isClientSide && level.getBlockEntity(pos) instanceof ServerRackBlockEntity rack) {
             rack.setProfile(ServerRackItem.getProfile(stack));
+            if (placer instanceof ServerPlayer serverPlayer) rack.setOwner(serverPlayer);
         }
     }
 
@@ -157,6 +158,12 @@ public final class ServerRackBlock extends HorizontalDirectionalBlock implements
     @Override
     public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player,
                                  InteractionHand hand, BlockHitResult hit) {
+        // Let the cable item receive the click instead of opening the rack door or GUI.
+        // Minecraft calls the held item's useOn method after the block returns PASS.
+        if (player.getItemInHand(hand).getItem() instanceof NetworkCableItem) {
+            return InteractionResult.PASS;
+        }
+
         BlockPos basePos = state.getValue(HALF) == DoubleBlockHalf.UPPER ? pos.below() : pos;
 
         if (level.isClientSide) {
@@ -165,6 +172,12 @@ public final class ServerRackBlock extends HorizontalDirectionalBlock implements
 
         if (!(level.getBlockEntity(basePos) instanceof ServerRackBlockEntity rack)) {
             return InteractionResult.PASS;
+        }
+
+        if (player instanceof ServerPlayer serverPlayer && !rack.canConfigure(serverPlayer)) {
+            serverPlayer.displayClientMessage(
+                    net.minecraft.network.chat.Component.literal("Access denied. This rack is owned by " + rack.ownerName()), true);
+            return InteractionResult.CONSUME;
         }
 
         if (!rack.beginInteraction(level.getGameTime())) {
