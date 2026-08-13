@@ -17,7 +17,7 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class ServerRackNetwork {
-    private static final String VERSION = "11";
+    private static final String VERSION = "12";
     private static int nextId;
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(Vsia.MOD_ID, "server_rack"),
@@ -158,8 +158,8 @@ public final class ServerRackNetwork {
         static void handle(DesktopToolPacket p,Supplier<NetworkEvent.Context> supplier){NetworkEvent.Context c=supplier.get();c.enqueueWork(()->{ServerPlayer player=c.getSender();if(player==null||player.distanceToSqr(p.pos.getX()+.5,p.pos.getY()+.5,p.pos.getZ()+.5)>64)return;if(player.level().getBlockEntity(p.pos)instanceof ServerRackBlockEntity rack){if(!authorize(player,rack))return;String result=rack.executeDesktopTool(p.tool,p.input,player.serverLevel());CHANNEL.send(PacketDistributor.PLAYER.with(()->player),new DesktopResultPacket(p.tool,result));}});c.setPacketHandled(true);}
     }
     public record DesktopResultPacket(String tool,String result){
-        static void encode(DesktopResultPacket p,FriendlyByteBuf b){b.writeUtf(p.tool,32);b.writeUtf(p.result,8192);}
-        static DesktopResultPacket decode(FriendlyByteBuf b){return new DesktopResultPacket(b.readUtf(32),b.readUtf(8192));}
+        static void encode(DesktopResultPacket p,FriendlyByteBuf b){b.writeUtf(p.tool,32);b.writeUtf(p.result,32767);}
+        static DesktopResultPacket decode(FriendlyByteBuf b){return new DesktopResultPacket(b.readUtf(32),b.readUtf(32767));}
         static void handle(DesktopResultPacket p,Supplier<NetworkEvent.Context> supplier){NetworkEvent.Context c=supplier.get();c.enqueueWork(()->DistExecutor.unsafeRunWhenOn(Dist.CLIENT,()->()->ServerRackScreen.acceptDesktopResult(p.tool,p.result)));c.setPacketHandled(true);}
     }
     public record ProgramPacket(BlockPos pos,String action,String source){
