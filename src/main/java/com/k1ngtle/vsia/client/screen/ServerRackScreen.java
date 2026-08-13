@@ -197,7 +197,8 @@ public final class ServerRackScreen extends Screen {
             pageButton("New File",cx,y+166,90,()->openNewHttpFile());pageButton("Refresh",cx+100,y+166,80,()->sendHttp("QUERY"));pageButton("Save Web Settings",cx+190,y+166,150,()->sendHttp("CONFIG"));
             int listWidth=right-cx,fileWidth=listWidth/2,permissionWidth=listWidth/4,sizeWidth=listWidth-fileWidth-permissionWidth;
             List<String[]> files=httpFileRows();int visible=Math.min(12,Math.max(0,files.size()-httpFileScroll));for(int i=0;i<visible;i++){String[] row=files.get(httpFileScroll+i);int rowY=y+230+i*20;String fileLabel=font.plainSubstrByWidth(row[0],fileWidth-12);pageButton(fileLabel,cx,rowY,fileWidth,()->openHttpFile(row[0]));pageButton(row[1],cx+fileWidth,rowY,permissionWidth,()->openHttpFile(row[0]));pageButton(row[2],cx+fileWidth+permissionWidth,rowY,sizeWidth,()->openHttpFile(row[0]));}
-            pageButton("Ã¢â€“Â²",right-42,y+202,34,()->scrollHttpFiles(-1));pageButton("Ã¢â€“Â¼",right-42,y+476,34,()->scrollHttpFiles(1));
+            pageButton("Up",right-128,y+166,60,()->scrollHttpFiles(-1));
+            pageButton("Down",right-64,y+166,60,()->scrollHttpFiles(1));
         }
         if(selected==ServerRackService.FTP||selected==ServerRackService.TFTP)initTransferService(cx,selected.displayName());
         if(selected==ServerRackService.EMAIL){
@@ -371,7 +372,7 @@ public final class ServerRackScreen extends Screen {
         pageButton("Save",x+118,y+34,50,()->sendProgram("save"));
         pageButton("Run",x+w-118,y+34,50,()->sendProgram("run"));
         int editorX=x+180;
-        programInput=field(editorX,y+92,x+w-editorX-22,"hostname Server0; show config",16384);
+        programInput=field(editorX+10,y+105,x+w-editorX-42,"hostname Server0; show config",16384);
     }
 
     private EditBox field(int bx,int by,int bw,String value,int max){EditBox e=new EditBox(font,bx,by,Math.max(60,bw),18,Component.empty());e.setMaxLength(max);e.setValue(value);addRenderableWidget(e);return e;}
@@ -603,17 +604,26 @@ public final class ServerRackScreen extends Screen {
     private String inputLabel(){return switch(desktopPage){case "Ping"->"IPv4, IPv6, or host name (optional count: host 4)";case "DNS Lookup"->"Domain name";case "Web Browser"->"URL or IPv4 address";case "Email"->"Mailbox address";case "FTP Client"->"Server Action File Username Password Content";case "TFTP Client"->"Server Action File Content";case "Terminal","Command Prompt"->"Command";default->"Input";};}
     private void programming(GuiGraphics g){
         int editorX=x+180;
-        g.fill(x+8,y+59,editorX-10,y+h-119,0xFFE2E2E2);
-        g.vLine(editorX-9,y+59,y+h-119,0xFF999999);
-        g.drawString(font,"Project",x+18,y+70,0xFF222222);
-        g.drawString(font,"server-config",x+18,y+94,0xFF444444);
-        g.drawString(font,"Configuration Script",editorX,y+70,0xFF222222);
-        g.drawString(font,"Separate commands with semicolons",editorX,y+81,0xFF666666);
-        g.drawString(font,"Console Output",x+18,y+h-105,0xFFCCCCCC);
-        int lineY=y+h-86;
+        int contentTop=y+59;
+        int consoleTop=y+h-112;
+
+        g.fill(x+8,contentTop,editorX-10,consoleTop-8,0xFFE2E2E2);
+        g.fill(editorX-9,contentTop,x+w-8,consoleTop-8,0xFFF4F4F4);
+        g.vLine(editorX-9,contentTop,consoleTop-8,0xFF999999);
+        g.fill(x+8,consoleTop,x+w-8,y+h-8,0xFF080808);
+        g.hLine(x+8,x+w-8,consoleTop,0xFF555555);
+
+        g.drawString(font,"Project",x+20,y+72,0xFF202020,false);
+        g.drawString(font,"server-config",x+20,y+99,0xFF404040,false);
+
+        g.drawString(font,"Configuration Script",editorX+10,y+72,0xFF202020,false);
+        g.drawString(font,"Separate commands with semicolons.",editorX+10,y+88,0xFF666666,false);
+
+        g.drawString(font,"Console Output",x+20,consoleTop+12,0xFFE0E0E0,false);
+        int lineY=consoleTop+34;
         for(String raw:programOutput.split("\\n",-1)){
             for(FormattedCharSequence line:font.split(Component.literal(raw),w-48)){
-                g.drawString(font,line,x+20,lineY,0xFFB8FFB8);
+                g.drawString(font,line,x+20,lineY,0xFFB8FFB8,false);
                 lineY+=12;
                 if(lineY>y+h-18)return;
             }
