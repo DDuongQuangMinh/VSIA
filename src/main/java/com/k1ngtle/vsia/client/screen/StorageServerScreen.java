@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.client.screen;
 
 import com.k1ngtle.vsia.world.inventory.StorageServerMenu;
 import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -11,6 +12,9 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class StorageServerScreen extends AbstractContainerScreen<StorageServerMenu> {
 
@@ -140,8 +144,32 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
             renderTerminalMode(g);
         }
 
-        // Render standard widgets (buttons, etc.)
+        // --- TRICK MINECRAFT RENDERING ---
+        // If we let Minecraft draw normally, it will try to draw "1200" on top of our "1,2k".
+        // To stop it, we temporarily lie to Minecraft and say the stack size is 1.
+        // A size of 1 tells Vanilla's renderer not to draw any number at all.
+        int[] originalCounts = new int[this.menu.slots.size()];
+        for (int i = 0; i < this.menu.slots.size(); i++) {
+            Slot slot = this.menu.slots.get(i);
+            if (slot.hasItem()) {
+                originalCounts[i] = slot.getItem().getCount();
+                if (originalCounts[i] >= LARGE_COUNT_THRESHOLD) {
+                    slot.getItem().setCount(1);
+                }
+            }
+        }
+
+        // Render standard widgets (buttons, slots, etc.)
         super.render(g, mouseX, mouseY, partialTick);
+
+        // Put the real counts back immediately after rendering the graphics
+        for (int i = 0; i < this.menu.slots.size(); i++) {
+            Slot slot = this.menu.slots.get(i);
+            if (slot.hasItem() && originalCounts[i] >= LARGE_COUNT_THRESHOLD) {
+                slot.getItem().setCount(originalCounts[i]);
+            }
+        }
+        // ---------------------------------
 
         if (!isDashboard) {
             // Draw search box backdrop background
@@ -151,6 +179,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
             // Re-render search box text over the background
             this.searchBox.render(g, mouseX, mouseY, partialTick);
 
+            // Now, manually draw our custom formatted numbers right where Vanilla would have
             renderLargeStackCounts(g);
         }
 
@@ -172,7 +201,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
                     return true;
                 }
             }
-            return false;
+            return false; // Prevent clicking inventory slots when dashboard is up
         }
         return super.mouseClicked(mouseX, mouseY, button);
     }
@@ -411,13 +440,14 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
             if (slot.hasItem()) {
                 ItemStack stack = slot.getItem();
                 int count = stack.getCount();
-                if (count > 999) {
+                if (count >= LARGE_COUNT_THRESHOLD) {
                     String formatted = formatLargeNumber(count);
                     int slotX = this.leftPos + slot.x;
                     int slotY = this.topPos + slot.y;
 
                     g.pose().pushPose();
                     g.pose().translate(0, 0, 200);
+                    // Manually draw our string over the item
                     g.drawString(this.font, formatted, slotX + 17 - this.font.width(formatted), slotY + 9, 0xFFFFFF, true);
                     g.pose().popPose();
                 }
@@ -425,9 +455,38 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         }
     }
 
+    private static final int LARGE_COUNT_THRESHOLD = 1000;
+
     private String formatLargeNumber(int number) {
-        if (number >= 1000000) return (number / 1000000) + "M";
-        if (number >= 1000) return (number / 1000) + "k";
+        if (number >= 1_000_000) {
+            return formatWithSuffix(number, 1_000_000, "M");
+        }
+        if (number >= LARGE_COUNT_THRESHOLD) {
+            return formatWithSuffix(number, 1_000, "k");
+        }
         return String.valueOf(number);
+    }
+
+    // e.g. 1_100 -> "1,1k", 2_000_000 -> "2M" (no trailing ",0"), 1_234_567 -> "1,2M"
+    private String formatWithSuffix(int number, int divisor, String suffix) {
+        double value = number / (double) divisor;
+        String formatted = String.format(java.util.Locale.ROOT, "%.1f", value);
+        if (formatted.endsWith(".0")) {
+            formatted = formatted.substring(0, formatted.length() - 2);
+        }
+        return formatted.replace('.', ',') + suffix; // Replaces period with a comma
+    }
+
+    // Adds the exact, comma-separated count as a tooltip line whenever a slot's
+    // displayed number has been abbreviated (e.g. "1,2M" -> tooltip shows "1,234,567").
+    @Override
+    protected List<Component> getTooltipFromContainerItem(ItemStack stack) {
+        List<Component> tooltip = super.getTooltipFromContainerItem(stack);
+        if (stack.getCount() >= LARGE_COUNT_THRESHOLD) {
+            tooltip = new ArrayList<>(tooltip);
+            tooltip.add(Component.literal(String.format(java.util.Locale.ROOT, "%,d", stack.getCount()))
+                    .withStyle(ChatFormatting.GRAY));
+        }
+        return tooltip;
     }
 }

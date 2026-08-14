@@ -102,11 +102,19 @@ public class StorageServerMenu extends AbstractContainerMenu {
             itemstack = itemstack1.copy();
 
             if (index < 54) {
+                // Server slot -> player inventory. Player slots cap at the item's normal
+                // 64 anyway, so vanilla's merge logic is fine here.
                 if (!this.moveItemStackTo(itemstack1, 54, this.slots.size(), true)) {
                     return ItemStack.EMPTY;
                 }
-            } else if (!this.moveItemStackTo(itemstack1, 0, 54, false)) {
-                return ItemStack.EMPTY;
+            } else {
+                // Player inventory/hotbar -> server slots. Vanilla's moveItemStackTo hardcodes
+                // Math.min(slot.getMaxStackSize(), stack.getMaxStackSize()), which always caps
+                // merges at the item's normal 64 no matter what the slot itself allows. So we
+                // merge manually here using the slot's real (2,000,000) capacity instead.
+                if (!mergeIntoServerSlots(itemstack1)) {
+                    return ItemStack.EMPTY;
+                }
             }
 
             if (itemstack1.isEmpty()) {
@@ -117,6 +125,53 @@ public class StorageServerMenu extends AbstractContainerMenu {
         }
 
         return itemstack;
+    }
+
+    /**
+     * Merges as much of {@code stack} as possible into the 54 currently-visible server
+     * slots, respecting each slot's real max stack size (2,000,000) rather than the item's
+     * vanilla cap of 64. Mutates {@code stack} in place, shrinking it by whatever gets placed.
+     */
+    private boolean mergeIntoServerSlots(ItemStack stack) {
+        boolean changed = false;
+
+        // First pass: top up any existing stacks of the same item.
+        for (int i = 0; i < 54 && !stack.isEmpty(); i++) {
+            Slot slot = this.slots.get(i);
+            ItemStack existing = slot.getItem();
+            if (existing.isEmpty() || !ItemStack.isSameItemSameTags(existing, stack)) {
+                continue;
+            }
+
+            int maxSize = slot.getMaxStackSize(stack);
+            if (existing.getCount() >= maxSize) {
+                continue;
+            }
+
+            int toAdd = Math.min(maxSize - existing.getCount(), stack.getCount());
+            existing.grow(toAdd);
+            stack.shrink(toAdd);
+            slot.setChanged();
+            changed = true;
+        }
+
+        // Second pass: drop any leftovers into the first empty slot(s) in view.
+        for (int i = 0; i < 54 && !stack.isEmpty(); i++) {
+            Slot slot = this.slots.get(i);
+            if (slot.hasItem() || !slot.mayPlace(stack)) {
+                continue;
+            }
+
+            int maxSize = slot.getMaxStackSize(stack);
+            int toPlace = Math.min(stack.getCount(), maxSize);
+            ItemStack placed = stack.copy();
+            placed.setCount(toPlace);
+            slot.set(placed);
+            stack.shrink(toPlace);
+            changed = true;
+        }
+
+        return changed;
     }
 
     @Override
@@ -169,19 +224,23 @@ public class StorageServerMenu extends AbstractContainerMenu {
 
         @Override
         public int getMaxStackSize(ItemStack stack) {
-            ItemStack maxAdd = stack.copy();
-            int maxInput = stack.getMaxStackSize();
-            maxAdd.setCount(maxInput);
-
             IItemHandler handler = this.getItemHandler();
-            ItemStack currentStack = handler.getStackInSlot(getSlotIndex());
-            if (handler instanceof net.minecraftforge.items.IItemHandlerModifiable) {
-                net.minecraftforge.items.IItemHandlerModifiable handlerModifiable = (net.minecraftforge.items.IItemHandlerModifiable) handler;
+            int slotIndex = getSlotIndex();
 
-                ItemStack remainder = handler.insertItem(getSlotIndex(), maxAdd, true);
+            // Use the handler's real per-slot limit (2,000,000), not stack.getMaxStackSize()
+            // (which is the item's vanilla cap, e.g. 64) - vanilla's click-to-combine and
+            // shift-click logic both call this overload to decide how big a merge is allowed.
+            int slotLimit = handler.getSlotLimit(slotIndex);
+
+            ItemStack maxAdd = stack.copy();
+            maxAdd.setCount(slotLimit);
+
+            ItemStack currentStack = handler.getStackInSlot(slotIndex);
+            if (handler instanceof net.minecraftforge.items.IItemHandlerModifiable) {
+                ItemStack remainder = handler.insertItem(slotIndex, maxAdd, true);
 
                 int current = currentStack.isEmpty() ? 0 : currentStack.getCount();
-                int added = maxInput - remainder.getCount();
+                int added = slotLimit - remainder.getCount();
                 return current + added;
             }
             return super.getMaxStackSize(stack);

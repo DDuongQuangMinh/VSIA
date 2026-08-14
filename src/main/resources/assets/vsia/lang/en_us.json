@@ -21,5 +21,7 @@
   "key.vsia.fire_mode": "Change Fire Mode",
   "key.vsia.debug_hud": "Toggle Weapon Debug HUD",
   "item.vsia.gun": "VS:IA Weapon",
-  "block.vsia.server_rack": "Server Rack"
+  "block.vsia.server_rack": "Server Rack",
+  "block.vsia.storage_server": "Storage Server",
+  "item.vsia.network_cable": "Network Connector"
 }
