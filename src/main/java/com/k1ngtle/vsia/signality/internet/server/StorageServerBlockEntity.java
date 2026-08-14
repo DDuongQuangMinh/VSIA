@@ -4,6 +4,8 @@ import com.k1ngtle.vsia.signality.SignalityBlocks;
 import com.k1ngtle.vsia.world.inventory.StorageServerMenu;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
@@ -27,19 +29,22 @@ import software.bernie.geckolib.core.animation.RawAnimation;
 import software.bernie.geckolib.core.object.PlayState;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEntity, MenuProvider {
 
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
+    public static final int MAX_FILE_STORAGE_BYTES = 10 * 1024 * 1024; // 10 Megabytes
 
-    // Expand to 360 Slots (40 rows of 9)
-    // Overriding the stack limit to 2,000,000 requires custom logic within the handler
+    private final List<StoredFile> storedFiles = new ArrayList<>();
+
     private final ItemStackHandler itemHandler = new ItemStackHandler(360) {
         @Override
         protected void onContentsChanged(int slot) {
             setChanged();
         }
 
-        // Increase the maximum stack size allowed in these slots
         @Override
         public int getSlotLimit(int slot) {
             return 2000000;
@@ -55,22 +60,48 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
 
     public StorageServerBlockEntity(BlockPos pos, BlockState state) {
         super(SignalityBlocks.STORAGE_SERVER_BE.get(), pos, state);
+        initDefaultFilesIfEmpty();
+    }
+
+    private void initDefaultFilesIfEmpty() {
+        if (storedFiles.isEmpty()) {
+            storedFiles.add(new StoredFile("main.py", "python", "# Main Python Script\nprint('Storage Server Active')\nimport time\ntime.sleep(1)"));
+            storedFiles.add(new StoredFile("core.cpp", "c++", "#include <iostream>\nint main() {\n    std::cout << \"VSIA Storage Online\" << std::endl;\n    return 0;\n}"));
+            storedFiles.add(new StoredFile("api.cs", "c#", "using System;\nnamespace Server {\n    class Program {\n        static void Main() { Console.WriteLine(\"C# API Ready\"); }\n    }\n}"));
+            storedFiles.add(new StoredFile("script.lua", "lua", "-- Server Control Script\nfunction init()\n    print(\"Lua Engine Initialized\")\nend"));
+            storedFiles.add(new StoredFile("index.html", "web", "<!DOCTYPE html>\n<html>\n<head><title>Storage Console</title></head>\n<body><h1>Storage Server</h1></body>\n</html>"));
+            storedFiles.add(new StoredFile("app.js", "web", "console.log('App running...');\nconst totalSlots = 360;\nconst maxCap = '10MB';"));
+            storedFiles.add(new StoredFile("style.css", "web", "body { background: #18191B; color: #0092C8; font-family: monospace; }"));
+        }
+    }
+
+    public List<StoredFile> getStoredFiles() {
+        return storedFiles;
+    }
+
+    public int getTotalUsedFileBytes() {
+        int total = 0;
+        for (StoredFile file : storedFiles) {
+            total += file.getSizeInBytes();
+        }
+        return total;
+    }
+
+    public boolean addFile(StoredFile file) {
+        if (getTotalUsedFileBytes() + file.getSizeInBytes() <= MAX_FILE_STORAGE_BYTES) {
+            storedFiles.add(file);
+            setChanged();
+            return true;
+        }
+        return false;
     }
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        // No default/idle animation is set here - the controller just holds whatever
-        // pose it's currently in until "place" is triggered below.
         controllers.add(new AnimationController<>(this, "controller", 0, event -> PlayState.CONTINUE)
                 .triggerableAnim("place", RawAnimation.begin().thenPlay("checking")));
     }
 
-    /**
-     * Plays the "checking" animation once. GeckoLib automatically syncs triggered
-     * animations to nearby clients, so this only needs to be called server-side.
-     * Call this from StorageServerBlock#setPlacedBy so it only ever fires once,
-     * right when the block is placed - never on world load/chunk reload.
-     */
     public void playPlacementAnimation() {
         this.triggerAnim("controller", "place");
     }
@@ -103,6 +134,13 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
     @Override
     protected void saveAdditional(CompoundTag tag) {
         tag.put("inventory", itemHandler.serializeNBT());
+
+        ListTag fileList = new ListTag();
+        for (StoredFile file : storedFiles) {
+            fileList.add(file.serializeNBT());
+        }
+        tag.put("StoredFiles", fileList);
+
         super.saveAdditional(tag);
     }
 
@@ -110,6 +148,16 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
     public void load(CompoundTag tag) {
         super.load(tag);
         itemHandler.deserializeNBT(tag.getCompound("inventory"));
+
+        storedFiles.clear();
+        if (tag.contains("StoredFiles", Tag.TAG_LIST)) {
+            ListTag fileList = tag.getList("StoredFiles", Tag.TAG_COMPOUND);
+            for (int i = 0; i < fileList.size(); i++) {
+                storedFiles.add(StoredFile.deserializeNBT(fileList.getCompound(i)));
+            }
+        } else {
+            initDefaultFilesIfEmpty();
+        }
     }
 
     @Override

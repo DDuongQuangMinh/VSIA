@@ -1,7 +1,8 @@
 package com.k1ngtle.vsia.client.screen;
 
+import com.k1ngtle.vsia.signality.internet.server.StorageServerBlockEntity;
+import com.k1ngtle.vsia.signality.internet.server.StoredFile;
 import com.k1ngtle.vsia.world.inventory.StorageServerMenu;
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -12,16 +13,24 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class StorageServerScreen extends AbstractContainerScreen<StorageServerMenu> {
 
-    private static final ResourceLocation TEXTURE = new ResourceLocation("vsia", "textures/gui/storage_server_gui.png");
-
     private boolean isDashboard = true;
+
+    // Tabs for Terminal View
+    private enum Tab { ITEMS, FILES }
+    private Tab currentTab = Tab.ITEMS;
+
     private float scrollOffset = 0.0f;
+    private float fileScrollOffset = 0.0f;
+
+    // Viewer modal for reading file code
+    private StoredFile openFile = null;
 
     public enum TerminalSize {
         SMALL("Size: Small", 300, 236),
@@ -50,7 +59,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         super(menu, playerInventory, title);
         this.imageWidth = 660;
         this.imageHeight = 380;
-        this.menu.slotsVisible = !isDashboard;
+        updateVisibility();
     }
 
     @Override
@@ -102,13 +111,19 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
 
     private void toggleMode() {
         this.isDashboard = !this.isDashboard;
-        this.menu.slotsVisible = !isDashboard;
+        this.openFile = null;
+        updateVisibility();
+
         this.modeToggleButton.setMessage(Component.literal(isDashboard ? "Configure" : "Dashboard"));
         this.sizeToggleButton.visible = !isDashboard;
         this.checkUpdatesButton.visible = isDashboard;
         this.searchBox.setVisible(!isDashboard);
         updateDimensions();
         repositionWidgets();
+    }
+
+    private void updateVisibility() {
+        this.menu.slotsVisible = (!this.isDashboard && this.currentTab == Tab.ITEMS && this.openFile == null);
     }
 
     private void toggleSize() {
@@ -144,64 +159,115 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
             renderTerminalMode(g);
         }
 
-        // --- TRICK MINECRAFT RENDERING ---
-        // If we let Minecraft draw normally, it will try to draw "1200" on top of our "1,2k".
-        // To stop it, we temporarily lie to Minecraft and say the stack size is 1.
-        // A size of 1 tells Vanilla's renderer not to draw any number at all.
+        // Hide count overlay on large stacks temporarily during super render
         int[] originalCounts = new int[this.menu.slots.size()];
-        for (int i = 0; i < this.menu.slots.size(); i++) {
-            Slot slot = this.menu.slots.get(i);
-            if (slot.hasItem()) {
-                originalCounts[i] = slot.getItem().getCount();
-                if (originalCounts[i] >= LARGE_COUNT_THRESHOLD) {
-                    slot.getItem().setCount(1);
+        if (this.menu.slotsVisible) {
+            for (int i = 0; i < this.menu.slots.size(); i++) {
+                Slot slot = this.menu.slots.get(i);
+                if (slot.hasItem()) {
+                    originalCounts[i] = slot.getItem().getCount();
+                    if (originalCounts[i] >= LARGE_COUNT_THRESHOLD) {
+                        slot.getItem().setCount(1);
+                    }
                 }
             }
         }
 
-        // Render standard widgets (buttons, slots, etc.)
         super.render(g, mouseX, mouseY, partialTick);
 
-        // Put the real counts back immediately after rendering the graphics
-        for (int i = 0; i < this.menu.slots.size(); i++) {
-            Slot slot = this.menu.slots.get(i);
-            if (slot.hasItem() && originalCounts[i] >= LARGE_COUNT_THRESHOLD) {
-                slot.getItem().setCount(originalCounts[i]);
+        if (this.menu.slotsVisible) {
+            for (int i = 0; i < this.menu.slots.size(); i++) {
+                Slot slot = this.menu.slots.get(i);
+                if (slot.hasItem() && originalCounts[i] >= LARGE_COUNT_THRESHOLD) {
+                    slot.getItem().setCount(originalCounts[i]);
+                }
             }
         }
-        // ---------------------------------
 
         if (!isDashboard) {
-            // Draw search box backdrop background
             g.fill(this.leftPos + 105, this.topPos + 4, this.leftPos + 210, this.topPos + 20, 0xFF141414);
             g.fill(this.leftPos + 106, this.topPos + 5, this.leftPos + 209, this.topPos + 19, 0xFF000000);
-
-            // Re-render search box text over the background
             this.searchBox.render(g, mouseX, mouseY, partialTick);
 
-            // Now, manually draw our custom formatted numbers right where Vanilla would have
-            renderLargeStackCounts(g);
-        }
+            if (this.currentTab == Tab.ITEMS && openFile == null) {
+                renderLargeStackCounts(g);
+            }
 
-        if (!isDashboard) {
+            if (openFile != null) {
+                renderFileViewerOverlay(g, mouseX, mouseY);
+            }
+
             this.renderTooltip(g, mouseX, mouseY);
         }
     }
 
     @Override
     protected void renderBg(GuiGraphics g, float partialTick, int mouseX, int mouseY) {
-        // Handled completely in render() to prevent base GUI texture clashes
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (isDashboard) {
+        if (!isDashboard) {
+            int x = this.leftPos;
+            int y = this.topPos;
+
+            // Handle file viewer overlay close button click
+            if (openFile != null) {
+                int modalX = x + 10;
+                int modalY = y + 15;
+                int closeBtnX = modalX + 235;
+                int closeBtnY = modalY + 5;
+                if (mouseX >= closeBtnX && mouseX <= closeBtnX + 12 && mouseY >= closeBtnY && mouseY <= closeBtnY + 12) {
+                    openFile = null;
+                    updateVisibility();
+                    return true;
+                }
+                return true; // Block clicks outside close button while viewer is active
+            }
+
+            // Check Left Side Tab Clicks
+            int sx = x - 26;
+            int sy1 = y + 20;
+            int sy2 = y + 50;
+
+            if (mouseX >= sx && mouseX <= sx + 26) {
+                if (mouseY >= sy1 && mouseY <= sy1 + 26) {
+                    this.currentTab = Tab.ITEMS;
+                    updateVisibility();
+                    return true;
+                } else if (mouseY >= sy2 && mouseY <= sy2 + 26) {
+                    this.currentTab = Tab.FILES;
+                    updateVisibility();
+                    return true;
+                }
+            }
+
+            // Check file item clicks in file tab
+            if (currentTab == Tab.FILES) {
+                int listX = x + 7;
+                int listY = y + 20;
+                List<StoredFile> files = this.menu.getFiles();
+                int startIndex = (int) (this.fileScrollOffset * Math.max(0, files.size() - 6));
+
+                for (int i = 0; i < 6; i++) {
+                    int fileIdx = startIndex + i;
+                    if (fileIdx < files.size()) {
+                        int rowY = listY + 2 + (i * 18);
+                        if (mouseX >= listX && mouseX <= listX + 162 && mouseY >= rowY && mouseY <= rowY + 16) {
+                            this.openFile = files.get(fileIdx);
+                            updateVisibility();
+                            return true;
+                        }
+                    }
+                }
+            }
+        } else {
             for (var widget : this.children()) {
                 if (widget.mouseClicked(mouseX, mouseY, button)) {
                     return true;
                 }
             }
-            return false; // Prevent clicking inventory slots when dashboard is up
+            return false;
         }
         return super.mouseClicked(mouseX, mouseY, button);
     }
@@ -209,8 +275,12 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
         if (!isDashboard) {
-            this.scrollOffset = (float) Math.max(0.0, Math.min(1.0, this.scrollOffset - (delta * 0.1)));
-            this.menu.scrollTo(this.scrollOffset);
+            if (currentTab == Tab.ITEMS) {
+                this.scrollOffset = (float) Math.max(0.0, Math.min(1.0, this.scrollOffset - (delta * 0.1)));
+                this.menu.scrollTo(this.scrollOffset);
+            } else {
+                this.fileScrollOffset = (float) Math.max(0.0, Math.min(1.0, this.fileScrollOffset - (delta * 0.1)));
+            }
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, delta);
@@ -218,13 +288,19 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        if (!isDashboard && button == 0) {
+        if (!isDashboard && button == 0 && openFile == null) {
             int trackX = this.leftPos + 171;
             int trackY = this.topPos + 22;
             if (mouseX >= trackX && mouseX <= trackX + 14 && mouseY >= trackY && mouseY <= trackY + 108) {
-                this.scrollOffset = (float) (mouseY - (trackY + 7.5)) / 91.0f;
-                this.scrollOffset = Math.max(0.0f, Math.min(1.0f, this.scrollOffset));
-                this.menu.scrollTo(this.scrollOffset);
+                float offset = (float) (mouseY - (trackY + 7.5)) / 91.0f;
+                offset = Math.max(0.0f, Math.min(1.0f, offset));
+
+                if (currentTab == Tab.ITEMS) {
+                    this.scrollOffset = offset;
+                    this.menu.scrollTo(this.scrollOffset);
+                } else {
+                    this.fileScrollOffset = offset;
+                }
                 return true;
             }
         }
@@ -238,8 +314,13 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
                 return true;
             }
             if (this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
-                return true; // Prevents 'E' from closing the GUI while searching
+                return true;
             }
+        }
+        if (openFile != null && keyCode == 256) { // ESC key closes code viewer
+            openFile = null;
+            updateVisibility();
+            return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
@@ -253,7 +334,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
 
         g.drawString(this.font, "Dashboard", x + 16, y - 14, 0xFFFFFF, true);
 
-        // --- PANEL 1: System Information ---
+        // System Information
         int p1X = x + 12;
         int p1Y = y + 12;
         g.fill(p1X, p1Y, p1X + 195, p1Y + 210, 0xFF2A2B2D);
@@ -272,7 +353,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         g.drawString(this.font, "Hostname: re-minir-102", p1X + 10, p1Y + 108, 0xAAAAAA, false);
         g.drawString(this.font, "Uptime: 1h 28m", p1X + 10, p1Y + 122, 0x888888, false);
 
-        // --- PANEL 2: Memory Donut Chart ---
+        // Memory Donut Chart
         int p2X = x + 12;
         int p2Y = y + 232;
         g.fill(p2X, p2Y, p2X + 195, p2Y + 136, 0xFF2A2B2D);
@@ -288,7 +369,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
 
         renderMemoryDonutChart(g, p2X + 145, p2Y + 70, 30, 20);
 
-        // --- PANEL 3 & 4: CPU Charts ---
+        // CPU Usage & Temp Charts
         int p3X = x + 215;
         int p3Y = y + 12;
         g.fill(p3X, p3Y, p3X + 220, p3Y + 175, 0xFF2A2B2D);
@@ -304,7 +385,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         g.drawString(this.font, "CPU Temperature Per Core", p3X + 10, p4Y + 8, 0xFFFFFF, false);
         renderBarGraph(g, p3X + 25, p4Y + 25, 180, 126, 0xFFB82DB8, new float[]{0.65f, 0.68f, 0.64f, 0.70f, 0.66f, 0.67f, 0.63f, 0.65f});
 
-        // --- PANEL 5, 6, 7: Storage & Info ---
+        // Storage Info
         int p5X = x + 443;
         int p5Y = y + 12;
         g.fill(p5X, p5Y, p5X + 205, p5Y + 110, 0xFF2A2B2D);
@@ -375,22 +456,66 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
 
         g.drawString(this.font, "Storage Terminal", x + 8, y + 8, 0xFFFFFF, false);
 
-        for (int row = 0; row < 6; row++) {
-            for (int col = 0; col < 9; col++) {
-                int slotX = x + 7 + col * 18;
-                int slotY = y + 20 + row * 18;
-                renderRecessedSlotBox(g, slotX, slotY);
+        // --- Render Side Tabs ---
+        int sx = x - 26;
+        int sy1 = y + 20;
+        int sy2 = y + 50;
+
+        boolean itemsActive = (currentTab == Tab.ITEMS);
+        g.fill(sx, sy1, x + 1, sy1 + 26, 0xFF2A2B2D);
+        g.fill(sx + 1, sy1 + 1, x + 1, sy1 + 25, itemsActive ? 0xFF212224 : 0xFF18191B);
+        g.renderItem(new ItemStack(Items.CHEST), sx + 5, sy1 + 5);
+
+        boolean filesActive = (currentTab == Tab.FILES);
+        g.fill(sx, sy2, x + 1, sy2 + 26, 0xFF2A2B2D);
+        g.fill(sx + 1, sy2 + 1, x + 1, sy2 + 25, filesActive ? 0xFF212224 : 0xFF18191B);
+        g.renderItem(new ItemStack(Items.PAPER), sx + 5, sy2 + 5);
+
+        // --- Main Center Content ---
+        if (currentTab == Tab.ITEMS) {
+            for (int row = 0; row < 6; row++) {
+                for (int col = 0; col < 9; col++) {
+                    int slotX = x + 7 + col * 18;
+                    int slotY = y + 20 + row * 18;
+                    renderRecessedSlotBox(g, slotX, slotY);
+                }
             }
+
+            int trackX = x + 171;
+            int trackY = y + 21;
+            g.fill(trackX, trackY, trackX + 14, trackY + 108, 0xFF141414);
+
+            int thumbY = trackY + 1 + (int) (this.scrollOffset * 91.0f);
+            g.fill(trackX + 1, thumbY, trackX + 13, thumbY + 15, 0xFF0092C8);
+            g.fill(trackX + 2, thumbY + 1, trackX + 12, thumbY + 14, 0xFF007BA8);
+        } else {
+            int listX = x + 7;
+            int listY = y + 20;
+            g.fill(listX, listY, listX + 162, listY + 108, 0xFF18191B);
+
+            List<StoredFile> files = this.menu.getFiles();
+            int startIndex = (int) (this.fileScrollOffset * Math.max(0, files.size() - 6));
+            for (int i = 0; i < 6; i++) {
+                int fileIdx = startIndex + i;
+                if (fileIdx < files.size()) {
+                    StoredFile file = files.get(fileIdx);
+                    int rowY = listY + 2 + (i * 18);
+
+                    g.fill(listX + 2, rowY, listX + 160, rowY + 16, 0xFF242528);
+                    g.drawString(this.font, "📄 " + file.getName(), listX + 4, rowY + 4, 0xFFFFFF, false);
+                    g.drawString(this.font, file.getFormattedSize(), listX + 156 - this.font.width(file.getFormattedSize()), rowY + 4, 0x888888, false);
+                }
+            }
+
+            int trackX = x + 171;
+            int trackY = y + 21;
+            g.fill(trackX, trackY, trackX + 14, trackY + 108, 0xFF141414);
+            int thumbY = trackY + 1 + (int) (this.fileScrollOffset * 91.0f);
+            g.fill(trackX + 1, thumbY, trackX + 13, thumbY + 15, 0xFFB82DB8);
+            g.fill(trackX + 2, thumbY + 1, trackX + 12, thumbY + 14, 0xFF9E2A9E);
         }
 
-        int trackX = x + 171;
-        int trackY = y + 21;
-        g.fill(trackX, trackY, trackX + 14, trackY + 108, 0xFF141414);
-
-        int thumbY = trackY + 1 + (int) (this.scrollOffset * 91.0f);
-        g.fill(trackX + 1, thumbY, trackX + 13, thumbY + 15, 0xFF0092C8);
-        g.fill(trackX + 2, thumbY + 1, trackX + 12, thumbY + 14, 0xFF007BA8);
-
+        // Inventory
         g.drawString(this.font, "Inventory", x + 8, y + 133, 0x888888, false);
 
         for (int row = 0; row < 3; row++) {
@@ -402,6 +527,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
             renderRecessedSlotBox(g, x + 7 + col * 18, y + 202);
         }
 
+        // Side Panel
         int sideX = x + 192;
         int sideW = this.imageWidth - 200;
         if (sideW > 60) {
@@ -411,21 +537,57 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
             g.drawString(this.font, "Pool: tank", sideX + 8, y + 45, 0xCCCCCC, false);
             g.drawString(this.font, "Status: ONLINE", sideX + 8, y + 59, 0x55FF55, false);
 
-            g.drawString(this.font, "Capacity", sideX + 8, y + 79, 0xAAAAAA, false);
+            g.drawString(this.font, "Item Capacity", sideX + 8, y + 77, 0xAAAAAA, false);
             int barWidth = Math.min(sideW - 16, 120);
-            g.fill(sideX + 8, y + 91, sideX + 8 + barWidth, y + 99, 0xFF333333);
-            g.fill(sideX + 8, y + 91, sideX + 8 + (int) (barWidth * 0.35f), y + 99, 0xFF0092C8);
-            g.drawString(this.font, "35% Used", sideX + 8, y + 103, 0x888888, false);
+            g.fill(sideX + 8, y + 87, sideX + 8 + barWidth, y + 91, 0xFF333333);
+            g.fill(sideX + 8, y + 87, sideX + 8 + (int) (barWidth * 0.35f), y + 91, 0xFF0092C8);
 
-            g.drawString(this.font, "Drives: 8 Active", sideX + 8, y + 129, 0xCCCCCC, false);
-            g.drawString(this.font, "ZFS Cache: 1.1GB", sideX + 8, y + 143, 0xFFB82DB8, false);
-            g.drawString(this.font, "Network: 10Gbps", sideX + 8, y + 157, 0xFFE6A23C, false);
+            // 10 MB Capacity Calculation
+            int usedBytes = 0;
+            if (this.menu.blockEntity != null) {
+                usedBytes = this.menu.blockEntity.getTotalUsedFileBytes();
+            }
+            float fileRatio = (float) usedBytes / (float) StorageServerBlockEntity.MAX_FILE_STORAGE_BYTES;
+
+            g.drawString(this.font, "File Storage (10 MB)", sideX + 8, y + 99, 0xAAAAAA, false);
+            g.fill(sideX + 8, y + 109, sideX + 8 + barWidth, y + 113, 0xFF333333);
+            g.fill(sideX + 8, y + 109, sideX + 8 + (int) (barWidth * Math.min(1.0f, fileRatio)), y + 113, 0xFFB82DB8);
+
+            g.drawString(this.font, "Drives: 8 Active", sideX + 8, y + 127, 0xCCCCCC, false);
+            g.drawString(this.font, "ZFS Cache: 1.1GB", sideX + 8, y + 141, 0xFFB82DB8, false);
+            g.drawString(this.font, "Network: 10Gbps", sideX + 8, y + 155, 0xFFE6A23C, false);
 
             for (int i = 0; i < 8; i++) {
                 int ledX = sideX + 8 + (i * 12);
                 int ledY = y + 175;
                 g.fill(ledX, ledY, ledX + 8, ledY + 8, (i == 7) ? 0xFF0092C8 : 0xFF22C55E);
             }
+        }
+    }
+
+    private void renderFileViewerOverlay(GuiGraphics g, int mouseX, int mouseY) {
+        int modalX = this.leftPos + 10;
+        int modalY = this.topPos + 15;
+        int modalW = 250;
+        int modalH = 210;
+
+        g.fill(modalX, modalY, modalX + modalW, modalY + modalH, 0xFF141415);
+        g.fill(modalX + 1, modalY + 1, modalX + modalW - 1, modalY + modalH - 1, 0xFF1E1F22);
+
+        // File Header bar
+        g.fill(modalX + 1, modalY + 1, modalX + modalW - 1, modalY + 20, 0xFF2B2D31);
+        g.drawString(this.font, "📜 " + openFile.getName() + " (" + openFile.getLanguage() + ")", modalX + 8, modalY + 6, 0xFFFFFF, false);
+
+        // Close button 'X'
+        g.fill(modalX + modalW - 16, modalY + 4, modalX + modalW - 4, modalY + 16, 0xFFED4245);
+        g.drawString(this.font, "X", modalX + modalW - 13, modalY + 6, 0xFFFFFF, false);
+
+        // Code content viewing box
+        g.fill(modalX + 8, modalY + 26, modalX + modalW - 8, modalY + modalH - 8, 0xFF111214);
+
+        String[] lines = openFile.getContent().split("\n");
+        for (int i = 0; i < Math.min(lines.length, 18); i++) {
+            g.drawString(this.font, lines[i], modalX + 12, modalY + 30 + (i * 9), 0x55FF55, false);
         }
     }
 
@@ -447,7 +609,6 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
 
                     g.pose().pushPose();
                     g.pose().translate(0, 0, 200);
-                    // Manually draw our string over the item
                     g.drawString(this.font, formatted, slotX + 17 - this.font.width(formatted), slotY + 9, 0xFFFFFF, true);
                     g.pose().popPose();
                 }
@@ -467,18 +628,15 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         return String.valueOf(number);
     }
 
-    // e.g. 1_100 -> "1,1k", 2_000_000 -> "2M" (no trailing ",0"), 1_234_567 -> "1,2M"
     private String formatWithSuffix(int number, int divisor, String suffix) {
         double value = number / (double) divisor;
         String formatted = String.format(java.util.Locale.ROOT, "%.1f", value);
         if (formatted.endsWith(".0")) {
             formatted = formatted.substring(0, formatted.length() - 2);
         }
-        return formatted.replace('.', ',') + suffix; // Replaces period with a comma
+        return formatted.replace('.', ',') + suffix;
     }
 
-    // Adds the exact, comma-separated count as a tooltip line whenever a slot's
-    // displayed number has been abbreviated (e.g. "1,2M" -> tooltip shows "1,234,567").
     @Override
     protected List<Component> getTooltipFromContainerItem(ItemStack stack) {
         List<Component> tooltip = super.getTooltipFromContainerItem(stack);

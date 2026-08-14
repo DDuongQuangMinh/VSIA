@@ -3,6 +3,7 @@ package com.k1ngtle.vsia.world.inventory;
 import com.k1ngtle.vsia.registry.ModMenuTypes;
 import com.k1ngtle.vsia.signality.SignalityBlocks;
 import com.k1ngtle.vsia.signality.internet.server.StorageServerBlockEntity;
+import com.k1ngtle.vsia.signality.internet.server.StoredFile;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -14,6 +15,9 @@ import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.SlotItemHandler;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class StorageServerMenu extends AbstractContainerMenu {
 
     public final StorageServerBlockEntity blockEntity;
@@ -21,11 +25,9 @@ public class StorageServerMenu extends AbstractContainerMenu {
     private IItemHandler serverHandler;
 
     private int scrollOffsetRow = 0;
-
-    // Toggled by StorageServerScreen: when false, every slot in this menu is inactive,
-    // which stops AbstractContainerScreen's internal (private) render loop from drawing
-    // any item icons or hover highlights for them - used to hide slots in Dashboard mode.
     public boolean slotsVisible = true;
+
+    private final List<StoredFile> clientFiles = new ArrayList<>();
 
     public StorageServerMenu(int containerId, Inventory inv, FriendlyByteBuf extraData) {
         this(containerId, inv, inv.player.level().getBlockEntity(extraData.readBlockPos()));
@@ -37,13 +39,12 @@ public class StorageServerMenu extends AbstractContainerMenu {
         this.player = inv.player;
 
         if (this.blockEntity != null) {
+            this.clientFiles.addAll(this.blockEntity.getStoredFiles());
+
             this.blockEntity.getCapability(ForgeCapabilities.ITEM_HANDLER).ifPresent(handler -> {
                 this.serverHandler = handler;
-                // Add exactly 54 functional slots for the viewable area
                 for (int row = 0; row < 6; row++) {
                     for (int col = 0; col < 9; col++) {
-                        // Previously: 18 + row * 18
-                        // Now: 21 + row * 18
                         this.addSlot(new ScrollingSlotItemHandler(handler, col + row * 9, 8 + col * 18, 21 + row * 18, row, col));
                     }
                 }
@@ -63,7 +64,25 @@ public class StorageServerMenu extends AbstractContainerMenu {
         }
     }
 
-    // Plain Slot, but hidden whenever slotsVisible is false (Dashboard mode).
+    public List<StoredFile> getFiles() {
+        return clientFiles;
+    }
+
+    public void addFileClient(String name, String language, String content) {
+        StoredFile newFile = new StoredFile(name, language, content);
+        this.clientFiles.add(newFile);
+
+        // In a complete implementation, you'd send a packet to the server here:
+        // ModMessages.sendToServer(new AddFilePacket(name, language, content, blockEntity.getBlockPos()));
+    }
+
+    public void removeFileClient(StoredFile file) {
+        this.clientFiles.remove(file);
+
+        // In a complete implementation, you'd send a packet to the server here:
+        // ModMessages.sendToServer(new RemoveFilePacket(file.getName(), blockEntity.getBlockPos()));
+    }
+
     private class VisibilityAwareSlot extends Slot {
         public VisibilityAwareSlot(net.minecraft.world.Container container, int index, int x, int y) {
             super(container, index, x, y);
@@ -76,15 +95,14 @@ public class StorageServerMenu extends AbstractContainerMenu {
     }
 
     public void scrollTo(float scrollPercentage) {
-        int maxRows = 40 - 6; // 360 total slots / 9 cols = 40 rows. Visible = 6.
+        int maxRows = 40 - 6;
         int rowOffset = (int) (scrollPercentage * (float) maxRows + 0.5F);
         if (rowOffset < 0) rowOffset = 0;
         if (rowOffset > maxRows) rowOffset = maxRows;
 
         if (rowOffset != this.scrollOffsetRow) {
             this.scrollOffsetRow = rowOffset;
-            // The magic happens in the ScrollingSlotItemHandler, which reads this offset dynamically
-            this.broadcastChanges(); // Force client sync
+            this.broadcastChanges();
         }
     }
 
@@ -102,16 +120,10 @@ public class StorageServerMenu extends AbstractContainerMenu {
             itemstack = itemstack1.copy();
 
             if (index < 54) {
-                // Server slot -> player inventory. Player slots cap at the item's normal
-                // 64 anyway, so vanilla's merge logic is fine here.
                 if (!this.moveItemStackTo(itemstack1, 54, this.slots.size(), true)) {
                     return ItemStack.EMPTY;
                 }
             } else {
-                // Player inventory/hotbar -> server slots. Vanilla's moveItemStackTo hardcodes
-                // Math.min(slot.getMaxStackSize(), stack.getMaxStackSize()), which always caps
-                // merges at the item's normal 64 no matter what the slot itself allows. So we
-                // merge manually here using the slot's real (2,000,000) capacity instead.
                 if (!mergeIntoServerSlots(itemstack1)) {
                     return ItemStack.EMPTY;
                 }
@@ -127,15 +139,9 @@ public class StorageServerMenu extends AbstractContainerMenu {
         return itemstack;
     }
 
-    /**
-     * Merges as much of {@code stack} as possible into the 54 currently-visible server
-     * slots, respecting each slot's real max stack size (2,000,000) rather than the item's
-     * vanilla cap of 64. Mutates {@code stack} in place, shrinking it by whatever gets placed.
-     */
     private boolean mergeIntoServerSlots(ItemStack stack) {
         boolean changed = false;
 
-        // First pass: top up any existing stacks of the same item.
         for (int i = 0; i < 54 && !stack.isEmpty(); i++) {
             Slot slot = this.slots.get(i);
             ItemStack existing = slot.getItem();
@@ -155,7 +161,6 @@ public class StorageServerMenu extends AbstractContainerMenu {
             changed = true;
         }
 
-        // Second pass: drop any leftovers into the first empty slot(s) in view.
         for (int i = 0; i < 54 && !stack.isEmpty(); i++) {
             Slot slot = this.slots.get(i);
             if (slot.hasItem() || !slot.mayPlace(stack)) {
@@ -179,7 +184,6 @@ public class StorageServerMenu extends AbstractContainerMenu {
         return stillValid(net.minecraft.world.inventory.ContainerLevelAccess.create(blockEntity.getLevel(), blockEntity.getBlockPos()), player, SignalityBlocks.STORAGE_SERVER.get());
     }
 
-    // A custom slot that dynamically changes which index it accesses based on the scroll offset
     public class ScrollingSlotItemHandler extends SlotItemHandler {
         private final int gridRow;
         private final int gridCol;
@@ -192,7 +196,6 @@ public class StorageServerMenu extends AbstractContainerMenu {
 
         @Override
         public int getSlotIndex() {
-            // Calculate the actual index in the 360-slot handler based on scroll position
             return gridCol + ((gridRow + StorageServerMenu.this.scrollOffsetRow) * 9);
         }
 
@@ -214,7 +217,6 @@ public class StorageServerMenu extends AbstractContainerMenu {
 
         @Override
         public void setChanged() {
-            // Need to implement custom change logic if necessary, but ItemStackHandler handles most of it
         }
 
         @Override
@@ -226,10 +228,6 @@ public class StorageServerMenu extends AbstractContainerMenu {
         public int getMaxStackSize(ItemStack stack) {
             IItemHandler handler = this.getItemHandler();
             int slotIndex = getSlotIndex();
-
-            // Use the handler's real per-slot limit (2,000,000), not stack.getMaxStackSize()
-            // (which is the item's vanilla cap, e.g. 64) - vanilla's click-to-combine and
-            // shift-click logic both call this overload to decide how big a merge is allowed.
             int slotLimit = handler.getSlotLimit(slotIndex);
 
             ItemStack maxAdd = stack.copy();
