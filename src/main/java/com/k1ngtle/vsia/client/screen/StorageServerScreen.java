@@ -172,6 +172,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
             this.deleteButton.setPosition(this.leftPos + 94, this.topPos + 112);
         }
         if (this.checkUpdatesButton != null) {
+            // Updated location to sit underneath Uptime
             this.checkUpdatesButton.setPosition(this.leftPos + 35, this.topPos + 225);
         }
     }
@@ -702,10 +703,19 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         int gap = 12;
         int barWidth = (w - (numBars + 1) * gap) / numBars;
 
+        // Animate the bar heights slightly based on current time
+        long time = System.currentTimeMillis() / 150;
+
         for (int i = 0; i < numBars; i++) {
             int barX = x + gap + i * (barWidth + gap);
-            int barH = (int) (values[i] * (h - 15));
+
+            // Add a small pseudo-random offset based on index and time to make it bounce
+            float jitter = (float) Math.sin((time + i * 3)) * 0.08f;
+            float val = Math.max(0.05f, Math.min(1.0f, values[i] + jitter));
+
+            int barH = (int) (val * (h - 15));
             int barY = y + h - 1 - barH;
+
             g.fill(barX, barY, barX + barWidth, y + h - 1, color);
             g.drawString(this.font, String.valueOf(i + 1), barX + (barWidth / 2) - 3, y + h + 2, 0x888888, false);
         }
