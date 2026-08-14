@@ -1,7 +1,7 @@
 package com.k1ngtle.vsia.client.renderer;
 
-import com.k1ngtle.vsia.client.model.ServerRackItemModel;
-import com.k1ngtle.vsia.signality.internet.server.ServerRackItem;
+import com.k1ngtle.vsia.client.model.StorageServerItemModel;
+import com.k1ngtle.vsia.signality.internet.server.StorageServerItem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -9,22 +9,14 @@ import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import software.bernie.geckolib.renderer.GeoItemRenderer;
 
-public final class ServerRackItemRenderer
-        extends GeoItemRenderer<ServerRackItem> {
+public final class StorageServerItemRenderer extends GeoItemRenderer<StorageServerItem> {
 
-    public ServerRackItemRenderer() {
-        super(new ServerRackItemModel());
+    public StorageServerItemRenderer() {
+        super(new StorageServerItemModel());
     }
 
     @Override
-    public void renderByItem(
-            ItemStack stack,
-            ItemDisplayContext displayContext,
-            PoseStack poseStack,
-            MultiBufferSource bufferSource,
-            int packedLight,
-            int packedOverlay
-    ) {
+    public void renderByItem(ItemStack stack, ItemDisplayContext displayContext, PoseStack poseStack, MultiBufferSource bufferSource, int packedLight, int packedOverlay) {
         float scale = switch (displayContext) {
             case FIRST_PERSON_LEFT_HAND, FIRST_PERSON_RIGHT_HAND -> 0.48F;
             case THIRD_PERSON_LEFT_HAND, THIRD_PERSON_RIGHT_HAND -> 0.42F;
@@ -43,25 +35,14 @@ public final class ServerRackItemRenderer
             case THIRD_PERSON_LEFT_HAND -> poseStack.translate(-0.22D, 0.0D, 0.30D);
             case GUI -> poseStack.translate(0.32D, -0.12D, 0.0D);
             case FIXED -> {
-                // Move the rack left and back onto the item-frame surface,
-                // then turn its opposite face toward the viewer.
                 poseStack.translate(0.65D, -0.18D, 0.52D);
                 poseStack.mulPose(Axis.YP.rotationDegrees(-180.0F));
             }
-            default -> {
-                // Dropped items keep their current centered position.
-            }
+            default -> {}
         }
 
         poseStack.scale(scale, scale, scale);
-        super.renderByItem(
-                stack,
-                displayContext,
-                poseStack,
-                bufferSource,
-                packedLight,
-                packedOverlay
-        );
+        super.renderByItem(stack, displayContext, poseStack, bufferSource, packedLight, packedOverlay);
         poseStack.popPose();
     }
 }

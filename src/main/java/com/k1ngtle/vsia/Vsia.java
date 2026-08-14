@@ -3,6 +3,7 @@ package com.k1ngtle.vsia;
 import com.k1ngtle.vsia.network.NVGNetwork;
 import com.k1ngtle.vsia.registry.ModCreativeTabs;
 import com.k1ngtle.vsia.registry.ModItems;
+import com.k1ngtle.vsia.registry.ModMenuTypes;
 import com.k1ngtle.vsia.signality.Signality;
 import com.k1ngtle.vsia.signality.internet.server.ServerRackNetwork;
 import net.minecraftforge.common.MinecraftForge;
@@ -24,6 +25,7 @@ public class Vsia {
 
         ModItems.register(modEventBus);
         ModCreativeTabs.register(modEventBus);
+        ModMenuTypes.register(modEventBus);
 
         Signality.initialize(FMLJavaModLoadingContext.get());
         NVGNetwork.register();

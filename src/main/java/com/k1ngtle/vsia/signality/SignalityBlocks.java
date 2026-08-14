@@ -130,6 +130,33 @@ public final class SignalityBlocks {
            ).build(null)
    );
 
+   public static final RegistryObject<Block> STORAGE_SERVER = BLOCKS.register(
+           "storage_server",
+           () -> new com.k1ngtle.vsia.signality.internet.server.StorageServerBlock(
+                   Properties.of()
+                           .mapColor(MapColor.METAL)
+                           .strength(3.0F, 8.0F)
+                           .noOcclusion()
+           )
+   );
+
+   public static final RegistryObject<Item> STORAGE_SERVER_ITEM = ITEMS.register(
+           "storage_server",
+           () -> new com.k1ngtle.vsia.signality.internet.server.StorageServerItem(
+                   STORAGE_SERVER.get(),
+                   new Item.Properties()
+           )
+   );
+
+   public static final RegistryObject<BlockEntityType<com.k1ngtle.vsia.signality.internet.server.StorageServerBlockEntity>>
+           STORAGE_SERVER_BE = BLOCK_ENTITIES.register(
+           "storage_server",
+           () -> Builder.of(
+                   com.k1ngtle.vsia.signality.internet.server.StorageServerBlockEntity::new,
+                   STORAGE_SERVER.get()
+           ).build(null)
+   );
+
    private SignalityBlocks() {
    }
 

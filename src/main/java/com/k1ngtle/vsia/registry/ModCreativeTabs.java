@@ -88,6 +88,7 @@ public class ModCreativeTabs {
                             ))
                             .displayItems((parameters, output) -> {
                                 output.accept(SignalityBlocks.SERVER_RACK_ITEM.get());
+                                output.accept(SignalityBlocks.STORAGE_SERVER_ITEM.get());
                                 output.accept(SignalityBlocks.NETWORK_CABLE.get());
                             })
                             .build()
