@@ -98,6 +98,7 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
         if (storedFiles.isEmpty()) {
             storedFiles.add(new StoredFile("readme.txt", "text", "Welcome to TrueNAS SCALE VSIA Edition.\nThis server provides robust item and script storage.\nCapacity: 9TiB Block Storage / 10MB Object Storage."));
             storedFiles.add(new StoredFile("config.json", "json", "{\n  \"server_name\": \"re-minir-102\",\n  \"pool_name\": \"tank\",\n  \"auto_sync\": true\n}"));
+            setChanged();
         }
     }
 
@@ -166,6 +167,7 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
             fileList.add(file.serializeNBT());
         }
         tag.put("StoredFiles", fileList);
+        tag.putBoolean("HasInitializedFiles", true);
 
         tag.putString("IPAddress", ipAddress);
         tag.putString("IPv6Address", ipv6Address);
@@ -186,12 +188,20 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
         }
 
         storedFiles.clear();
-        if (tag.contains("StoredFiles", Tag.TAG_LIST)) {
+
+        // Remove strict Tag.TAG_LIST checking as it can fail on chunk reload in some Forge versions.
+        if (tag.contains("StoredFiles")) {
             ListTag fileList = tag.getList("StoredFiles", Tag.TAG_COMPOUND);
             for (int i = 0; i < fileList.size(); i++) {
                 storedFiles.add(StoredFile.deserializeNBT(fileList.getCompound(i)));
             }
-        } else {
+            // Mark as changed so the client syncs properly after world load
+            setChanged();
+        }
+
+        // Only initialize default files if the block has never saved before.
+        // Explicitly check boolean to avoid overwriting intentionally empty file storage.
+        if (!tag.getBoolean("HasInitializedFiles") && storedFiles.isEmpty()) {
             initDefaultFilesIfEmpty();
         }
 
@@ -247,8 +257,9 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         controllers.add(new AnimationController<>(this, "controller", 0, event -> {
-            return event.setAndContinue(RawAnimation.begin().thenPlay("checking"));
-        }));
+            // Stop playing automatically on world load/chunk render
+            return software.bernie.geckolib.core.object.PlayState.STOP;
+        }).triggerableAnim("checking", RawAnimation.begin().thenPlay("checking")));
     }
 
     @Override

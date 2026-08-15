@@ -14,7 +14,11 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.items.IItemHandler;
+import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -762,9 +766,12 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         if (sideW > 60) {
             g.fill(sideX, y + 21, sideX + sideW, y + 221, 0xFF18191B);
 
-            g.drawString(this.font, "Server Status", sideX + 8, y + 29, 0xFFFFFF, false);
-            g.drawString(this.font, "Pool: tank", sideX + 8, y + 45, 0xCCCCCC, false);
-            g.drawString(this.font, "Status: ONLINE", sideX + 8, y + 59, 0x55FF55, false);
+            // Shifted Y coordinates down by 15px to avoid overlapping with Network inputs
+            int statsY = y + 44;
+
+            g.drawString(this.font, "Server Status", sideX + 8, statsY, 0xFFFFFF, false);
+            g.drawString(this.font, "Pool: tank", sideX + 8, statsY + 16, 0xCCCCCC, false);
+            g.drawString(this.font, "Status: ONLINE", sideX + 8, statsY + 30, 0x55FF55, false);
 
             int barWidth = Math.min(sideW - 16, 120);
 
@@ -772,28 +779,28 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
                 long totalItems = getTotalStoredItems();
                 float percent = Math.min(1.0f, (float) totalItems / MAX_ITEM_CAPACITY);
 
-                g.drawString(this.font, "Capacity (9 TiB)", sideX + 8, y + 79, 0xAAAAAA, false);
-                g.fill(sideX + 8, y + 91, sideX + 8 + barWidth, y + 99, 0xFF333333);
-                g.fill(sideX + 8, y + 91, sideX + 8 + (int) (barWidth * percent), y + 99, 0xFF0092C8);
-                g.drawString(this.font, String.format(java.util.Locale.ROOT, "%.1f%% Used", percent * 100), sideX + 8, y + 103, 0x888888, false);
+                g.drawString(this.font, "Capacity (9 TiB)", sideX + 8, statsY + 50, 0xAAAAAA, false);
+                g.fill(sideX + 8, statsY + 62, sideX + 8 + barWidth, statsY + 70, 0xFF333333);
+                g.fill(sideX + 8, statsY + 62, sideX + 8 + (int) (barWidth * percent), statsY + 70, 0xFF0092C8);
+                g.drawString(this.font, String.format(java.util.Locale.ROOT, "%.1f%% Used", percent * 100), sideX + 8, statsY + 74, 0x888888, false);
             } else {
-                g.drawString(this.font, "File Capacity (10 MB)", sideX + 8, y + 79, 0xAAAAAA, false);
-                g.fill(sideX + 8, y + 91, sideX + 8 + barWidth, y + 99, 0xFF333333);
+                g.drawString(this.font, "File Capacity (10 MB)", sideX + 8, statsY + 50, 0xAAAAAA, false);
+                g.fill(sideX + 8, statsY + 62, sideX + 8 + barWidth, statsY + 70, 0xFF333333);
 
                 int totalBytes = this.menu.getFiles().stream().mapToInt(StoredFile::getSizeInBytes).sum();
                 float percent = Math.min(1.0f, totalBytes / (float) (10 * 1024 * 1024));
-                g.fill(sideX + 8, y + 91, sideX + 8 + (int) (barWidth * percent), y + 99, 0xFFB82DB8);
+                g.fill(sideX + 8, statsY + 62, sideX + 8 + (int) (barWidth * percent), statsY + 70, 0xFFB82DB8);
 
-                g.drawString(this.font, String.format(java.util.Locale.ROOT, "%.1f%% Used", percent * 100), sideX + 8, y + 103, 0x888888, false);
+                g.drawString(this.font, String.format(java.util.Locale.ROOT, "%.1f%% Used", percent * 100), sideX + 8, statsY + 74, 0x888888, false);
             }
 
-            g.drawString(this.font, "Drives: 8 Active", sideX + 8, y + 129, 0xCCCCCC, false);
-            g.drawString(this.font, "ZFS Cache: 1.1GB", sideX + 8, y + 143, 0xFFB82DB8, false);
-            g.drawString(this.font, "Network: 10Gbps", sideX + 8, y + 157, 0xFFE6A23C, false);
+            g.drawString(this.font, "Drives: 8 Active", sideX + 8, statsY + 100, 0xCCCCCC, false);
+            g.drawString(this.font, "ZFS Cache: 1.1GB", sideX + 8, statsY + 114, 0xFFB82DB8, false);
+            g.drawString(this.font, "Network: 10Gbps", sideX + 8, statsY + 128, 0xFFE6A23C, false);
 
             for (int i = 0; i < 8; i++) {
                 int ledX = sideX + 8 + (i * 12);
-                int ledY = y + 175;
+                int ledY = statsY + 146;
                 g.fill(ledX, ledY, ledX + 8, ledY + 8, (i == 7) ? 0xFF0092C8 : 0xFF22C55E);
             }
         }
@@ -848,19 +855,76 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
     }
 
     private void handleUpload() {
-        this.menu.addFileClient("test_script.js", "js", "console.log('Server Online');\nfunction test() {\n  return true;\n}");
+        // Open file dialog using LWJGL's native cross-platform TinyFileDialogs
+        String filePath = TinyFileDialogs.tinyfd_openFileDialog(
+                "Select File to Upload",
+                System.getProperty("user.home") + "/",
+                null,
+                null,
+                false
+        );
+
+        if (filePath != null) {
+            File file = new File(filePath);
+            if (file.exists() && file.isFile()) {
+                try {
+                    String content = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+
+                    // Enforce 10 MB file size limit
+                    int maxFileSizeBytes = 10 * 1024 * 1024;
+                    if (content.length() > maxFileSizeBytes) {
+                        content = content.substring(0, maxFileSizeBytes);
+                        System.out.println("Warning: File exceeds 10MB limit and was truncated.");
+                    }
+
+                    String fileName = file.getName();
+                    String ext = "txt"; // Default extension
+                    int i = fileName.lastIndexOf('.');
+                    if (i > 0 && i < fileName.length() - 1) {
+                        ext = fileName.substring(i + 1);
+                    }
+
+                    // Add to client-side UI
+                    this.menu.addFileClient(fileName, ext, content);
+                    updateVisibility(); // Refresh the UI
+
+                    // SEND PACKET TO SERVER TO PERSIST DATA
+                    if (this.menu.blockEntity != null) {
+                        com.k1ngtle.vsia.network.VsiaNetwork.sendToServer(new com.k1ngtle.vsia.network.UploadFilePacket(
+                                this.menu.blockEntity.getBlockPos(), fileName, ext, content
+                        ));
+                    }
+
+                } catch (Exception e) {
+                    System.err.println("Failed to read upload file: " + e.getMessage());
+                }
+            }
+        }
     }
 
     private void handleDelete() {
-        if (this.openFile != null) {
-            this.menu.removeFileClient(this.openFile);
-            this.openFile = null;
-            updateVisibility();
-        } else {
+        StoredFile fileToDelete = this.openFile;
+
+        if (fileToDelete == null) {
             List<StoredFile> files = this.menu.getFiles();
             if (!files.isEmpty()) {
-                this.menu.removeFileClient(files.get(files.size() - 1));
+                fileToDelete = files.get(files.size() - 1);
             }
+        }
+
+        if (fileToDelete != null) {
+            // Remove from Client UI
+            this.menu.removeFileClient(fileToDelete);
+
+            // Send Delete Packet to Server to persist deletion
+            if (this.menu.blockEntity != null) {
+                com.k1ngtle.vsia.network.VsiaNetwork.sendToServer(new com.k1ngtle.vsia.network.DeleteFilePacket(
+                        this.menu.blockEntity.getBlockPos(), fileToDelete.getName()
+                ));
+            }
+
+            this.openFile = null;
+            updateVisibility();
         }
     }
 

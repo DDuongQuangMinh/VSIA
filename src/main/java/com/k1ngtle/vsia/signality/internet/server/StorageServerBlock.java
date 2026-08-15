@@ -70,6 +70,14 @@ public class StorageServerBlock extends BaseEntityBlock {
     public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
         super.setPlacedBy(level, pos, state, placer, stack);
         level.setBlock(pos.above(), state.setValue(HALF, DoubleBlockHalf.UPPER), 3);
+
+        // Trigger the animation to play once specifically when placed
+        if (!level.isClientSide()) {
+            BlockEntity entity = level.getBlockEntity(pos);
+            if (entity instanceof StorageServerBlockEntity storageServer) {
+                storageServer.triggerAnim("controller", "checking");
+            }
+        }
     }
 
     @Override

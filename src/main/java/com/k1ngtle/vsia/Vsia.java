@@ -23,11 +23,15 @@ public class Vsia {
     public Vsia() {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
 
+        // Register Mod Assets
         ModItems.register(modEventBus);
         ModCreativeTabs.register(modEventBus);
         ModMenuTypes.register(modEventBus);
 
+        // Initialize sub-systems
         Signality.initialize(FMLJavaModLoadingContext.get());
+
+        // Register legacy networks
         NVGNetwork.register();
         ServerRackNetwork.register();
 
@@ -40,6 +44,9 @@ public class Vsia {
     private void commonSetup(final FMLCommonSetupEvent event) {
         event.enqueueWork(() -> {
             LOGGER.info("VSIA Common Setup: Preparing integrations...");
+
+            // Registering the new Storage Server Network packets for file transfer
+            com.k1ngtle.vsia.network.VsiaNetwork.register();
         });
     }
 
