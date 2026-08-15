@@ -13,6 +13,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.items.IItemHandler;
+import net.minecraftforge.items.IItemHandlerModifiable;
 import net.minecraftforge.items.SlotItemHandler;
 
 import java.util.ArrayList;
@@ -28,6 +29,8 @@ public class StorageServerMenu extends AbstractContainerMenu {
     public boolean slotsVisible = true;
 
     private final List<StoredFile> clientFiles = new ArrayList<>();
+    private final List<Integer> filteredSlots = new ArrayList<>();
+    private String searchTerm = "";
 
     public StorageServerMenu(int containerId, Inventory inv, FriendlyByteBuf extraData) {
         this(containerId, inv, inv.player.level().getBlockEntity(extraData.readBlockPos()));
@@ -43,6 +46,11 @@ public class StorageServerMenu extends AbstractContainerMenu {
 
             this.blockEntity.getCapability(ForgeCapabilities.ITEM_HANDLER).ifPresent(handler -> {
                 this.serverHandler = handler;
+
+                for(int i = 0; i < handler.getSlots(); i++) {
+                    this.filteredSlots.add(i);
+                }
+
                 for (int row = 0; row < 6; row++) {
                     for (int col = 0; col < 9; col++) {
                         this.addSlot(new ScrollingSlotItemHandler(handler, col + row * 9, 8 + col * 18, 21 + row * 18, row, col));
@@ -71,16 +79,30 @@ public class StorageServerMenu extends AbstractContainerMenu {
     public void addFileClient(String name, String language, String content) {
         StoredFile newFile = new StoredFile(name, language, content);
         this.clientFiles.add(newFile);
-
-        // In a complete implementation, you'd send a packet to the server here:
-        // ModMessages.sendToServer(new AddFilePacket(name, language, content, blockEntity.getBlockPos()));
     }
 
     public void removeFileClient(StoredFile file) {
         this.clientFiles.remove(file);
+    }
 
-        // In a complete implementation, you'd send a packet to the server here:
-        // ModMessages.sendToServer(new RemoveFilePacket(file.getName(), blockEntity.getBlockPos()));
+    public void updateSearch(String term) {
+        this.searchTerm = term == null ? "" : term.toLowerCase();
+        this.filteredSlots.clear();
+        List<Integer> emptySlots = new ArrayList<>();
+
+        if (this.serverHandler != null) {
+            for (int i = 0; i < this.serverHandler.getSlots(); i++) {
+                ItemStack stack = this.serverHandler.getStackInSlot(i);
+                if (stack.isEmpty()) {
+                    emptySlots.add(i);
+                } else if (stack.getHoverName().getString().toLowerCase().contains(this.searchTerm)) {
+                    this.filteredSlots.add(i);
+                }
+            }
+            this.filteredSlots.addAll(emptySlots);
+        }
+        this.scrollOffsetRow = 0;
+        this.broadcastChanges();
     }
 
     private class VisibilityAwareSlot extends Slot {
@@ -95,7 +117,8 @@ public class StorageServerMenu extends AbstractContainerMenu {
     }
 
     public void scrollTo(float scrollPercentage) {
-        int maxRows = 40 - 6;
+        int maxRows = (this.filteredSlots.isEmpty() ? 40 : (this.filteredSlots.size() / 9)) - 6;
+        if (maxRows < 0) maxRows = 0;
         int rowOffset = (int) (scrollPercentage * (float) maxRows + 0.5F);
         if (rowOffset < 0) rowOffset = 0;
         if (rowOffset > maxRows) rowOffset = maxRows;
@@ -120,9 +143,31 @@ public class StorageServerMenu extends AbstractContainerMenu {
             itemstack = itemstack1.copy();
 
             if (index < 54) {
-                if (!this.moveItemStackTo(itemstack1, 54, this.slots.size(), true)) {
+                // Stripping custom massive NBT tags so the player doesn't receive a bugged item
+                ItemStack toMove = itemstack1.copy();
+                int realCount = StorageServerBlockEntity.getRealCount(toMove);
+                int amountToMove = Math.min(realCount, toMove.getMaxStackSize());
+
+                toMove.setCount(amountToMove);
+                if (toMove.hasTag()) {
+                    toMove.getTag().remove("VSIA_Count");
+                    if (toMove.getTag().isEmpty()) toMove.setTag(null);
+                }
+
+                if (!this.moveItemStackTo(toMove, 54, this.slots.size(), true)) {
                     return ItemStack.EMPTY;
                 }
+
+                int moved = amountToMove - toMove.getCount();
+                if (moved > 0) {
+                    StorageServerBlockEntity.setRealCount(itemstack1, realCount - moved);
+                    if (StorageServerBlockEntity.getRealCount(itemstack1) <= 0) {
+                        slot.set(ItemStack.EMPTY);
+                    } else {
+                        slot.setChanged();
+                    }
+                }
+                return ItemStack.EMPTY;
             } else {
                 if (!mergeIntoServerSlots(itemstack1)) {
                     return ItemStack.EMPTY;
@@ -140,42 +185,53 @@ public class StorageServerMenu extends AbstractContainerMenu {
     }
 
     private boolean mergeIntoServerSlots(ItemStack stack) {
+        if (serverHandler == null || !(serverHandler instanceof IItemHandlerModifiable)) return false;
+        IItemHandlerModifiable modifiableHandler = (IItemHandlerModifiable) serverHandler;
         boolean changed = false;
 
-        for (int i = 0; i < 54 && !stack.isEmpty(); i++) {
-            Slot slot = this.slots.get(i);
-            ItemStack existing = slot.getItem();
-            if (existing.isEmpty() || !ItemStack.isSameItemSameTags(existing, stack)) {
+        // Try merge into existing stacks
+        for (int i = 0; i < serverHandler.getSlots() && !stack.isEmpty(); i++) {
+            ItemStack existing = serverHandler.getStackInSlot(i);
+            if (existing.isEmpty() || !StorageServerBlockEntity.canMergeItems(existing, stack)) {
                 continue;
             }
 
-            int maxSize = slot.getMaxStackSize(stack);
-            if (existing.getCount() >= maxSize) {
+            int maxSize = StorageServerBlockEntity.MAX_ITEM_CAPACITY;
+            int currentCount = StorageServerBlockEntity.getRealCount(existing);
+            if (currentCount >= maxSize) {
                 continue;
             }
 
-            int toAdd = Math.min(maxSize - existing.getCount(), stack.getCount());
-            existing.grow(toAdd);
+            int toAdd = Math.min(maxSize - currentCount, stack.getCount());
+            StorageServerBlockEntity.setRealCount(existing, currentCount + toAdd);
+
+            // Bypass slot.set() to avoid ClassCastExceptions, write directly to capability
+            modifiableHandler.setStackInSlot(i, existing);
             stack.shrink(toAdd);
-            slot.setChanged();
             changed = true;
         }
 
-        for (int i = 0; i < 54 && !stack.isEmpty(); i++) {
-            Slot slot = this.slots.get(i);
-            if (slot.hasItem() || !slot.mayPlace(stack)) {
+        // Try push into empty slots
+        for (int i = 0; i < serverHandler.getSlots() && !stack.isEmpty(); i++) {
+            ItemStack existing = serverHandler.getStackInSlot(i);
+            if (!existing.isEmpty()) {
                 continue;
             }
 
-            int maxSize = slot.getMaxStackSize(stack);
-            int toPlace = Math.min(stack.getCount(), maxSize);
+            int toPlace = Math.min(stack.getCount(), StorageServerBlockEntity.MAX_ITEM_CAPACITY);
             ItemStack placed = stack.copy();
-            placed.setCount(toPlace);
-            slot.set(placed);
+            placed.setCount(1); // Set to 1 first to avoid vanilla processing bugs
+            StorageServerBlockEntity.setRealCount(placed, toPlace);
+
+            // Bypass slot.set() to avoid ClassCastExceptions, write directly to capability
+            modifiableHandler.setStackInSlot(i, placed);
             stack.shrink(toPlace);
             changed = true;
         }
 
+        if (changed) {
+            this.broadcastChanges();
+        }
         return changed;
     }
 
@@ -196,7 +252,11 @@ public class StorageServerMenu extends AbstractContainerMenu {
 
         @Override
         public int getSlotIndex() {
-            return gridCol + ((gridRow + StorageServerMenu.this.scrollOffsetRow) * 9);
+            int viewIndex = gridCol + ((gridRow + StorageServerMenu.this.scrollOffsetRow) * 9);
+            if (viewIndex >= StorageServerMenu.this.filteredSlots.size()) {
+                return 0;
+            }
+            return StorageServerMenu.this.filteredSlots.get(viewIndex);
         }
 
         @Override
@@ -209,11 +269,7 @@ public class StorageServerMenu extends AbstractContainerMenu {
             return this.getItemHandler().getStackInSlot(getSlotIndex());
         }
 
-        @Override
-        public void set(ItemStack stack) {
-            ((net.minecraftforge.items.ItemStackHandler)this.getItemHandler()).setStackInSlot(getSlotIndex(), stack);
-            this.setChanged();
-        }
+        // Removed overridden set() method to rely securely on Forge's built-in parent validation to stop ClassCastException
 
         @Override
         public void setChanged() {
@@ -221,27 +277,12 @@ public class StorageServerMenu extends AbstractContainerMenu {
 
         @Override
         public int getMaxStackSize() {
-            return this.getItemHandler().getSlotLimit(getSlotIndex());
+            return StorageServerBlockEntity.MAX_ITEM_CAPACITY;
         }
 
         @Override
         public int getMaxStackSize(ItemStack stack) {
-            IItemHandler handler = this.getItemHandler();
-            int slotIndex = getSlotIndex();
-            int slotLimit = handler.getSlotLimit(slotIndex);
-
-            ItemStack maxAdd = stack.copy();
-            maxAdd.setCount(slotLimit);
-
-            ItemStack currentStack = handler.getStackInSlot(slotIndex);
-            if (handler instanceof net.minecraftforge.items.IItemHandlerModifiable) {
-                ItemStack remainder = handler.insertItem(slotIndex, maxAdd, true);
-
-                int current = currentStack.isEmpty() ? 0 : currentStack.getCount();
-                int added = slotLimit - remainder.getCount();
-                return current + added;
-            }
-            return super.getMaxStackSize(stack);
+            return StorageServerBlockEntity.MAX_ITEM_CAPACITY;
         }
 
         @Override

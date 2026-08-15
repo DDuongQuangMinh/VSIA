@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.client.screen;
 
+import com.k1ngtle.vsia.signality.internet.server.StorageServerBlockEntity;
 import com.k1ngtle.vsia.signality.internet.server.StoredFile;
 import com.k1ngtle.vsia.world.inventory.StorageServerMenu;
 import net.minecraft.ChatFormatting;
@@ -11,6 +12,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.common.capabilities.ForgeCapabilities;
+import net.minecraftforge.items.IItemHandler;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,6 +23,9 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
     private boolean isDashboard = true;
     private float scrollOffset = 0.0f;
     private float fileScrollOffset = 0.0f;
+
+    // Total capacity based on 360 slots * 600,000 limit
+    private static final long MAX_ITEM_CAPACITY = 360L * 600_000L;
 
     public enum TerminalSize {
         SMALL("Size: Small", 300, 236),
@@ -44,6 +50,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
     private TerminalSize currentSize = TerminalSize.NORMAL;
     private Tab currentTab = Tab.ITEMS;
     private StoredFile openFile = null;
+    private String fileSearchTerm = "";
 
     private Button modeToggleButton;
     private Button sizeToggleButton;
@@ -55,7 +62,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
 
     public StorageServerScreen(StorageServerMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
-        this.imageWidth = 840; // Expanded to fit 3 large columns
+        this.imageWidth = 840;
         this.imageHeight = 460;
         updateVisibility();
     }
@@ -84,7 +91,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         this.checkUpdatesButton = Button.builder(
                 Component.literal("Check for Updates"),
                 b -> {}
-        ).bounds(this.leftPos + 22, this.topPos + 218, 120, 20).build();
+        ).bounds(this.leftPos + 22, this.topPos + 172, 115, 20).build();
         this.checkUpdatesButton.visible = isDashboard;
         this.addRenderableWidget(this.checkUpdatesButton);
 
@@ -92,6 +99,12 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         this.searchBox.setMaxLength(30);
         this.searchBox.setBordered(false);
         this.searchBox.setVisible(!isDashboard);
+        this.searchBox.setResponder(text -> {
+            this.menu.updateSearch(text);
+            this.fileSearchTerm = text.toLowerCase();
+            this.fileScrollOffset = 0.0f;
+            this.scrollOffset = 0.0f;
+        });
         this.addRenderableWidget(this.searchBox);
 
         this.uploadButton = Button.builder(
@@ -107,20 +120,22 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         ).bounds(this.leftPos + 94, this.topPos + 112, 75, 18).build();
         this.deleteButton.visible = false;
         this.addRenderableWidget(this.deleteButton);
+
+        repositionWidgets();
     }
 
     private void updateDimensions() {
         if (isDashboard) {
             this.imageWidth = 840;
             this.imageHeight = 460;
-            // Add a small +10 offset so the "Configure" button isn't squished against the top
             this.leftPos = (this.width - this.imageWidth) / 2;
-            this.topPos = ((this.height - this.imageHeight) / 2) + 10;
+            // Snug fit towards the top, removing the old +20 offset
+            this.topPos = Math.max(30, (this.height - this.imageHeight) / 2);
         } else {
             this.imageWidth = currentSize.width;
             this.imageHeight = currentSize.height;
             this.leftPos = (this.width - this.imageWidth) / 2;
-            this.topPos = (this.height - this.imageHeight) / 2;
+            this.topPos = Math.max(22, (this.height - this.imageHeight) / 2);
         }
     }
 
@@ -158,10 +173,14 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         if (this.sizeToggleButton != null) {
             this.sizeToggleButton.setPosition(this.leftPos + 10, this.topPos - 22);
         }
+
+        // Exact position for the Check for Updates button in dashboard mode
         if (this.checkUpdatesButton != null) {
-            // Firmly anchored to the bottom left of the System Info widget in Dashboard mode
-            this.checkUpdatesButton.setPosition(this.leftPos + 22, this.topPos + 218);
+            int col1X = this.leftPos + 12;
+            int p1Y = this.topPos + 12;
+            this.checkUpdatesButton.setPosition(col1X + 10, p1Y + 160);
         }
+
         if (this.searchBox != null) {
             this.searchBox.setPosition(this.leftPos + 115, this.topPos + 6);
         }
@@ -171,6 +190,23 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         if (this.deleteButton != null) {
             this.deleteButton.setPosition(this.leftPos + 94, this.topPos + 112);
         }
+    }
+
+    private long getTotalStoredItems() {
+        long total = 0;
+        if (this.menu.blockEntity != null) {
+            IItemHandler handler = this.menu.blockEntity.getCapability(ForgeCapabilities.ITEM_HANDLER).orElse(null);
+            if (handler != null) {
+                for (int i = 0; i < handler.getSlots(); i++) {
+                    total += StorageServerBlockEntity.getRealCount(handler.getStackInSlot(i));
+                }
+                return total;
+            }
+        }
+        for (int i = 0; i < 54 && i < this.menu.slots.size(); i++) {
+            total += StorageServerBlockEntity.getRealCount(this.menu.slots.get(i).getItem());
+        }
+        return total;
     }
 
     @Override
@@ -183,35 +219,50 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
             renderTerminalMode(g, mouseX, mouseY);
         }
 
+        // Hide vanilla item counts for our custom massive formatting
         int[] realCounts = new int[this.menu.slots.size()];
         if (!isDashboard && currentTab == Tab.ITEMS && openFile == null) {
             for (int i = 0; i < this.menu.slots.size(); i++) {
                 Slot slot = this.menu.slots.get(i);
                 if (slot.hasItem()) {
-                    realCounts[i] = slot.getItem().getCount();
-                    if (realCounts[i] >= 1000) {
-                        slot.getItem().setCount(1);
-                    }
+                    realCounts[i] = StorageServerBlockEntity.getRealCount(slot.getItem());
+                    slot.getItem().setCount(1);
                 }
             }
         }
 
         super.render(g, mouseX, mouseY, partialTick);
 
+        // Restore custom counts and draw them uniformly over ALL items (vanilla included)
         if (!isDashboard && currentTab == Tab.ITEMS && openFile == null) {
             for (int i = 0; i < this.menu.slots.size(); i++) {
                 Slot slot = this.menu.slots.get(i);
-                if (slot.hasItem() && realCounts[i] >= 1000) {
-                    slot.getItem().setCount(realCounts[i]);
+                if (slot.hasItem()) {
+                    slot.getItem().setCount(realCounts[i] > 64 ? 64 : realCounts[i]);
 
-                    String formatted = formatLargeNumber(realCounts[i]);
-                    int slotX = this.leftPos + slot.x;
-                    int slotY = this.topPos + slot.y;
+                    if (realCounts[i] > 1) {
+                        String formatted = realCounts[i] >= 1000 ? formatLargeNumber(realCounts[i]) : String.valueOf(realCounts[i]);
+                        int slotX = this.leftPos + slot.x;
+                        int slotY = this.topPos + slot.y;
 
-                    g.pose().pushPose();
-                    g.pose().translate(0, 0, 200);
-                    g.drawString(this.font, formatted, slotX + 17 - this.font.width(formatted), slotY + 9, 0xFFFFFF, true);
-                    g.pose().popPose();
+                        g.pose().pushPose();
+                        // Translate absolutely to bottom-right of the slot with a high Z value (250)
+                        g.pose().translate(slotX + 16, slotY + 16, 250);
+
+                        // Scale the text down so large numbers fit perfectly inside the slot
+                        float textScale = 0.55f;
+                        g.pose().scale(textScale, textScale, 1.0f);
+
+                        int textWidth = this.font.width(formatted);
+                        int textHeight = this.font.lineHeight;
+
+                        // Draw a dark mask behind our custom text to cleanly obscure any vanilla text that might leak
+                        g.fill(-textWidth - 1, -textHeight, 1, 1, 0xDD111111);
+
+                        // Draw our scaled, formatted text directly on top
+                        g.drawString(this.font, formatted, -textWidth, -textHeight + 1, 0xFFFFFF, true);
+                        g.pose().popPose();
+                    }
                 }
             }
         }
@@ -234,11 +285,43 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
     protected void renderBg(GuiGraphics g, float partialTick, int mouseX, int mouseY) { }
 
     @Override
+    public boolean keyPressed(int pKeyCode, int pScanCode, int pModifiers) {
+        if (!this.isDashboard && this.searchBox.isFocused()) {
+            if (pKeyCode == 256) { // Escape
+                this.searchBox.setFocused(false);
+                return true;
+            }
+            if (this.searchBox.keyPressed(pKeyCode, pScanCode, pModifiers)) {
+                return true;
+            }
+        }
+        return super.keyPressed(pKeyCode, pScanCode, pModifiers);
+    }
+
+    @Override
+    public boolean charTyped(char pCodePoint, int pModifiers) {
+        if (!this.isDashboard && this.searchBox.isFocused()) {
+            if (this.searchBox.charTyped(pCodePoint, pModifiers)) {
+                return true;
+            }
+        }
+        return super.charTyped(pCodePoint, pModifiers);
+    }
+
+    @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (!isDashboard) {
+            if (this.searchBox.mouseClicked(mouseX, mouseY, button)) {
+                this.searchBox.setFocused(true);
+                return true;
+            } else {
+                this.searchBox.setFocused(false);
+            }
+
             int x = this.leftPos;
             int y = this.topPos;
 
+            // Side tabs
             if (mouseX >= x - 28 && mouseX <= x && mouseY >= y + 10 && mouseY <= y + 34) {
                 this.currentTab = Tab.ITEMS;
                 this.openFile = null;
@@ -254,6 +337,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
 
             if (this.currentTab == Tab.FILES) {
                 if (openFile != null) {
+                    // Close Modal
                     int modalX = x + 10;
                     int modalY = y + 15;
                     int modalW = Math.max(250, this.imageWidth - 200);
@@ -263,7 +347,10 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
                         return true;
                     }
                 } else {
-                    List<StoredFile> files = this.menu.getFiles();
+                    // Open File
+                    List<StoredFile> files = this.menu.getFiles().stream()
+                            .filter(f -> this.fileSearchTerm.isEmpty() || f.getName().toLowerCase().contains(this.fileSearchTerm) || f.getLanguage().toLowerCase().contains(this.fileSearchTerm))
+                            .toList();
                     int listY = y + 25 - (int)(this.fileScrollOffset * Math.max(0, files.size() - 6) * 14);
 
                     for (int i = 0; i < files.size(); i++) {
@@ -320,122 +407,111 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
     }
 
-    @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (!isDashboard && this.searchBox != null && this.searchBox.isFocused()) {
-            if (this.searchBox.keyPressed(keyCode, scanCode, modifiers)) {
-                return true;
-            }
-            if (this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
-                return true;
-            }
-        }
-        return super.keyPressed(keyCode, scanCode, modifiers);
-    }
-
     private void renderDashboardMode(GuiGraphics g) {
         int x = this.leftPos;
         int y = this.topPos;
 
-        // Dashboard overall background
-        g.fill(x, y, x + this.imageWidth, y + this.imageHeight, 0xFF1E1E1E);
-        g.fill(x + 2, y + 2, x + this.imageWidth - 2, y + this.imageHeight - 2, 0xFF242424);
+        // Overall background
+        g.fill(x, y, x + this.imageWidth, y + this.imageHeight, 0xFF1A1B1D);
+        g.fill(x + 2, y + 2, x + this.imageWidth - 2, y + this.imageHeight - 2, 0xFF252526);
 
-        g.drawString(this.font, "Dashboard", x + 16, y - 14, 0xFFFFFF, true);
-
-        // Column Setup - Width 840 allows 3 columns of width 264 with 12px gaps
         int col1X = x + 12;
         int col2X = x + 288;
         int col3X = x + 564;
         int panelWidth = 264;
 
-        // --- COL 1: System Info ---
+        // --- COL 1: System Info & Memory ---
         int p1Y = y + 12;
-        g.fill(col1X, p1Y, col1X + panelWidth, p1Y + 240, 0xFF2A2B2D);
-        g.fill(col1X + 1, p1Y + 1, col1X + panelWidth - 1, p1Y + 239, 0xFF1E1E1E);
+        int p1H = 190; // Height adjusted to comfortably fit Check Updates button
+
+        g.fill(col1X, p1Y, col1X + panelWidth, p1Y + p1H, 0xFF2A2B2D);
+        g.fill(col1X + 1, p1Y + 1, col1X + panelWidth - 1, p1Y + p1H - 1, 0xFF1E1E1E);
 
         g.drawString(this.font, "TrueNAS SCALE", col1X + 10, p1Y + 10, 0xFFFFFF, false);
         g.fill(col1X + 10, p1Y + 24, col1X + panelWidth - 10, p1Y + 44, 0xFF111111);
-        g.fill(col1X + 15, p1Y + 32, col1X + 20, p1Y + 37, 0xFF22C55E); // LEDs
+        g.fill(col1X + 15, p1Y + 32, col1X + 20, p1Y + 37, 0xFF22C55E);
         g.fill(col1X + 35, p1Y + 32, col1X + 40, p1Y + 37, 0xFF22C55E);
+        g.fill(col1X + 55, p1Y + 32, col1X + 60, p1Y + 37, 0xFF0092C8);
+        g.fill(col1X + 75, p1Y + 32, col1X + 80, p1Y + 37, 0xFF22C55E);
 
         g.drawString(this.font, "System Information", col1X + 10, p1Y + 56, 0xFF0092C8, false);
-        g.fill(col1X + 10, p1Y + 70, col1X + panelWidth - 10, p1Y + 71, 0xFF333333);
+        g.fill(col1X + 10, p1Y + 68, col1X + panelWidth - 10, p1Y + 69, 0xFF333333);
 
-        g.drawString(this.font, "Overview", col1X + 10, p1Y + 80, 0xAAAAAA, false);
-        g.drawString(this.font, "Platform: TRUENAS-MINI-R", col1X + 10, p1Y + 100, 0xAAAAAA, false);
-        g.drawString(this.font, "Version: ElectricEel-24.10.0-MASTER-2...", col1X + 10, p1Y + 120, 0xAAAAAA, false);
-        g.drawString(this.font, "Hostname: re-minir-102", col1X + 10, p1Y + 140, 0xAAAAAA, false);
-        g.drawString(this.font, "Uptime: 1h 28m", col1X + 10, p1Y + 160, 0x888888, false);
-        // Check for Updates button is rendered at bottom left via the Button Widget
+        g.drawString(this.font, "Overview", col1X + 10, p1Y + 76, 0xAAAAAA, false);
+        g.drawString(this.font, "Platform: TRUENAS-MINI-R", col1X + 10, p1Y + 92, 0xAAAAAA, false);
+        g.drawString(this.font, "Version: ElectricEel-24.10.0-MASTER-2...", col1X + 10, p1Y + 108, 0xAAAAAA, false);
+        g.drawString(this.font, "Hostname: re-minir-102", col1X + 10, p1Y + 124, 0xAAAAAA, false);
+        g.drawString(this.font, "Uptime: 1h 28m", col1X + 10, p1Y + 140, 0x888888, false);
+        // Note: The Check for Updates button is automatically drawn here by repositionWidgets()
 
-        // --- COL 1: Memory ---
-        int p2Y = y + 264;
-        g.fill(col1X, p2Y, col1X + panelWidth, p2Y + 184, 0xFF2A2B2D);
-        g.fill(col1X + 1, p2Y + 1, col1X + panelWidth - 1, p2Y + 183, 0xFF1E1E1E);
+        int p2Y = y + 212;
+        int p2H = 120;
+        g.fill(col1X, p2Y, col1X + panelWidth, p2Y + p2H, 0xFF2A2B2D);
+        g.fill(col1X + 1, p2Y + 1, col1X + panelWidth - 1, p2Y + p2H - 1, 0xFF1E1E1E);
 
         g.drawString(this.font, "Memory", col1X + 10, p2Y + 10, 0xFFFFFF, false);
         g.pose().pushPose();
         g.pose().scale(1.5f, 1.5f, 1.0f);
-        g.drawString(this.font, "31.3", (int)((col1X + 10) / 1.5f), (int)((p2Y + 36) / 1.5f), 0xFFFFFF, true);
+        g.drawString(this.font, "31.3", (int)((col1X + 10) / 1.5f), (int)((p2Y + 40) / 1.5f), 0xFFFFFF, true);
         g.pose().popPose();
-        g.drawString(this.font, "GiB", col1X + 50, p2Y + 41, 0xAAAAAA, false);
-        g.drawString(this.font, "total available (ECC)", col1X + 10, p2Y + 56, 0x777777, false);
+        g.drawString(this.font, "GiB", col1X + 50, p2Y + 45, 0xAAAAAA, false);
+        g.drawString(this.font, "total available (ECC)", col1X + 10, p2Y + 60, 0x777777, false);
 
-        g.drawString(this.font, "Free: 27.0 GiB", col1X + 22, p2Y + 100, 0xAAAAAA, false);
-        g.fill(col1X + 10, p2Y + 102, col1X + 16, p2Y + 108, 0xFF0092C8);
+        g.fill(col1X + 10, p2Y + 80, col1X + 16, p2Y + 86, 0xFF0092C8);
+        g.drawString(this.font, "Free: 27.0 GiB", col1X + 22, p2Y + 78, 0xAAAAAA, false);
+        g.fill(col1X + 10, p2Y + 95, col1X + 16, p2Y + 101, 0xFFB82DB8);
+        g.drawString(this.font, "ZFS Cache: 1.1 GiB", col1X + 22, p2Y + 93, 0xAAAAAA, false);
+        g.fill(col1X + 10, p2Y + 110, col1X + 16, p2Y + 116, 0xFFE6A23C);
+        g.drawString(this.font, "Services: 3.2 GiB", col1X + 22, p2Y + 108, 0xAAAAAA, false);
 
-        g.drawString(this.font, "ZFS Cache: 1.1 GiB", col1X + 22, p2Y + 120, 0xAAAAAA, false);
-        g.fill(col1X + 10, p2Y + 122, col1X + 16, p2Y + 128, 0xFFB82DB8);
+        // Animated Memory Donut Chart
+        renderAnimatedDonutChart(g, col1X + 190, p2Y + 60, 36, 20, System.currentTimeMillis() / 25.0);
 
-        g.drawString(this.font, "Services: 3.2 GiB", col1X + 22, p2Y + 140, 0xAAAAAA, false);
-        g.fill(col1X + 10, p2Y + 142, col1X + 16, p2Y + 148, 0xFFE6A23C);
-
-        renderMemoryDonutChart(g, col1X + 190, p2Y + 92, 45, 30);
-
-        // --- COL 2: CPU Cores ---
+        // --- COL 2: CPU Graphs ---
         int p3Y = y + 12;
-        g.fill(col2X, p3Y, col2X + panelWidth, p3Y + 210, 0xFF2A2B2D);
-        g.fill(col2X + 1, p3Y + 1, col2X + panelWidth - 1, p3Y + 209, 0xFF1E1E1E);
+        int p3H = 213;
+        g.fill(col2X, p3Y, col2X + panelWidth, p3Y + p3H, 0xFF2A2B2D);
+        g.fill(col2X + 1, p3Y + 1, col2X + panelWidth - 1, p3Y + p3H - 1, 0xFF1E1E1E);
         g.drawString(this.font, "CPU Usage Per Core", col2X + 10, p3Y + 10, 0xFFFFFF, false);
         renderBarGraph(g, col2X + 20, p3Y + 40, 224, 150, 0xFF0092C8, new float[]{0.22f, 0.48f, 0.16f, 0.75f, 0.40f, 0.68f, 0.14f, 0.48f}, true);
 
-        // --- COL 2: CPU Temp ---
-        int p4Y = y + 234;
-        g.fill(col2X, p4Y, col2X + panelWidth, p4Y + 214, 0xFF2A2B2D);
-        g.fill(col2X + 1, p4Y + 1, col2X + panelWidth - 1, p4Y + 213, 0xFF1E1E1E);
+        int p4Y = y + 235;
+        int p4H = 213;
+        g.fill(col2X, p4Y, col2X + panelWidth, p4Y + p4H, 0xFF2A2B2D);
+        g.fill(col2X + 1, p4Y + 1, col2X + panelWidth - 1, p4Y + p4H - 1, 0xFF1E1E1E);
         g.drawString(this.font, "CPU Temperature Per Core", col2X + 10, p4Y + 10, 0xFFFFFF, false);
         renderBarGraph(g, col2X + 20, p4Y + 40, 224, 150, 0xFFB82DB8, new float[]{0.65f, 0.68f, 0.64f, 0.70f, 0.66f, 0.67f, 0.63f, 0.65f}, true);
 
-        // --- COL 3: CPU Usage / Model ---
+        // --- COL 3: CPU Metrics, Backup Tasks & Storage ---
         int p5aY = y + 12;
-        g.fill(col3X, p5aY, col3X + 126, p5aY + 90, 0xFF2A2B2D);
-        g.fill(col3X + 1, p5aY + 1, col3X + 125, p5aY + 89, 0xFF1E1E1E);
+        int p5H = 90;
+        g.fill(col3X, p5aY, col3X + 127, p5aY + p5H, 0xFF2A2B2D);
+        g.fill(col3X + 1, p5aY + 1, col3X + 126, p5aY + p5H - 1, 0xFF1E1E1E);
         g.drawString(this.font, "CPU Usage", col3X + 10, p5aY + 8, 0xFFFFFF, false);
-        renderMemoryDonutChart(g, col3X + 63, p5aY + 55, 20, 15);
+        renderAnimatedDonutChart(g, col3X + 63, p5aY + 55, 20, 12, System.currentTimeMillis() / 15.0);
         g.drawString(this.font, "1%", col3X + 57, p5aY + 51, 0xFFFFFF, false);
 
-        int p5bX = col3X + 138;
-        g.fill(p5bX, p5aY, p5bX + 126, p5aY + 90, 0xFF2A2B2D);
-        g.fill(p5bX + 1, p5aY + 1, p5bX + 125, p5aY + 89, 0xFF1E1E1E);
+        int p5bX = col3X + 137;
+        g.fill(p5bX, p5aY, p5bX + 127, p5aY + p5H, 0xFF2A2B2D);
+        g.fill(p5bX + 1, p5aY + 1, p5bX + 126, p5aY + p5H - 1, 0xFF1E1E1E);
         g.drawString(this.font, "CPU Model", p5bX + 10, p5aY + 8, 0xFFFFFF, false);
         g.drawString(this.font, "Intel(R) Atom(TM)", p5bX + 10, p5aY + 40, 0xCCCCCC, false);
         g.drawString(this.font, "C3758 @ 2.20GHz", p5bX + 10, p5aY + 54, 0x888888, false);
 
-        // --- COL 3: CPU Recent ---
-        int p6Y = y + 114;
-        g.fill(col3X, p6Y, col3X + panelWidth, p6Y + 90, 0xFF2A2B2D);
-        g.fill(col3X + 1, p6Y + 1, col3X + panelWidth - 1, p6Y + 89, 0xFF1E1E1E);
+        int p6Y = y + 112;
+        int p6H = 90;
+        g.fill(col3X, p6Y, col3X + panelWidth, p6Y + p6H, 0xFF2A2B2D);
+        g.fill(col3X + 1, p6Y + 1, col3X + panelWidth - 1, p6Y + p6H - 1, 0xFF1E1E1E);
         g.drawString(this.font, "CPU Recent Usage", col3X + 10, p6Y + 8, 0xFFFFFF, false);
         g.fill(col3X + 20, p6Y + 70, col3X + 244, p6Y + 71, 0xFF444444);
         for(int i=0; i<15; i++) {
             g.fill(col3X + 20 + (i*15), p6Y + 60 + (int)(Math.sin(System.currentTimeMillis()/300.0 + i)*12), col3X + 22 + (i*15), p6Y + 62 + (int)(Math.sin(System.currentTimeMillis()/300.0 + i)*12), 0xFF0092C8);
         }
 
-        // --- COL 3: Backup Tasks ---
-        int p7Y = y + 216;
-        g.fill(col3X, p7Y, col3X + panelWidth, p7Y + 90, 0xFF2A2B2D);
-        g.fill(col3X + 1, p7Y + 1, col3X + panelWidth - 1, p7Y + 89, 0xFF1E1E1E);
+        int p7Y = y + 212;
+        int p7H = 113;
+        g.fill(col3X, p7Y, col3X + panelWidth, p7Y + p7H, 0xFF2A2B2D);
+        g.fill(col3X + 1, p7Y + 1, col3X + panelWidth - 1, p7Y + p7H - 1, 0xFF1E1E1E);
         g.drawString(this.font, "Backup Tasks", col3X + 10, p7Y + 10, 0xFFFFFF, false);
         g.drawString(this.font, "1 of 1 task failed", col3X + 90, p7Y + 10, 0xFFAA00, false);
         g.drawString(this.font, "Rsync", col3X + 20, p7Y + 46, 0xAAAAAA, false);
@@ -443,32 +519,36 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         g.drawString(this.font, "0 receive tasks", col3X + 90, p7Y + 48, 0x55FF55, false);
         g.drawString(this.font, "Total failed: 1", col3X + 90, p7Y + 60, 0xFFAA00, false);
 
-        // --- COL 3: Storage ---
-        int p8Y = y + 318;
-        g.fill(col3X, p8Y, col3X + panelWidth, p8Y + 130, 0xFF2A2B2D);
-        g.fill(col3X + 1, p8Y + 1, col3X + panelWidth - 1, p8Y + 129, 0xFF1E1E1E);
+        int p8Y = y + 335;
+        int p8H = 113;
+        g.fill(col3X, p8Y, col3X + panelWidth, p8Y + p8H, 0xFF2A2B2D);
+        g.fill(col3X + 1, p8Y + 1, col3X + panelWidth - 1, p8Y + p8H - 1, 0xFF1E1E1E);
+
+        long totalItems = getTotalStoredItems();
+        float percent = Math.min(1.0f, (float) totalItems / MAX_ITEM_CAPACITY);
+        double freeTiB = 9.0 - (9.0 * percent);
+
         g.drawString(this.font, "Storage", col3X + 10, p8Y + 10, 0xFFFFFF, false);
-        g.drawString(this.font, "tank", col3X + 10, p8Y + 30, 0xFFFFFF, false);
+        g.drawString(this.font, "tank", col3X + 10, p8Y + 28, 0xFFFFFF, false);
+        g.drawString(this.font, "Status: ONLINE", col3X + 10, p8Y + 46, 0x55FF55, false);
+        g.drawString(this.font, String.format(java.util.Locale.ROOT, "Used Space: %.1f%%", percent * 100), col3X + 10, p8Y + 60, 0x55FF55, false);
+        g.drawString(this.font, "Disks Error: 0", col3X + 10, p8Y + 74, 0x55FF55, false);
+        g.drawString(this.font, String.format(java.util.Locale.ROOT, "Free Space: %.2f TiB", freeTiB), col3X + 120, p8Y + 46, 0xAAAAAA, false);
+        g.drawString(this.font, "Total Disks: 2", col3X + 120, p8Y + 60, 0xAAAAAA, false);
 
-        g.drawString(this.font, "Status: ONLINE", col3X + 10, p8Y + 50, 0x55FF55, false);
-        g.drawString(this.font, "Used Space: 0%", col3X + 10, p8Y + 65, 0x55FF55, false);
-        g.drawString(this.font, "Disks Error: 0", col3X + 10, p8Y + 80, 0x55FF55, false);
-
-        g.drawString(this.font, "Free Space: 1.75 TiB", col3X + 120, p8Y + 50, 0xAAAAAA, false);
-        g.drawString(this.font, "Total Disks: 2", col3X + 120, p8Y + 65, 0xAAAAAA, false);
-
-        g.fill(col3X + 10, p8Y + 100, col3X + panelWidth - 10, p8Y + 120, 0xFF222222);
-        g.drawString(this.font, "Create Pool", col3X + 100, p8Y + 106, 0x888888, false);
+        g.fill(col3X + 10, p8Y + 90, col3X + panelWidth - 10, p8Y + 105, 0xFF222222);
+        g.drawString(this.font, "Create Pool", col3X + 105, p8Y + 94, 0x888888, false);
     }
 
-    private void renderMemoryDonutChart(GuiGraphics g, int centerX, int centerY, int outerR, int innerR) {
+    private void renderAnimatedDonutChart(GuiGraphics g, int centerX, int centerY, int outerR, int innerR, double timeOffset) {
         int freeColor = 0xFF0092C8;
         int zfsColor = 0xFFB82DB8;
         int serviceColor = 0xFFE6A23C;
 
         for (int r = innerR; r <= outerR; r++) {
-            for (int angle = 0; angle < 360; angle += 2) {
-                double rad = Math.toRadians(angle);
+            for (int angle = 0; angle < 360; angle += 4) {
+                double animatedAngle = (angle + timeOffset) % 360;
+                double rad = Math.toRadians(animatedAngle);
                 int px = centerX + (int) (r * Math.cos(rad));
                 int py = centerY + (int) (r * Math.sin(rad));
                 int color = (angle < 280) ? freeColor : (angle < 320 ? zfsColor : serviceColor);
@@ -526,9 +606,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         if (currentTab == Tab.ITEMS) {
             for (int row = 0; row < 6; row++) {
                 for (int col = 0; col < 9; col++) {
-                    int slotX = x + 7 + col * 18;
-                    int slotY = y + 20 + row * 18;
-                    renderRecessedSlotBox(g, slotX, slotY);
+                    renderRecessedSlotBox(g, x + 7 + col * 18, y + 20 + row * 18);
                 }
             }
 
@@ -540,7 +618,9 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         } else if (currentTab == Tab.FILES) {
             g.fill(x + 7, y + 20, trackX - 2, y + 108, 0xFF141414);
 
-            List<StoredFile> files = this.menu.getFiles();
+            List<StoredFile> files = this.menu.getFiles().stream()
+                    .filter(f -> this.fileSearchTerm.isEmpty() || f.getName().toLowerCase().contains(this.fileSearchTerm) || f.getLanguage().toLowerCase().contains(this.fileSearchTerm))
+                    .toList();
             int scrollLines = Math.max(0, files.size() - 6);
             int startIdx = (int)(this.fileScrollOffset * scrollLines);
 
@@ -587,10 +667,13 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
             int barWidth = Math.min(sideW - 16, 120);
 
             if (currentTab == Tab.ITEMS) {
-                g.drawString(this.font, "Capacity", sideX + 8, y + 79, 0xAAAAAA, false);
+                long totalItems = getTotalStoredItems();
+                float percent = Math.min(1.0f, (float) totalItems / MAX_ITEM_CAPACITY);
+
+                g.drawString(this.font, "Capacity (9 TiB)", sideX + 8, y + 79, 0xAAAAAA, false);
                 g.fill(sideX + 8, y + 91, sideX + 8 + barWidth, y + 99, 0xFF333333);
-                g.fill(sideX + 8, y + 91, sideX + 8 + (int) (barWidth * 0.35f), y + 99, 0xFF0092C8);
-                g.drawString(this.font, "35% Used", sideX + 8, y + 103, 0x888888, false);
+                g.fill(sideX + 8, y + 91, sideX + 8 + (int) (barWidth * percent), y + 99, 0xFF0092C8);
+                g.drawString(this.font, String.format(java.util.Locale.ROOT, "%.1f%% Used", percent * 100), sideX + 8, y + 103, 0x888888, false);
             } else {
                 g.drawString(this.font, "File Capacity (10 MB)", sideX + 8, y + 79, 0xAAAAAA, false);
                 g.fill(sideX + 8, y + 91, sideX + 8 + barWidth, y + 99, 0xFF333333);
@@ -651,7 +734,6 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
 
             while (!line.isEmpty() && drawY < modalY + modalH - 15) {
                 String renderLine = line;
-                // Safely reduce the line character by character until it fits within the box
                 while (this.font.width(renderLine) > maxTextWidth && renderLine.length() > 0) {
                     renderLine = renderLine.substring(0, renderLine.length() - 1);
                 }
@@ -704,9 +786,10 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
     @Override
     protected List<Component> getTooltipFromContainerItem(ItemStack stack) {
         List<Component> tooltip = super.getTooltipFromContainerItem(stack);
-        if (stack.getCount() >= LARGE_COUNT_THRESHOLD) {
+        int realCount = StorageServerBlockEntity.getRealCount(stack);
+        if (realCount >= LARGE_COUNT_THRESHOLD) {
             tooltip = new ArrayList<>(tooltip);
-            tooltip.add(Component.literal(String.format(java.util.Locale.ROOT, "%,d", stack.getCount()))
+            tooltip.add(Component.literal(String.format(java.util.Locale.ROOT, "%,d", realCount))
                     .withStyle(ChatFormatting.GRAY));
         }
         return tooltip;
