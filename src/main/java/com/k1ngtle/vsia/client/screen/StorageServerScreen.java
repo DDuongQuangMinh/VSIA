@@ -44,7 +44,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
     }
 
     public enum Tab {
-        ITEMS, FILES
+        ITEMS, FILES, NETWORK
     }
 
     private TerminalSize currentSize = TerminalSize.NORMAL;
@@ -59,6 +59,12 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
 
     private Button uploadButton;
     private Button deleteButton;
+
+    private EditBox ipBox;
+    private EditBox ipv6Box;
+    private EditBox subnetBox;
+    private EditBox gatewayBox;
+    private Button dhcpButton;
 
     public StorageServerScreen(StorageServerMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
@@ -121,6 +127,47 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         this.deleteButton.visible = false;
         this.addRenderableWidget(this.deleteButton);
 
+        this.ipBox = new EditBox(this.font, this.leftPos + 90, this.topPos + 34, 85, 12, Component.literal("IPv4 Address"));
+        this.ipBox.setMaxLength(15);
+        this.ipBox.setVisible(false);
+        this.addRenderableWidget(this.ipBox);
+
+        this.ipv6Box = new EditBox(this.font, this.leftPos + 90, this.topPos + 50, 85, 12, Component.literal("IPv6 Address"));
+        this.ipv6Box.setMaxLength(40);
+        this.ipv6Box.setVisible(false);
+        this.addRenderableWidget(this.ipv6Box);
+
+        this.subnetBox = new EditBox(this.font, this.leftPos + 90, this.topPos + 66, 85, 12, Component.literal("Subnet Mask"));
+        this.subnetBox.setMaxLength(15);
+        this.subnetBox.setVisible(false);
+        this.addRenderableWidget(this.subnetBox);
+
+        this.gatewayBox = new EditBox(this.font, this.leftPos + 90, this.topPos + 82, 85, 12, Component.literal("Gateway"));
+        this.gatewayBox.setMaxLength(15);
+        this.gatewayBox.setVisible(false);
+        this.addRenderableWidget(this.gatewayBox);
+
+        this.dhcpButton = Button.builder(
+                Component.literal("DHCP: ON"),
+                b -> {
+                    if (this.menu.blockEntity != null) {
+                        boolean current = this.menu.blockEntity.isDhcpEnabled();
+                        this.menu.blockEntity.setDhcpEnabled(!current);
+                        b.setMessage(Component.literal("DHCP: " + (!current ? "ON" : "OFF")));
+                    }
+                }
+        ).bounds(this.leftPos + 90, this.topPos + 98, 85, 18).build();
+        this.dhcpButton.visible = false;
+        this.addRenderableWidget(this.dhcpButton);
+
+        if (this.menu.blockEntity != null) {
+            this.ipBox.setValue(this.menu.blockEntity.getIpAddress());
+            this.ipv6Box.setValue(this.menu.blockEntity.getIpv6Address());
+            this.subnetBox.setValue(this.menu.blockEntity.getSubnetMask());
+            this.gatewayBox.setValue(this.menu.blockEntity.getGateway());
+            this.dhcpButton.setMessage(Component.literal("DHCP: " + (this.menu.blockEntity.isDhcpEnabled() ? "ON" : "OFF")));
+        }
+
         repositionWidgets();
     }
 
@@ -143,6 +190,14 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         this.menu.slotsVisible = (!this.isDashboard && this.currentTab == Tab.ITEMS && this.openFile == null);
         if (this.uploadButton != null) this.uploadButton.visible = (!this.isDashboard && this.currentTab == Tab.FILES && this.openFile == null);
         if (this.deleteButton != null) this.deleteButton.visible = (!this.isDashboard && this.currentTab == Tab.FILES && this.openFile == null);
+        if (this.searchBox != null) this.searchBox.setVisible(!this.isDashboard && this.currentTab != Tab.NETWORK);
+
+        boolean showNetwork = (!this.isDashboard && this.currentTab == Tab.NETWORK);
+        if (this.ipBox != null) this.ipBox.setVisible(showNetwork);
+        if (this.ipv6Box != null) this.ipv6Box.setVisible(showNetwork);
+        if (this.subnetBox != null) this.subnetBox.setVisible(showNetwork);
+        if (this.gatewayBox != null) this.gatewayBox.setVisible(showNetwork);
+        if (this.dhcpButton != null) this.dhcpButton.visible = showNetwork;
     }
 
     private void toggleMode() {
@@ -151,7 +206,6 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         this.modeToggleButton.setMessage(Component.literal(isDashboard ? "Configure" : "Dashboard"));
         this.sizeToggleButton.visible = !isDashboard;
         this.checkUpdatesButton.visible = isDashboard;
-        this.searchBox.setVisible(!isDashboard);
 
         updateVisibility();
         updateDimensions();
@@ -178,7 +232,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         if (this.checkUpdatesButton != null) {
             int col1X = this.leftPos + 12;
             int p1Y = this.topPos + 12;
-            this.checkUpdatesButton.setPosition(col1X + 10, p1Y + 160);
+            this.checkUpdatesButton.setPosition(col1X + 10, p1Y + 174);
         }
 
         if (this.searchBox != null) {
@@ -190,6 +244,12 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         if (this.deleteButton != null) {
             this.deleteButton.setPosition(this.leftPos + 94, this.topPos + 112);
         }
+
+        if (this.ipBox != null) this.ipBox.setPosition(this.leftPos + 90, this.topPos + 34);
+        if (this.ipv6Box != null) this.ipv6Box.setPosition(this.leftPos + 90, this.topPos + 50);
+        if (this.subnetBox != null) this.subnetBox.setPosition(this.leftPos + 90, this.topPos + 66);
+        if (this.gatewayBox != null) this.gatewayBox.setPosition(this.leftPos + 90, this.topPos + 82);
+        if (this.dhcpButton != null) this.dhcpButton.setPosition(this.leftPos + 90, this.topPos + 98);
     }
 
     private long getTotalStoredItems() {
@@ -268,9 +328,11 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         }
 
         if (!isDashboard) {
-            g.fill(this.leftPos + 105, this.topPos + 4, this.leftPos + 210, this.topPos + 20, 0xFF141414);
-            g.fill(this.leftPos + 106, this.topPos + 5, this.leftPos + 209, this.topPos + 19, 0xFF000000);
-            this.searchBox.render(g, mouseX, mouseY, partialTick);
+            if (this.currentTab != Tab.NETWORK) {
+                g.fill(this.leftPos + 105, this.topPos + 4, this.leftPos + 210, this.topPos + 20, 0xFF141414);
+                g.fill(this.leftPos + 106, this.topPos + 5, this.leftPos + 209, this.topPos + 19, 0xFF000000);
+                this.searchBox.render(g, mouseX, mouseY, partialTick);
+            }
 
             if (openFile != null) {
                 renderFileViewerOverlay(g, mouseX, mouseY);
@@ -286,24 +348,32 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
 
     @Override
     public boolean keyPressed(int pKeyCode, int pScanCode, int pModifiers) {
-        if (!this.isDashboard && this.searchBox.isFocused()) {
+        if (!this.isDashboard) {
             if (pKeyCode == 256) { // Escape
-                this.searchBox.setFocused(false);
+                if (this.searchBox != null) this.searchBox.setFocused(false);
+                if (this.ipBox != null) this.ipBox.setFocused(false);
+                if (this.ipv6Box != null) this.ipv6Box.setFocused(false);
+                if (this.subnetBox != null) this.subnetBox.setFocused(false);
+                if (this.gatewayBox != null) this.gatewayBox.setFocused(false);
                 return true;
             }
-            if (this.searchBox.keyPressed(pKeyCode, pScanCode, pModifiers)) {
-                return true;
-            }
+            if (this.searchBox != null && this.searchBox.isFocused() && this.searchBox.keyPressed(pKeyCode, pScanCode, pModifiers)) return true;
+            if (this.ipBox != null && this.ipBox.isFocused() && this.ipBox.keyPressed(pKeyCode, pScanCode, pModifiers)) return true;
+            if (this.ipv6Box != null && this.ipv6Box.isFocused() && this.ipv6Box.keyPressed(pKeyCode, pScanCode, pModifiers)) return true;
+            if (this.subnetBox != null && this.subnetBox.isFocused() && this.subnetBox.keyPressed(pKeyCode, pScanCode, pModifiers)) return true;
+            if (this.gatewayBox != null && this.gatewayBox.isFocused() && this.gatewayBox.keyPressed(pKeyCode, pScanCode, pModifiers)) return true;
         }
         return super.keyPressed(pKeyCode, pScanCode, pModifiers);
     }
 
     @Override
     public boolean charTyped(char pCodePoint, int pModifiers) {
-        if (!this.isDashboard && this.searchBox.isFocused()) {
-            if (this.searchBox.charTyped(pCodePoint, pModifiers)) {
-                return true;
-            }
+        if (!this.isDashboard) {
+            if (this.searchBox != null && this.searchBox.isFocused() && this.searchBox.charTyped(pCodePoint, pModifiers)) return true;
+            if (this.ipBox != null && this.ipBox.isFocused() && this.ipBox.charTyped(pCodePoint, pModifiers)) return true;
+            if (this.ipv6Box != null && this.ipv6Box.isFocused() && this.ipv6Box.charTyped(pCodePoint, pModifiers)) return true;
+            if (this.subnetBox != null && this.subnetBox.isFocused() && this.subnetBox.charTyped(pCodePoint, pModifiers)) return true;
+            if (this.gatewayBox != null && this.gatewayBox.isFocused() && this.gatewayBox.charTyped(pCodePoint, pModifiers)) return true;
         }
         return super.charTyped(pCodePoint, pModifiers);
     }
@@ -311,11 +381,15 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (!isDashboard) {
-            if (this.searchBox.mouseClicked(mouseX, mouseY, button)) {
-                this.searchBox.setFocused(true);
-                return true;
-            } else {
-                this.searchBox.setFocused(false);
+            if (this.searchBox != null && this.searchBox.mouseClicked(mouseX, mouseY, button)) {
+                this.searchBox.setFocused(true); return true;
+            } else if (this.searchBox != null) { this.searchBox.setFocused(false); }
+
+            if (this.currentTab == Tab.NETWORK) {
+                if (this.ipBox != null && this.ipBox.mouseClicked(mouseX, mouseY, button)) { this.ipBox.setFocused(true); return true; } else if (this.ipBox != null) { this.ipBox.setFocused(false); }
+                if (this.ipv6Box != null && this.ipv6Box.mouseClicked(mouseX, mouseY, button)) { this.ipv6Box.setFocused(true); return true; } else if (this.ipv6Box != null) { this.ipv6Box.setFocused(false); }
+                if (this.subnetBox != null && this.subnetBox.mouseClicked(mouseX, mouseY, button)) { this.subnetBox.setFocused(true); return true; } else if (this.subnetBox != null) { this.subnetBox.setFocused(false); }
+                if (this.gatewayBox != null && this.gatewayBox.mouseClicked(mouseX, mouseY, button)) { this.gatewayBox.setFocused(true); return true; } else if (this.gatewayBox != null) { this.gatewayBox.setFocused(false); }
             }
 
             int x = this.leftPos;
@@ -330,6 +404,12 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
             }
             if (mouseX >= x - 28 && mouseX <= x && mouseY >= y + 38 && mouseY <= y + 62) {
                 this.currentTab = Tab.FILES;
+                this.openFile = null;
+                updateVisibility();
+                return true;
+            }
+            if (mouseX >= x - 28 && mouseX <= x && mouseY >= y + 66 && mouseY <= y + 90) {
+                this.currentTab = Tab.NETWORK;
                 this.openFile = null;
                 updateVisibility();
                 return true;
@@ -422,7 +502,7 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
 
         // --- COL 1: System Info & Memory ---
         int p1Y = y + 12;
-        int p1H = 190; // Height adjusted to comfortably fit Check Updates button
+        int p1H = 198; // Adjusted height for Check Updates button
 
         g.fill(col1X, p1Y, col1X + panelWidth, p1Y + p1H, 0xFF2A2B2D);
         g.fill(col1X + 1, p1Y + 1, col1X + panelWidth - 1, p1Y + p1H - 1, 0xFF1E1E1E);
@@ -441,7 +521,10 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         g.drawString(this.font, "Platform: TRUENAS-MINI-R", col1X + 10, p1Y + 92, 0xAAAAAA, false);
         g.drawString(this.font, "Version: ElectricEel-24.10.0-MASTER-2...", col1X + 10, p1Y + 108, 0xAAAAAA, false);
         g.drawString(this.font, "Hostname: re-minir-102", col1X + 10, p1Y + 124, 0xAAAAAA, false);
-        g.drawString(this.font, "Uptime: 1h 28m", col1X + 10, p1Y + 140, 0x888888, false);
+
+        String displayIp = this.menu.blockEntity != null ? this.menu.blockEntity.getIpAddress() : "192.168.1.100";
+        g.drawString(this.font, "IP: " + displayIp, col1X + 10, p1Y + 140, 0xAAAAAA, false);
+        g.drawString(this.font, "Uptime: 1h 28m", col1X + 10, p1Y + 156, 0x888888, false);
         // Note: The Check for Updates button is automatically drawn here by repositionWidgets()
 
         int p2Y = y + 212;
@@ -595,6 +678,10 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
         g.fill(x - 27, y + 39, x, y + 61, currentTab == Tab.FILES ? 0xFF212224 : 0xFF1E1E1E);
         g.drawString(this.font, "F", x - 18, y + 46, currentTab == Tab.FILES ? 0xFFFFFF : 0x888888, false);
 
+        g.fill(x - 28, y + 66, x, y + 90, currentTab == Tab.NETWORK ? 0xFF2A2B2D : 0xFF141414);
+        g.fill(x - 27, y + 67, x, y + 89, currentTab == Tab.NETWORK ? 0xFF212224 : 0xFF1E1E1E);
+        g.drawString(this.font, "N", x - 18, y + 74, currentTab == Tab.NETWORK ? 0xFFFFFF : 0x888888, false);
+
         g.fill(x, y, x + this.imageWidth, y + this.imageHeight, 0xFF2A2B2D);
         g.fill(x + 1, y + 1, x + this.imageWidth - 1, y + this.imageHeight - 1, 0xFF212224);
 
@@ -642,6 +729,21 @@ public class StorageServerScreen extends AbstractContainerScreen<StorageServerMe
             int thumbY = trackY + 1 + (int) (this.fileScrollOffset * 91.0f);
             g.fill(trackX + 1, thumbY, trackX + 13, thumbY + 15, 0xFFB82DB8);
             g.fill(trackX + 2, thumbY + 1, trackX + 12, thumbY + 14, 0xFF9C269C);
+        } else if (currentTab == Tab.NETWORK) {
+            g.drawString(this.font, "Network Configuration", x + 10, y + 22, 0x0092C8, false);
+            g.drawString(this.font, "IPv4 Address", x + 10, y + 36, 0xAAAAAA, false);
+            g.drawString(this.font, "IPv6 Address", x + 10, y + 52, 0xAAAAAA, false);
+            g.drawString(this.font, "Subnet Mask", x + 10, y + 68, 0xAAAAAA, false);
+            g.drawString(this.font, "Default Gateway", x + 10, y + 84, 0xAAAAAA, false);
+            g.drawString(this.font, "DHCP Mode", x + 10, y + 103, 0xAAAAAA, false);
+
+            if (this.menu.blockEntity != null) {
+                // Instantly sync visual text entry fields with block entity on the client
+                this.menu.blockEntity.setIpAddress(this.ipBox.getValue());
+                this.menu.blockEntity.setIpv6Address(this.ipv6Box.getValue());
+                this.menu.blockEntity.setSubnetMask(this.subnetBox.getValue());
+                this.menu.blockEntity.setGateway(this.gatewayBox.getValue());
+            }
         }
 
         g.drawString(this.font, "Inventory", x + 8, y + 133, 0x888888, false);

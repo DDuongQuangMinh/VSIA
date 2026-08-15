@@ -7,6 +7,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -18,8 +19,7 @@ import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.items.IItemHandler;
-import net.minecraftforge.items.IItemHandlerModifiable;
-import net.minecraftforge.items.ItemHandlerHelper;
+import net.minecraftforge.items.ItemStackHandler;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import software.bernie.geckolib.animatable.GeoBlockEntity;
@@ -27,7 +27,6 @@ import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache
 import software.bernie.geckolib.core.animation.AnimatableManager;
 import software.bernie.geckolib.core.animation.AnimationController;
 import software.bernie.geckolib.core.animation.RawAnimation;
-import software.bernie.geckolib.core.object.PlayState;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
 import java.util.ArrayList;
@@ -35,11 +34,87 @@ import java.util.List;
 
 public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEntity, MenuProvider {
 
-    private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
-    public static final int MAX_FILE_STORAGE_BYTES = 10 * 1024 * 1024;
-    public static final int MAX_ITEM_CAPACITY = 600000; // Updated to 600,000
+    public static final int MAX_FILE_STORAGE_BYTES = 10 * 1024 * 1024; // 10 MB limit for text files
+    public static final int MAX_ITEM_CAPACITY = 600000; // Updated to 600,000 custom stack size limit
+    private static final int INVENTORY_SLOTS = 360; // Huge inventory, 40 rows of 9 slots
 
+    private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
+
+    // Network Configuration Properties
+    private String ipAddress = "192.168.1.100";
+    private String ipv6Address = "fe80::1";
+    private String subnetMask = "255.255.255.0";
+    private String gateway = "192.168.1.1";
+    private boolean dhcpEnabled = true;
+
+    // File Storage System
     private final List<StoredFile> storedFiles = new ArrayList<>();
+
+    // Item Storage System
+    private final ItemStackHandler itemHandler = new ItemStackHandler(INVENTORY_SLOTS) {
+        @Override
+        protected void onContentsChanged(int slot) {
+            setChanged();
+        }
+
+        @Override
+        public int getSlotLimit(int slot) {
+            return MAX_ITEM_CAPACITY;
+        }
+
+        @Override
+        protected int getStackLimit(int slot, @NotNull ItemStack stack) {
+            return MAX_ITEM_CAPACITY;
+        }
+    };
+
+    private final LazyOptional<IItemHandler> lazyItemHandler = LazyOptional.of(() -> itemHandler);
+
+    public StorageServerBlockEntity(BlockPos pos, BlockState state) {
+        super(SignalityBlocks.STORAGE_SERVER_BE.get(), pos, state);
+        initDefaultFilesIfEmpty();
+    }
+
+    public String getIpAddress() { return ipAddress; }
+    public void setIpAddress(String ipAddress) { this.ipAddress = ipAddress; setChanged(); }
+
+    public String getIpv6Address() { return ipv6Address; }
+    public void setIpv6Address(String ipv6Address) { this.ipv6Address = ipv6Address; setChanged(); }
+
+    public String getSubnetMask() { return subnetMask; }
+    public void setSubnetMask(String subnetMask) { this.subnetMask = subnetMask; setChanged(); }
+
+    public String getGateway() { return gateway; }
+    public void setGateway(String gateway) { this.gateway = gateway; setChanged(); }
+
+    public boolean isDhcpEnabled() { return dhcpEnabled; }
+    public void setDhcpEnabled(boolean dhcpEnabled) { this.dhcpEnabled = dhcpEnabled; setChanged(); }
+
+    private void initDefaultFilesIfEmpty() {
+        if (storedFiles.isEmpty()) {
+            storedFiles.add(new StoredFile("readme.txt", "text", "Welcome to TrueNAS SCALE VSIA Edition.\nThis server provides robust item and script storage.\nCapacity: 9TiB Block Storage / 10MB Object Storage."));
+            storedFiles.add(new StoredFile("config.json", "json", "{\n  \"server_name\": \"re-minir-102\",\n  \"pool_name\": \"tank\",\n  \"auto_sync\": true\n}"));
+        }
+    }
+
+    public List<StoredFile> getStoredFiles() {
+        return storedFiles;
+    }
+
+    public boolean addStoredFile(StoredFile file) {
+        int currentSize = storedFiles.stream().mapToInt(StoredFile::getSizeInBytes).sum();
+        if (currentSize + file.getSizeInBytes() > MAX_FILE_STORAGE_BYTES) {
+            return false;
+        }
+        storedFiles.add(file);
+        setChanged();
+        return true;
+    }
+
+    public void removeStoredFile(StoredFile file) {
+        storedFiles.remove(file);
+        setChanged();
+    }
 
     public static int getRealCount(ItemStack stack) {
         if (stack.isEmpty()) return 0;
@@ -50,7 +125,7 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
     }
 
     public static void setRealCount(ItemStack stack, int count) {
-        if (count <= 0) {
+        if (stack.isEmpty() || count <= 0) {
             stack.setCount(0);
             if (stack.hasTag()) {
                 stack.getTag().remove("VSIA_Count");
@@ -58,207 +133,29 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
             }
             return;
         }
-        if (count <= stack.getMaxStackSize()) {
-            stack.setCount(count);
-            if (stack.hasTag()) {
-                stack.getTag().remove("VSIA_Count");
-                if (stack.getTag().isEmpty()) stack.setTag(null);
-            }
-        } else {
-            stack.setCount(stack.getMaxStackSize());
-            stack.getOrCreateTag().putInt("VSIA_Count", count);
-        }
+
+        stack.setCount(1); // Vanilla stack size limit workaround
+        stack.getOrCreateTag().putInt("VSIA_Count", count);
     }
 
-    public static boolean canMergeItems(ItemStack stack1, ItemStack stack2) {
-        if (stack1.isEmpty() || stack2.isEmpty()) return false;
-        if (stack1.getItem() != stack2.getItem()) return false;
+    public static boolean canMergeItems(ItemStack a, ItemStack b) {
+        if (a.isEmpty() || b.isEmpty()) return false;
+        if (a.getItem() != b.getItem()) return false;
+        if (a.getDamageValue() != b.getDamageValue()) return false;
 
-        CompoundTag tag1 = stack1.getTag();
-        CompoundTag tag2 = stack2.getTag();
+        // Custom NBT comparison ignoring our VSIA_Count tag
+        CompoundTag tagA = a.hasTag() ? a.getTag().copy() : new CompoundTag();
+        CompoundTag tagB = b.hasTag() ? b.getTag().copy() : new CompoundTag();
+        tagA.remove("VSIA_Count");
+        tagB.remove("VSIA_Count");
 
-        if (tag1 == null && tag2 == null) return true;
-
-        CompoundTag copy1 = tag1 != null ? tag1.copy() : new CompoundTag();
-        copy1.remove("VSIA_Count");
-        if (copy1.isEmpty()) copy1 = null;
-
-        CompoundTag copy2 = tag2 != null ? tag2.copy() : new CompoundTag();
-        copy2.remove("VSIA_Count");
-        if (copy2.isEmpty()) copy2 = null;
-
-        if (copy1 == null && copy2 == null) return true;
-        if (copy1 == null || copy2 == null) return false;
-
-        return copy1.equals(copy2);
-    }
-
-    private final IItemHandlerModifiable itemHandler = new IItemHandlerModifiable() {
-        private net.minecraft.core.NonNullList<ItemStack> stacks = net.minecraft.core.NonNullList.withSize(360, ItemStack.EMPTY);
-
-        @Override
-        public void setStackInSlot(int slot, @NotNull ItemStack stack) {
-            stacks.set(slot, stack);
-            setChanged();
-        }
-
-        @Override
-        public int getSlots() { return 360; }
-
-        @Override
-        public @NotNull ItemStack getStackInSlot(int slot) { return stacks.get(slot); }
-
-        @Override
-        public @NotNull ItemStack insertItem(int slot, @NotNull ItemStack stack, boolean simulate) {
-            if (stack.isEmpty()) return ItemStack.EMPTY;
-            ItemStack existing = stacks.get(slot);
-            int limit = MAX_ITEM_CAPACITY;
-
-            if (!existing.isEmpty()) {
-                if (!canMergeItems(stack, existing)) return stack;
-                limit -= getRealCount(existing);
-            }
-
-            if (limit <= 0) return stack;
-            int insert = Math.min(stack.getCount(), limit);
-
-            if (!simulate) {
-                if (existing.isEmpty()) {
-                    ItemStack copy = stack.copy();
-                    setRealCount(copy, insert);
-                    stacks.set(slot, copy);
-                } else {
-                    setRealCount(existing, getRealCount(existing) + insert);
-                }
-                setChanged();
-            }
-
-            ItemStack remainder = stack.copy();
-            remainder.shrink(insert);
-            return remainder;
-        }
-
-        @Override
-        public @NotNull ItemStack extractItem(int slot, int amount, boolean simulate) {
-            if (amount <= 0) return ItemStack.EMPTY;
-            ItemStack existing = stacks.get(slot);
-            if (existing.isEmpty()) return ItemStack.EMPTY;
-
-            int existingCount = getRealCount(existing);
-            int extract = Math.min(amount, existingCount);
-
-            ItemStack extracted = existing.copy();
-            extracted.setCount(Math.min(extract, extracted.getMaxStackSize()));
-            setRealCount(extracted, extract);
-
-            if (!simulate) {
-                setRealCount(existing, existingCount - extract);
-                if (getRealCount(existing) <= 0) stacks.set(slot, ItemStack.EMPTY);
-                setChanged();
-            }
-
-            return extracted;
-        }
-
-        @Override
-        public int getSlotLimit(int slot) { return MAX_ITEM_CAPACITY; }
-
-        @Override
-        public boolean isItemValid(int slot, @NotNull ItemStack stack) { return true; }
-    };
-
-    private LazyOptional<IItemHandler> lazyItemHandler = LazyOptional.empty();
-
-    public StorageServerBlockEntity(BlockPos pos, BlockState state) {
-        super(SignalityBlocks.STORAGE_SERVER_BE.get(), pos, state);
-        initDefaultFilesIfEmpty();
-    }
-
-    private void initDefaultFilesIfEmpty() {
-        if (storedFiles.isEmpty()) {
-            storedFiles.add(new StoredFile("main.py", "python", "# Main Python Script\nprint('Storage Server Active')\nimport time\ntime.sleep(1)"));
-            storedFiles.add(new StoredFile("core.cpp", "c++", "#include <iostream>\nint main() {\n    std::cout << \"VSIA Storage Online\" << std::endl;\n    return 0;\n}"));
-            storedFiles.add(new StoredFile("api.cs", "c#", "using System;\nnamespace Server {\n    class Program {\n        static void Main() { Console.WriteLine(\"C# API Ready\"); }\n    }\n}"));
-            storedFiles.add(new StoredFile("script.lua", "lua", "-- Server Control Script\nfunction init()\n    print(\"Lua Engine Initialized\")\nend"));
-            storedFiles.add(new StoredFile("index.html", "web", "<!DOCTYPE html>\n<html>\n<head><title>Storage Console</title></head>\n<body><h1>Storage Server</h1></body>\n</html>"));
-            storedFiles.add(new StoredFile("app.js", "web", "console.log('App running...');\nconst totalSlots = 360;\nconst maxCap = '10MB';"));
-            storedFiles.add(new StoredFile("style.css", "web", "body { background: #18191B; color: #0092C8; font-family: monospace; }"));
-        }
-    }
-
-    public List<StoredFile> getStoredFiles() {
-        return storedFiles;
-    }
-
-    public int getTotalUsedFileBytes() {
-        int total = 0;
-        for (StoredFile file : storedFiles) {
-            total += file.getSizeInBytes();
-        }
-        return total;
-    }
-
-    public boolean addFile(StoredFile file) {
-        if (getTotalUsedFileBytes() + file.getSizeInBytes() <= MAX_FILE_STORAGE_BYTES) {
-            storedFiles.add(file);
-            setChanged();
-            return true;
-        }
-        return false;
-    }
-
-    @Override
-    public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        controllers.add(new AnimationController<>(this, "controller", 0, event -> PlayState.CONTINUE)
-                .triggerableAnim("place", RawAnimation.begin().thenPlay("checking")));
-    }
-
-    public void playPlacementAnimation() {
-        this.triggerAnim("controller", "place");
-    }
-
-    @Override
-    public AnimatableInstanceCache getAnimatableInstanceCache() {
-        return this.cache;
-    }
-
-    @Override
-    public @NotNull <T> LazyOptional<T> getCapability(@NotNull Capability<T> cap, @Nullable net.minecraft.core.Direction side) {
-        if (cap == ForgeCapabilities.ITEM_HANDLER) {
-            return lazyItemHandler.cast();
-        }
-        return super.getCapability(cap, side);
-    }
-
-    @Override
-    public void onLoad() {
-        super.onLoad();
-        lazyItemHandler = LazyOptional.of(() -> itemHandler);
-    }
-
-    @Override
-    public void invalidateCaps() {
-        super.invalidateCaps();
-        lazyItemHandler.invalidate();
+        return tagA.equals(tagB);
     }
 
     @Override
     protected void saveAdditional(CompoundTag tag) {
-        ListTag nbtTagList = new ListTag();
-        for (int i = 0; i < 360; i++) {
-            ItemStack stack = itemHandler.getStackInSlot(i);
-            if (!stack.isEmpty()) {
-                CompoundTag itemTag = new CompoundTag();
-                itemTag.putInt("Slot", i);
-                stack.save(itemTag);
-                // EXPLICITLY save the giant integer to bypass Vanilla byte truncation on reload
-                itemTag.putInt("ExtendedCount", getRealCount(stack));
-                nbtTagList.add(itemTag);
-            }
-        }
-        CompoundTag inventoryTag = new CompoundTag();
-        inventoryTag.put("Items", nbtTagList);
-        tag.put("inventory", inventoryTag);
+        super.saveAdditional(tag);
+        tag.put("Inventory", itemHandler.serializeNBT());
 
         ListTag fileList = new ListTag();
         for (StoredFile file : storedFiles) {
@@ -266,28 +163,18 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
         }
         tag.put("StoredFiles", fileList);
 
-        super.saveAdditional(tag);
+        tag.putString("IPAddress", ipAddress);
+        tag.putString("IPv6Address", ipv6Address);
+        tag.putString("SubnetMask", subnetMask);
+        tag.putString("Gateway", gateway);
+        tag.putBoolean("DHCP", dhcpEnabled);
     }
 
     @Override
     public void load(CompoundTag tag) {
         super.load(tag);
-
-        CompoundTag inventoryTag = tag.getCompound("inventory");
-        ListTag tagList = inventoryTag.getList("Items", Tag.TAG_COMPOUND);
-        for (int i = 0; i < tagList.size(); i++) {
-            CompoundTag itemTags = tagList.getCompound(i);
-            int slot = itemTags.getInt("Slot");
-            if (slot >= 0 && slot < 360) {
-                ItemStack loadedStack = ItemStack.of(itemTags);
-
-                // EXPLICITLY restore the giant integer from our safe save
-                if (itemTags.contains("ExtendedCount")) {
-                    setRealCount(loadedStack, itemTags.getInt("ExtendedCount"));
-                }
-
-                ((IItemHandlerModifiable) itemHandler).setStackInSlot(slot, loadedStack);
-            }
+        if (tag.contains("Inventory")) {
+            itemHandler.deserializeNBT(tag.getCompound("Inventory"));
         }
 
         storedFiles.clear();
@@ -299,6 +186,39 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
         } else {
             initDefaultFilesIfEmpty();
         }
+
+        if (tag.contains("IPAddress")) ipAddress = tag.getString("IPAddress");
+        if (tag.contains("IPv6Address")) ipv6Address = tag.getString("IPv6Address");
+        if (tag.contains("SubnetMask")) subnetMask = tag.getString("SubnetMask");
+        if (tag.contains("Gateway")) gateway = tag.getString("Gateway");
+        if (tag.contains("DHCP")) dhcpEnabled = tag.getBoolean("DHCP");
+    }
+
+    @Override
+    public CompoundTag getUpdateTag() {
+        CompoundTag tag = new CompoundTag();
+        saveAdditional(tag);
+        return tag;
+    }
+
+    @Nullable
+    @Override
+    public ClientboundBlockEntityDataPacket getUpdatePacket() {
+        return ClientboundBlockEntityDataPacket.create(this);
+    }
+
+    @Override
+    public @NotNull <T> LazyOptional<T> getCapability(@NotNull Capability<T> cap, @Nullable net.minecraft.core.Direction side) {
+        if (cap == ForgeCapabilities.ITEM_HANDLER) {
+            return lazyItemHandler.cast();
+        }
+        return super.getCapability(cap, side);
+    }
+
+    @Override
+    public void invalidateCaps() {
+        super.invalidateCaps();
+        lazyItemHandler.invalidate();
     }
 
     @Override
@@ -310,5 +230,17 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
     @Override
     public AbstractContainerMenu createMenu(int containerId, Inventory playerInventory, Player player) {
         return new StorageServerMenu(containerId, playerInventory, this);
+    }
+
+    @Override
+    public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
+        controllers.add(new AnimationController<>(this, "controller", 0, event -> {
+            return event.setAndContinue(RawAnimation.begin().thenPlay("checking"));
+        }));
+    }
+
+    @Override
+    public AnimatableInstanceCache getAnimatableInstanceCache() {
+        return this.cache;
     }
 }
