@@ -149,6 +149,16 @@ public final class ServerRackBlockEntity extends NetworkDeviceBlockEntity implem
     public boolean disconnectCable(BlockPos target){boolean removed=cableLinks.remove(target);wiredBackboneConnected=!cableLinks.isEmpty();if(removed)setChanged();return removed;}
     public void clearCableLinks(){cableLinks.clear();wiredBackboneConnected=false;setChanged();}
     public boolean hasCableLinkTo(BlockPos target){return cableLinks.contains(target);}
+
+    public String requestDynamicIp(String clientId, boolean ipv6) {
+        ServerRackDhcpLease lease = allocateLease(clientId, ipv6);
+        if (lease != null) {
+            setChanged();
+            return lease.address();
+        }
+        return null;
+    }
+
     public String cableLinkData(){if(cableLinks.isEmpty())return "No physical links";return cableLinks.stream().map(p->p.getX()+", "+p.getY()+", "+p.getZ()).collect(java.util.stream.Collectors.joining("; "));}
     public double configuredMaximumRangeBlocks(){return profile.maximumRangeBlocks();}
     public double effectiveMaximumRangeBlocks(){return profile.wiredBeyondCampus()&&!wiredBackboneConnected?10_000.0:profile.maximumRangeBlocks();}

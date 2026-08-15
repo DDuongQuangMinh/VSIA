@@ -51,6 +51,13 @@ public class StorageServerBlock extends BaseEntityBlock {
     // --- ADDED THIS METHOD TO OPEN THE GUI ---
     @Override
     public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
+
+        // --- NEW CHECK: Skip opening GUI if the player is holding a Network Cable ---
+        if (player.getItemInHand(hand).getItem() instanceof NetworkCableItem) {
+            return InteractionResult.PASS;
+        }
+        // ----------------------------------------------------------------------------
+
         if (!level.isClientSide()) {
             BlockEntity entity = level.getBlockEntity(pos);
             if (entity instanceof StorageServerBlockEntity) {

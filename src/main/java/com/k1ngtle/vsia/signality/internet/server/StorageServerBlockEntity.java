@@ -46,6 +46,7 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
     private String subnetMask = "255.255.255.0";
     private String gateway = "192.168.1.1";
     private boolean dhcpEnabled = true;
+    private BlockPos connectedRackPos = null;
 
     // File Storage System
     private final List<StoredFile> storedFiles = new ArrayList<>();
@@ -89,6 +90,9 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
 
     public boolean isDhcpEnabled() { return dhcpEnabled; }
     public void setDhcpEnabled(boolean dhcpEnabled) { this.dhcpEnabled = dhcpEnabled; setChanged(); }
+
+    public BlockPos getConnectedRackPos() { return connectedRackPos; }
+    public void setConnectedRackPos(BlockPos connectedRackPos) { this.connectedRackPos = connectedRackPos; setChanged(); }
 
     private void initDefaultFilesIfEmpty() {
         if (storedFiles.isEmpty()) {
@@ -168,6 +172,10 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
         tag.putString("SubnetMask", subnetMask);
         tag.putString("Gateway", gateway);
         tag.putBoolean("DHCP", dhcpEnabled);
+
+        if (connectedRackPos != null) {
+            tag.putLong("ConnectedRack", connectedRackPos.asLong());
+        }
     }
 
     @Override
@@ -192,6 +200,10 @@ public class StorageServerBlockEntity extends BlockEntity implements GeoBlockEnt
         if (tag.contains("SubnetMask")) subnetMask = tag.getString("SubnetMask");
         if (tag.contains("Gateway")) gateway = tag.getString("Gateway");
         if (tag.contains("DHCP")) dhcpEnabled = tag.getBoolean("DHCP");
+
+        if (tag.contains("ConnectedRack")) {
+            connectedRackPos = BlockPos.of(tag.getLong("ConnectedRack"));
+        }
     }
 
     @Override
