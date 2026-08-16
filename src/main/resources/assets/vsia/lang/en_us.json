@@ -23,5 +23,6 @@
   "item.vsia.gun": "VS:IA Weapon",
   "block.vsia.server_rack": "Server Rack",
   "block.vsia.storage_server": "Storage Server",
-  "item.vsia.network_cable": "Network Connector"
+  "item.vsia.network_cable": "Network Connector",
+  "block.vsia.network_switch": "Switch Server"
 }
