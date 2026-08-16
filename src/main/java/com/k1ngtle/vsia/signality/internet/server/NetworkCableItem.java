@@ -4,9 +4,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -24,26 +22,10 @@ public class NetworkCableItem extends Item {
         super(properties.stacksTo(1));
     }
 
-    @Override
-    public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
-        ItemStack stack = player.getItemInHand(hand);
-
-        if (!level.isClientSide && player.isCrouching()) {
-            toggleMode(stack, player);
-            return InteractionResultHolder.success(stack);
-        }
-
-        return InteractionResultHolder.pass(stack);
-    }
-
-    private void toggleMode(ItemStack stack, Player player) {
-        CompoundTag tag = stack.getOrCreateTag();
-        boolean isIpv6 = tag.getBoolean("IPv6Mode");
-
-        tag.putBoolean("IPv6Mode", !isIpv6);
-
-        String modeName = !isIpv6 ? "IPv6" : "IPv4";
-        player.displayClientMessage(Component.literal("Network Cable mode set to: " + modeName).withStyle(ChatFormatting.AQUA), true);
+    private boolean isNetworkDevice(BlockEntity be) {
+        return be instanceof StorageServerBlockEntity ||
+                be instanceof ServerRackBlockEntity ||
+                be instanceof NetworkSwitchBlockEntity;
     }
 
     @Override
@@ -54,11 +36,6 @@ public class NetworkCableItem extends Item {
         ItemStack stack = context.getItemInHand();
 
         if (level.isClientSide || player == null) {
-            return InteractionResult.SUCCESS;
-        }
-
-        if (player.isCrouching()) {
-            toggleMode(stack, player);
             return InteractionResult.SUCCESS;
         }
 
@@ -77,13 +54,13 @@ public class NetworkCableItem extends Item {
 
             BlockEntity storedEntity = level.getBlockEntity(storedPos);
 
-            // Validate the connection endpoints (Storage Server <-> Server Rack)
+            // Validate the connection endpoints (Storage Server <-> Server Rack <-> Switch)
             boolean isValidConnection = false;
             StorageServerBlockEntity storageServer = null;
             ServerRackBlockEntity serverRack = null;
+            NetworkSwitchBlockEntity netSwitch = null;
 
             if (targetEntity instanceof StorageServerBlockEntity && storedEntity instanceof ServerRackBlockEntity) {
-                // Clicking Storage Server second
                 storageServer = (StorageServerBlockEntity) targetEntity;
                 serverRack = (ServerRackBlockEntity) storedEntity;
                 storageServer.setConnectedRackPos(storedPos);
@@ -91,47 +68,78 @@ public class NetworkCableItem extends Item {
                 isValidConnection = true;
 
             } else if (storedEntity instanceof StorageServerBlockEntity && targetEntity instanceof ServerRackBlockEntity) {
-                // Clicking Storage Server first, Rack second
                 storageServer = (StorageServerBlockEntity) storedEntity;
                 serverRack = (ServerRackBlockEntity) targetEntity;
                 storageServer.setConnectedRackPos(pos);
                 serverRack.connectCable(storedPos);
                 isValidConnection = true;
+
+            } else if (targetEntity instanceof NetworkSwitchBlockEntity && storedEntity instanceof ServerRackBlockEntity) {
+                netSwitch = (NetworkSwitchBlockEntity) targetEntity;
+                serverRack = (ServerRackBlockEntity) storedEntity;
+                netSwitch.connectDevice(storedPos);
+                serverRack.connectCable(pos);
+                isValidConnection = true;
+
+            } else if (storedEntity instanceof NetworkSwitchBlockEntity && targetEntity instanceof ServerRackBlockEntity) {
+                netSwitch = (NetworkSwitchBlockEntity) storedEntity;
+                serverRack = (ServerRackBlockEntity) targetEntity;
+                netSwitch.connectDevice(pos);
+                serverRack.connectCable(storedPos);
+                isValidConnection = true;
+
+            } else if (targetEntity instanceof NetworkSwitchBlockEntity && storedEntity instanceof StorageServerBlockEntity) {
+                netSwitch = (NetworkSwitchBlockEntity) targetEntity;
+                storageServer = (StorageServerBlockEntity) storedEntity;
+                netSwitch.connectDevice(storedPos);
+                storageServer.setConnectedRackPos(pos);
+                isValidConnection = true;
+
+            } else if (storedEntity instanceof NetworkSwitchBlockEntity && targetEntity instanceof StorageServerBlockEntity) {
+                netSwitch = (NetworkSwitchBlockEntity) storedEntity;
+                storageServer = (StorageServerBlockEntity) targetEntity;
+                netSwitch.connectDevice(pos);
+                storageServer.setConnectedRackPos(storedPos);
+                isValidConnection = true;
+            } else if (targetEntity instanceof ServerRackBlockEntity && storedEntity instanceof ServerRackBlockEntity) {
+                // Rack to Rack backbone connection
+                serverRack = (ServerRackBlockEntity) targetEntity;
+                ServerRackBlockEntity serverRack2 = (ServerRackBlockEntity) storedEntity;
+                serverRack.connectCable(storedPos);
+                serverRack2.connectCable(pos);
+                isValidConnection = true;
+            } else if (targetEntity instanceof NetworkSwitchBlockEntity && storedEntity instanceof NetworkSwitchBlockEntity) {
+                // Switch to Switch uplink connection
+                netSwitch = (NetworkSwitchBlockEntity) targetEntity;
+                NetworkSwitchBlockEntity netSwitch2 = (NetworkSwitchBlockEntity) storedEntity;
+                netSwitch.connectDevice(storedPos);
+                netSwitch2.connectDevice(pos);
+                isValidConnection = true;
             }
 
             if (isValidConnection) {
-                if (storageServer.isDhcpEnabled()) {
-                    boolean isIpv6 = stack.hasTag() && stack.getTag().getBoolean("IPv6Mode");
-
-                    // Generate a pseudo-MAC address based on the Storage Server's block coordinates
-                    String pseudoMac = "st:or:" + Integer.toHexString(storageServer.getBlockPos().getX() & 0xFF) + ":" +
-                            Integer.toHexString(storageServer.getBlockPos().getY() & 0xFF) + ":" +
-                            Integer.toHexString(storageServer.getBlockPos().getZ() & 0xFF);
-
-                    // Request a dynamic lease from the Server Rack's internal DHCP Pool manager
-                    String newIp = serverRack.requestDynamicIp(pseudoMac, isIpv6);
-
-                    if (newIp != null) {
-                        if (isIpv6) {
-                            storageServer.setIpv6Address(newIp);
-                            player.displayClientMessage(Component.literal("Network connection established! Assigned DHCPv6: " + newIp).withStyle(ChatFormatting.GREEN), true);
-                        } else {
-                            storageServer.setIpAddress(newIp);
-                            player.displayClientMessage(Component.literal("Network connection established! Assigned DHCPv4: " + newIp).withStyle(ChatFormatting.GREEN), true);
-                        }
+                // Logic to request a DHCP IP if connecting a storage server to a rack
+                if (storageServer != null && serverRack != null && storageServer.isDhcpEnabled()) {
+                    String assignedIp = serverRack.requestDynamicIp("vsia:storage_server_" + storageServer.getBlockPos().asLong(), false);
+                    if (assignedIp != null) {
+                        storageServer.setIpAddress(assignedIp);
+                        player.displayClientMessage(Component.literal("Network connection established! DHCP IP assigned: " + assignedIp).withStyle(ChatFormatting.GREEN), true);
                     } else {
-                        player.displayClientMessage(Component.literal("Network connection established, but DHCP pool is exhausted or disabled!").withStyle(ChatFormatting.YELLOW), true);
+                        player.displayClientMessage(Component.literal("Network connection established! (DHCP Pool exhausted, using static IP)").withStyle(ChatFormatting.YELLOW), true);
+                    }
+                } else if (netSwitch != null) {
+                    player.displayClientMessage(Component.literal("Network connection established to Switch!").withStyle(ChatFormatting.GREEN), true);
+                    BlockPos switchPos = netSwitch.getBlockPos();
+                    level.sendBlockUpdated(switchPos, level.getBlockState(switchPos), level.getBlockState(switchPos), 3);
+                    // Also update the other switch if it was a switch-to-switch connection
+                    if (storedEntity instanceof NetworkSwitchBlockEntity) {
+                        level.sendBlockUpdated(storedPos, level.getBlockState(storedPos), level.getBlockState(storedPos), 3);
                     }
                 } else {
-                    player.displayClientMessage(Component.literal("Network connection established! DHCP is OFF, using static IP.").withStyle(ChatFormatting.GREEN), true);
+                    player.displayClientMessage(Component.literal("Network connection established! (DHCP OFF, using static IP)").withStyle(ChatFormatting.GREEN), true);
                 }
-
-                // Force the server to sync the BlockEntity data to the client immediately
-                BlockPos serverPos = storageServer.getBlockPos();
-                level.sendBlockUpdated(serverPos, level.getBlockState(serverPos), level.getBlockState(serverPos), 3);
-
             } else {
-                player.displayClientMessage(Component.literal("Invalid connection endpoints. Requires Storage Server and Server Rack.").withStyle(ChatFormatting.RED), true);
+                player.displayClientMessage(Component.literal("Invalid connection endpoints. Requires Storage Server, Server Rack, or Switch.").withStyle(ChatFormatting.RED), true);
             }
 
             // Always clear the tool after attempting a connection
@@ -139,14 +147,14 @@ public class NetworkCableItem extends Item {
 
         } else {
             // 2. We are starting a connection
-            if (targetEntity instanceof StorageServerBlockEntity || targetEntity instanceof ServerRackBlockEntity) {
+            if (isNetworkDevice(targetEntity)) {
                 CompoundTag tag = stack.getOrCreateTag();
                 tag.putInt("StoredX", pos.getX());
                 tag.putInt("StoredY", pos.getY());
                 tag.putInt("StoredZ", pos.getZ());
                 player.displayClientMessage(Component.literal("Started connection. Click the target device.").withStyle(ChatFormatting.YELLOW), true);
             } else {
-                player.displayClientMessage(Component.literal("Invalid start point. Click a Server Rack or Storage Server.").withStyle(ChatFormatting.RED), true);
+                player.displayClientMessage(Component.literal("Invalid start point. Click a Server Rack, Storage Server, or Switch.").withStyle(ChatFormatting.RED), true);
             }
         }
 
@@ -155,12 +163,7 @@ public class NetworkCableItem extends Item {
 
     @Override
     public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> tooltipComponents, TooltipFlag isAdvanced) {
-        tooltipComponents.add(Component.literal("Use on a Server Rack, then a Storage Server to connect them.").withStyle(ChatFormatting.GRAY));
-
-        boolean isIpv6 = stack.hasTag() && stack.getTag().getBoolean("IPv6Mode");
-        String currentMode = isIpv6 ? "IPv6" : "IPv4";
-        tooltipComponents.add(Component.literal("Current Mode: " + currentMode).withStyle(ChatFormatting.AQUA));
-        tooltipComponents.add(Component.literal("Sneak + Right-Click to toggle mode.").withStyle(ChatFormatting.DARK_GRAY));
+        tooltipComponents.add(Component.literal("Use on network devices (Rack, Server, Switch) to connect them.").withStyle(ChatFormatting.GRAY));
 
         if (stack.hasTag() && stack.getTag().contains("StoredX")) {
             CompoundTag tag = stack.getTag();

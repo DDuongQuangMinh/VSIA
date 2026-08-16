@@ -19,6 +19,9 @@ public class ModMenuTypes {
     public static final RegistryObject<MenuType<StorageServerMenu>> STORAGE_SERVER_MENU =
             MENUS.register("storage_server_menu", () -> IForgeMenuType.create(StorageServerMenu::new));
 
+    public static final RegistryObject<MenuType<com.k1ngtle.vsia.world.inventory.NetworkSwitchMenu>> NETWORK_SWITCH_MENU =
+            MENUS.register("network_switch_menu", () -> IForgeMenuType.create(com.k1ngtle.vsia.world.inventory.NetworkSwitchMenu::new));
+
     public static void register(IEventBus eventBus) {
         MENUS.register(eventBus);
     }

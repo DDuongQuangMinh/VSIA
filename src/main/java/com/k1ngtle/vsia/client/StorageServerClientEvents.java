@@ -13,6 +13,7 @@ import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import com.k1ngtle.vsia.registry.ModMenuTypes;
 import com.k1ngtle.vsia.client.screen.StorageServerScreen;
+import com.k1ngtle.vsia.client.screen.NetworkSwitchScreen;
 
 @Mod.EventBusSubscriber(modid = Vsia.MOD_ID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
 public final class StorageServerClientEvents {
@@ -28,6 +29,7 @@ public final class StorageServerClientEvents {
     public static void onClientSetup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
             MenuScreens.register(ModMenuTypes.STORAGE_SERVER_MENU.get(), StorageServerScreen::new);
+            MenuScreens.register(ModMenuTypes.NETWORK_SWITCH_MENU.get(), NetworkSwitchScreen::new);
         });
     }
 }
