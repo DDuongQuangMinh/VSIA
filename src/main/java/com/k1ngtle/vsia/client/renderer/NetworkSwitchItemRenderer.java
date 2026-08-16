@@ -1,6 +1,6 @@
 package com.k1ngtle.vsia.client.renderer;
 
-import com.k1ngtle.vsia.client.model.NetworkSwitchItemModel;
+import com.k1ngtle.vsia.client.model.NetworkSwitchModel;
 import com.k1ngtle.vsia.signality.internet.server.NetworkSwitchItem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
@@ -12,7 +12,7 @@ import software.bernie.geckolib.renderer.GeoItemRenderer;
 public final class NetworkSwitchItemRenderer extends GeoItemRenderer<NetworkSwitchItem> {
 
     public NetworkSwitchItemRenderer() {
-        super(new NetworkSwitchItemModel());
+        super(new NetworkSwitchModel());
     }
 
     @Override
