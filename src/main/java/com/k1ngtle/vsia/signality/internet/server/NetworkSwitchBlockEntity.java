@@ -15,15 +15,23 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
+import software.bernie.geckolib.animatable.GeoBlockEntity;
+import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
+import software.bernie.geckolib.core.animation.AnimatableManager;
+import software.bernie.geckolib.core.animation.AnimationController;
+import software.bernie.geckolib.core.animation.AnimationState;
+import software.bernie.geckolib.core.object.PlayState;
+import software.bernie.geckolib.util.GeckoLibUtil;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class NetworkSwitchBlockEntity extends BlockEntity implements MenuProvider {
+public class NetworkSwitchBlockEntity extends BlockEntity implements MenuProvider, GeoBlockEntity {
 
     public static final int MAX_PORTS = 24;
     private final List<BlockPos> connectedDevices = new ArrayList<>();
     private String switchName = "Core Switch 1";
+    private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
     public NetworkSwitchBlockEntity(BlockPos pos, BlockState state) {
         super(SignalityBlocks.NETWORK_SWITCH_BE.get(), pos, state); // Ensure NETWORK_SWITCH_BE is registered
@@ -117,5 +125,19 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements MenuProvide
     @Override
     public AbstractContainerMenu createMenu(int containerId, Inventory playerInventory, Player player) {
         return new NetworkSwitchMenu(containerId, playerInventory, this);
+    }
+
+    @Override
+    public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
+        controllers.add(new AnimationController<>(this, "switch_controller", 0, this::predicate));
+    }
+
+    private PlayState predicate(AnimationState<NetworkSwitchBlockEntity> state) {
+        return PlayState.STOP;
+    }
+
+    @Override
+    public AnimatableInstanceCache getAnimatableInstanceCache() {
+        return cache;
     }
 }

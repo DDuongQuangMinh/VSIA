@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.client;
 
 import com.k1ngtle.vsia.Vsia;
 import com.k1ngtle.vsia.client.renderer.StorageServerRenderer;
+import com.k1ngtle.vsia.client.renderer.NetworkSwitchRenderer;
 import com.k1ngtle.vsia.signality.SignalityBlocks;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.EntityRenderersEvent;
@@ -22,6 +23,7 @@ public final class StorageServerClientEvents {
     @SubscribeEvent
     public static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerBlockEntityRenderer(SignalityBlocks.STORAGE_SERVER_BE.get(), context -> new StorageServerRenderer());
+        event.registerBlockEntityRenderer(SignalityBlocks.NETWORK_SWITCH_BE.get(), context -> new NetworkSwitchRenderer());
     }
 
     // ADD THIS NEW EVENT LISTENER:

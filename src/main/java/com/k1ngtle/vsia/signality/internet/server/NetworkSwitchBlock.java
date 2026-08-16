@@ -47,7 +47,7 @@ public class NetworkSwitchBlock extends BaseEntityBlock {
 
     @Override
     public RenderShape getRenderShape(BlockState state) {
-        return RenderShape.MODEL; // Assuming a static model for now, change to ENTITYBLOCK_ANIMATED if using GeckoLib
+        return RenderShape.ENTITYBLOCK_ANIMATED;
     }
 
     @Override
