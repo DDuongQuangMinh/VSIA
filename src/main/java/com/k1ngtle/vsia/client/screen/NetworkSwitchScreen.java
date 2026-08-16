@@ -58,9 +58,9 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         int cliCursorPos = 0;
         int cliScrollOffset = 0;
 
-        SwitchState(int id) {
+        SwitchState(int id, String initialHostname) {
             this.id = id;
-            this.switchHostname = "Switch" + (id == 0 ? "" : id + 1);
+            this.switchHostname = initialHostname;
 
             for (int i = 1; i <= 24; i++) portConfigs.put("FastEthernet0/" + i, new PortConfig());
             portConfigs.put("GigabitEthernet0/1", new PortConfig());
@@ -226,7 +226,7 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
                     if (!vlanDatabase.containsKey(cliTarget)) vlanDatabase.put(cliTarget, "VLAN" + cliTarget);
                 } else if (lower.startsWith("hostname ")) {
                     switchHostname = cmd.substring(9).trim();
-                    if (id == 0 && NetworkSwitchScreen.this.menu.blockEntity != null) {
+                    if (NetworkSwitchScreen.this.menu.blockEntity != null) {
                         NetworkSwitchScreen.this.menu.blockEntity.setSwitchName(switchHostname);
                     }
                 } else if (lower.equals("exit")) {
@@ -326,13 +326,24 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         this.imageWidth = 720;
         this.imageHeight = 460;
 
-        for (int i = 0; i < 7; i++) {
-            switches[i] = new SwitchState(i);
+        int baseId = 0;
+        String baseName = "Switch";
+
+        if (menu.blockEntity != null) {
+            baseId = menu.blockEntity.getSwitchId();
+            if (baseId == -1) baseId = 0;
+            baseName = menu.blockEntity.getSwitchName();
+        }
+
+        // Initialize the first switch as the actual one clicked
+        switches[0] = new SwitchState(baseId, baseName);
+
+        // Initialize dummy switches for the rest of the rack view
+        for (int i = 1; i < 7; i++) {
+            switches[i] = new SwitchState(baseId + i, "Switch" + (baseId + i));
         }
 
         if (menu.blockEntity != null) {
-            switches[0].switchHostname = menu.blockEntity.getSwitchName();
-
             List<BlockPos> connections = menu.blockEntity.getConnectedDevices();
             for (int i = 0; i < connections.size(); i++) {
                 BlockPos p = connections.get(i);
@@ -798,7 +809,8 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
                 g.fill(x - 30, tabY, x, tabY + 40, bgColor);
                 g.fill(x - 30, tabY, x - 26, tabY + 40, colors[i]);
 
-                g.drawString(this.font, "SW" + (i + 1), x - 22, tabY + 16, isActive ? 0xFFFFFF : 0xFFAAAAAA, false);
+                int displayId = switches[i].id;
+                g.drawString(this.font, "SW" + (displayId + 1), x - 22, tabY + 16, isActive ? 0xFFFFFF : 0xFFAAAAAA, false);
 
                 g.fill(x - 30, tabY, x, tabY + 1, 0xFF444444);
                 g.fill(x - 30, tabY + 39, x, tabY + 40, 0xFF444444);
