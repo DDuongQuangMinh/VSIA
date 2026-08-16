@@ -3,19 +3,125 @@ package com.k1ngtle.vsia.client.screen;
 import com.k1ngtle.vsia.signality.internet.server.NetworkSwitchBlockEntity;
 import com.k1ngtle.vsia.world.inventory.NetworkSwitchMenu;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
 
 public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMenu> {
 
+    public enum Tab {
+        PHYSICAL("Physical"),
+        CONFIG("Config"),
+        CLI("CLI"),
+        MAC_TABLE("MAC Table"),
+        ATTRIBUTES("Attributes");
+
+        public final String label;
+        Tab(String label) { this.label = label; }
+    }
+
+    private enum CliMode {
+        EXEC, PRIVILEGED, CONFIG, CONFIG_IF, CONFIG_VLAN
+    }
+
+    private static class PortConfig {
+        boolean up = true;
+        String speed = "Auto";
+        String duplex = "Auto";
+        String accessVlan = "1";
+        String txRingLimit = "10";
+    }
+
+    private Tab currentTab = Tab.PHYSICAL;
+    private String selectedConfigItem = "Settings";
+    private boolean isUpdatingVisibility = false;
+
+    // Switch State
+    private final Map<String, PortConfig> portConfigs = new HashMap<>();
+    private final Map<String, String> vlanDatabase = new LinkedHashMap<>();
+    private final Map<String, String> macTable = new LinkedHashMap<>();
+    private String switchHostname = "Switch";
+    private String managementIp = "unassigned";
+    private String managementMask = "unassigned";
+
+    // GUI Elements
+    private EditBox nameBox;
+    private EditBox hostnameBox;
+    private EditBox managementIpBox;
+    private EditBox managementMaskBox;
+
+    private EditBox vlanNumberBox;
+    private EditBox vlanNameBox;
+    private EditBox vlanBox;
+    private EditBox txRingLimitBox;
+
+    // Config Tab Scroll State
+    private float configScrollOffset = 0.0f;
+    private int maxConfigScrollLines = 0;
+    private final List<String[]> configTreeItems = new ArrayList<>();
+
+    // Config Tab History (GUI Generated)
+    private final List<String> iosCommands = new ArrayList<>();
+
+    // CLI Tab Terminal State
+    private final List<String> cliLines = new ArrayList<>();
+    private CliMode cliMode = CliMode.EXEC;
+    private String cliTarget = "";
+    private String cliInput = "";
+    private int cliCursorPos = 0;
+    private int cliScrollOffset = 0;
+
+    private final Random random = new Random();
+
     public NetworkSwitchScreen(NetworkSwitchMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
-        this.imageWidth = 256;
-        this.imageHeight = 160;
+        this.imageWidth = 720;
+        this.imageHeight = 460;
+
+        // Initialize Default Ports
+        for (int i = 1; i <= 24; i++) portConfigs.put("FastEthernet0/" + i, new PortConfig());
+        portConfigs.put("GigabitEthernet0/1", new PortConfig());
+        portConfigs.put("GigabitEthernet0/2", new PortConfig());
+
+        // Initialize Default VLANs
+        vlanDatabase.put("1", "default");
+        vlanDatabase.put("1002", "fddi-default");
+        vlanDatabase.put("1003", "token-ring-default");
+        vlanDatabase.put("1004", "fddinet-default");
+        vlanDatabase.put("1005", "trnet-default");
+
+        if (menu.blockEntity != null) {
+            this.switchHostname = menu.blockEntity.getSwitchName();
+
+            // Build pseudo-MAC addresses based on connected BlockPos to simulate MAC learning
+            List<BlockPos> connections = menu.blockEntity.getConnectedDevices();
+            for (int i = 0; i < connections.size(); i++) {
+                BlockPos p = connections.get(i);
+                String mac = String.format("00:1A:2B:%02X:%02X:%02X",
+                        (p.getX() & 0xFF), (Math.abs(p.getY()) & 0xFF), (Math.abs(p.getZ()) & 0xFF));
+                macTable.put("FastEthernet0/" + (i + 1), mac);
+            }
+        }
+
+        cliLines.add("System Bootstrap, Version 15.0(2)EZ1");
+        cliLines.add("Copyright (c) 1986-2026 by k1ngtle systems, Inc.");
+        cliLines.add("Compiled Mon 16-Aug-26 11:26 by itg");
+        cliLines.add("");
+        cliLines.add("Base ethernet MAC Address: 00:1A:2B:3C:4D:5E");
+        cliLines.add("24 FastEthernet interfaces");
+        cliLines.add("2 Gigabit Ethernet interfaces");
+        cliLines.add("");
+        cliLines.add("Press RETURN to get started.");
+        cliLines.add("");
     }
 
     @Override
@@ -23,6 +129,565 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         super.init();
         this.titleLabelX = 10000;
         this.inventoryLabelY = 10000;
+
+        this.configTreeItems.clear();
+        this.configTreeItems.add(new String[]{"GLOBAL", "0xDDDDDD", "0", "header"});
+        this.configTreeItems.add(new String[]{"    Settings", "0xFFFFFF", "1", "item"});
+        this.configTreeItems.add(new String[]{"    Algorithm Settings", "0xAAAAAA", "0", "item"});
+        this.configTreeItems.add(new String[]{"", "0x000000", "0", "empty"});
+        this.configTreeItems.add(new String[]{"SWITCHING", "0xDDDDDD", "0", "header"});
+        this.configTreeItems.add(new String[]{"    VLAN Database", "0xAAAAAA", "0", "item"});
+        this.configTreeItems.add(new String[]{"", "0x000000", "0", "empty"});
+        this.configTreeItems.add(new String[]{"INTERFACE", "0xDDDDDD", "0", "header"});
+        for (int i = 1; i <= 24; i++) {
+            this.configTreeItems.add(new String[]{"    FastEthernet0/" + i, "0xAAAAAA", "0", "item"});
+        }
+        this.configTreeItems.add(new String[]{"    GigabitEthernet0/1", "0xAAAAAA", "0", "item"});
+        this.configTreeItems.add(new String[]{"    GigabitEthernet0/2", "0xAAAAAA", "0", "item"});
+
+        int x = (this.width - this.imageWidth) / 2;
+        int y = (this.height - this.imageHeight) / 2;
+        int contentX = x + 180;
+
+        this.nameBox = new EditBox(this.font, contentX + 85, y + 62, 300, 12, Component.literal("Display Name"));
+        this.nameBox.setMaxLength(32);
+        this.nameBox.setValue(this.switchHostname);
+        this.nameBox.setBordered(false);
+        this.nameBox.setTextColor(0xAAAAAA);
+        this.addRenderableWidget(this.nameBox);
+
+        this.hostnameBox = new EditBox(this.font, contentX + 85, y + 79, 300, 12, Component.literal("Hostname"));
+        this.hostnameBox.setMaxLength(32);
+        this.hostnameBox.setValue(this.switchHostname);
+        this.hostnameBox.setBordered(false);
+        this.hostnameBox.setTextColor(0xAAAAAA);
+        this.hostnameBox.setResponder(val -> {
+            if (!isUpdatingVisibility) {
+                this.switchHostname = val;
+                if (this.menu.blockEntity != null) this.menu.blockEntity.setSwitchName(val);
+                appendGuiCommand("hostname " + val);
+            }
+        });
+        this.addRenderableWidget(this.hostnameBox);
+
+        this.managementIpBox = new EditBox(this.font, contentX + 85, y + 96, 140, 12, Component.literal("Management IP"));
+        this.managementIpBox.setValue(this.managementIp.equals("unassigned") ? "" : this.managementIp);
+        this.managementIpBox.setBordered(false);
+        this.managementIpBox.setTextColor(0xFFFFFF);
+        this.managementIpBox.setResponder(val -> {
+            if (!isUpdatingVisibility) {
+                this.managementIp = val;
+                appendGuiCommand("interface vlan 1");
+                appendGuiCommand("ip address " + val + " " + managementMask);
+            }
+        });
+        this.addRenderableWidget(this.managementIpBox);
+
+        this.managementMaskBox = new EditBox(this.font, contentX + 310, y + 96, 100, 12, Component.literal("Subnet Mask"));
+        this.managementMaskBox.setValue(this.managementMask.equals("unassigned") ? "" : this.managementMask);
+        this.managementMaskBox.setBordered(false);
+        this.managementMaskBox.setTextColor(0xFFFFFF);
+        this.addRenderableWidget(this.managementMaskBox);
+
+        this.vlanNumberBox = new EditBox(this.font, contentX + 85, y + 62, 300, 12, Component.literal("VLAN Number"));
+        this.vlanNumberBox.setValue("");
+        this.vlanNumberBox.setBordered(false);
+        this.addRenderableWidget(this.vlanNumberBox);
+
+        this.vlanNameBox = new EditBox(this.font, contentX + 85, y + 79, 300, 12, Component.literal("VLAN Name"));
+        this.vlanNameBox.setValue("");
+        this.vlanNameBox.setBordered(false);
+        this.addRenderableWidget(this.vlanNameBox);
+
+        this.vlanBox = new EditBox(this.font, 0, 0, 64, 12, Component.literal("VLAN"));
+        this.vlanBox.setValue("1");
+        this.vlanBox.setTextColor(0xFFFFFF);
+        this.vlanBox.setBordered(false);
+        this.vlanBox.setResponder(val -> {
+            if (!isUpdatingVisibility && portConfigs.containsKey(selectedConfigItem)) {
+                portConfigs.get(selectedConfigItem).accessVlan = val;
+                appendGuiCommand("switchport access vlan " + val);
+            }
+        });
+        this.addRenderableWidget(this.vlanBox);
+
+        this.txRingLimitBox = new EditBox(this.font, 0, 0, 60, 12, Component.literal("Tx Ring Limit"));
+        this.txRingLimitBox.setValue("10");
+        this.txRingLimitBox.setTextColor(0xFFFFFF);
+        this.txRingLimitBox.setBordered(false);
+        this.txRingLimitBox.setResponder(val -> {
+            if (!isUpdatingVisibility && portConfigs.containsKey(selectedConfigItem)) {
+                portConfigs.get(selectedConfigItem).txRingLimit = val;
+                appendGuiCommand("tx-ring-limit " + val);
+            }
+        });
+        this.addRenderableWidget(this.txRingLimitBox);
+
+        updateVisibility();
+    }
+
+    private void updateVisibility() {
+        this.isUpdatingVisibility = true;
+
+        boolean isSettings = this.currentTab == Tab.CONFIG && this.selectedConfigItem.equals("Settings");
+        boolean isVlan = this.currentTab == Tab.CONFIG && this.selectedConfigItem.equals("VLAN Database");
+        boolean isInterface = this.currentTab == Tab.CONFIG && portConfigs.containsKey(this.selectedConfigItem);
+
+        if (this.nameBox != null) this.nameBox.setVisible(isSettings);
+        if (this.hostnameBox != null) {
+            this.hostnameBox.setVisible(isSettings);
+            if (!this.hostnameBox.isFocused()) this.hostnameBox.setValue(this.switchHostname);
+        }
+        if (this.managementIpBox != null) this.managementIpBox.setVisible(isSettings);
+        if (this.managementMaskBox != null) this.managementMaskBox.setVisible(isSettings);
+
+        if (this.vlanNumberBox != null) this.vlanNumberBox.setVisible(isVlan);
+        if (this.vlanNameBox != null) this.vlanNameBox.setVisible(isVlan);
+
+        if (this.vlanBox != null) this.vlanBox.setVisible(isInterface);
+        if (this.txRingLimitBox != null) this.txRingLimitBox.setVisible(isInterface);
+
+        if (isInterface) {
+            PortConfig pc = portConfigs.get(this.selectedConfigItem);
+            if (!this.vlanBox.isFocused()) this.vlanBox.setValue(pc.accessVlan);
+            if (!this.txRingLimitBox.isFocused()) this.txRingLimitBox.setValue(pc.txRingLimit);
+        }
+
+        this.isUpdatingVisibility = false;
+    }
+
+    private void appendGuiCommand(String command) {
+        String pre = "Switch(config";
+        if (portConfigs.containsKey(this.selectedConfigItem)) pre += "-if)#";
+        else if (this.selectedConfigItem.equals("VLAN Database")) pre += "-vlan)#";
+        else pre += ")#";
+
+        this.iosCommands.add(pre + command);
+        if (this.iosCommands.size() > (110 - 30) / 10) {
+            this.iosCommands.remove(0);
+        }
+
+        executeCliCore(command, false);
+    }
+
+    private String getPrompt() {
+        switch(cliMode) {
+            case EXEC: return switchHostname + ">";
+            case PRIVILEGED: return switchHostname + "#";
+            case CONFIG: return switchHostname + "(config)#";
+            case CONFIG_IF: return switchHostname + "(config-if)#";
+            case CONFIG_VLAN: return switchHostname + "(config-vlan)#";
+        }
+        return switchHostname + ">";
+    }
+
+    private void executeCliCore(String input, boolean echo) {
+        String cmd = input.trim();
+        if (cmd.isEmpty() && echo) {
+            cliLines.add(getPrompt());
+            cliScrollOffset = 0;
+            return;
+        }
+
+        if (echo) {
+            cliLines.add(getPrompt() + cmd);
+            cliScrollOffset = 0;
+        }
+
+        String lower = cmd.toLowerCase();
+
+        if (cliMode == CliMode.EXEC) {
+            if (lower.equals("en") || lower.equals("enable")) cliMode = CliMode.PRIVILEGED;
+            else if (lower.startsWith("ping ")) {
+                if (echo) {
+                    cliLines.add("Type escape sequence to abort.");
+                    cliLines.add("Sending 5, 100-byte ICMP Echos to " + cmd.substring(5) + ", timeout is 2 seconds:");
+                    cliLines.add("!!!!!");
+                    cliLines.add("Success rate is 100 percent (5/5), round-trip min/avg/max = 1/2/4 ms");
+                }
+            }
+            else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
+        } else if (cliMode == CliMode.PRIVILEGED) {
+            if (lower.equals("conf t") || lower.equals("configure terminal")) cliMode = CliMode.CONFIG;
+            else if (lower.equals("disable") || lower.equals("exit")) cliMode = CliMode.EXEC;
+            else if (lower.equals("write memory") || lower.equals("wr") || lower.equals("copy running-config startup-config") || lower.equals("copy run start")) {
+                if (echo) {
+                    cliLines.add("Building configuration...");
+                    cliLines.add("[OK]");
+                }
+            }
+            else if (lower.startsWith("show version") && echo) {
+                cliLines.add("Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.0(2)EZ1");
+                cliLines.add("Copyright (c) 1986-2026 by k1ngtle systems, Inc.");
+                cliLines.add("ROM: Bootstrap program is C2960 boot loader");
+                cliLines.add(switchHostname + " uptime is 1 day, 4 hours, 2 minutes");
+                cliLines.add("System returned to ROM by power-on");
+                cliLines.add("24 FastEthernet interfaces");
+                cliLines.add("2 Gigabit Ethernet interfaces");
+                cliLines.add("64K bytes of flash-simulated non-volatile configuration memory.");
+            }
+            else if (lower.equals("show ip int brief") || lower.equals("show ip interface brief")) {
+                if (echo) {
+                    cliLines.add("Interface              IP-Address      OK? Method Status                Protocol");
+                    cliLines.add(String.format("%-22s %-15s YES manual %-21s %s", "Vlan1", managementIp, "up", "up"));
+                    for (String p : portConfigs.keySet()) {
+                        PortConfig pc = portConfigs.get(p);
+                        String stat = pc.up ? (macTable.containsKey(p) ? "up" : "down") : "administratively down";
+                        String prot = pc.up ? (macTable.containsKey(p) ? "up" : "down") : "down";
+                        cliLines.add(String.format("%-22s %-15s YES unset  %-21s %s", p.replace("Ethernet", "Eth"), "unassigned", stat, prot));
+                    }
+                }
+            }
+            else if (lower.startsWith("show mac address-table") || lower.startsWith("show mac-address-table")) {
+                if (echo) {
+                    cliLines.add("          Mac Address Table");
+                    cliLines.add("-------------------------------------------");
+                    cliLines.add("Vlan    Mac Address       Type        Ports");
+                    cliLines.add("----    -----------       --------    -----");
+                    for (Map.Entry<String, String> entry : macTable.entrySet()) {
+                        String port = entry.getKey();
+                        String mac = entry.getValue();
+                        String vlan = "1";
+                        if (portConfigs.containsKey(port)) vlan = portConfigs.get(port).accessVlan;
+                        cliLines.add(String.format("%-7s %-17s %-11s %s", vlan, mac, "DYNAMIC", port.replace("Ethernet", "Eth")));
+                    }
+                    if (macTable.isEmpty()) cliLines.add("No MAC addresses learned.");
+                }
+            }
+            else if (lower.startsWith("show vlan") && echo) {
+                cliLines.add("VLAN Name                             Status    Ports");
+                cliLines.add("---- -------------------------------- --------- -------------------------------");
+                for (Map.Entry<String, String> v : vlanDatabase.entrySet()) {
+                    StringBuilder ports = new StringBuilder();
+                    for (Map.Entry<String, PortConfig> p : portConfigs.entrySet()) {
+                        if (p.getValue().accessVlan.equals(v.getKey())) {
+                            if (ports.length() > 0) ports.append(", ");
+                            ports.append(p.getKey().replace("Ethernet", "Eth"));
+                        }
+                    }
+                    String line = String.format("%-4s %-32s active    %s", v.getKey(), v.getValue(), ports.toString());
+                    cliLines.add(line);
+                }
+            }
+            else if (lower.equals("show running-config") && echo) {
+                cliLines.add("Building configuration...");
+                cliLines.add("");
+                cliLines.add("hostname " + switchHostname);
+                cliLines.add("!");
+                for (String p : portConfigs.keySet()) {
+                    cliLines.add("interface " + p);
+                    PortConfig pc = portConfigs.get(p);
+                    if (!pc.up) cliLines.add(" shutdown");
+                    if (!pc.speed.equals("Auto")) cliLines.add(" speed " + pc.speed);
+                    if (!pc.duplex.equals("Auto")) cliLines.add(" duplex " + pc.duplex);
+                    if (!pc.accessVlan.equals("1")) cliLines.add(" switchport access vlan " + pc.accessVlan);
+                    cliLines.add("!");
+                }
+                cliLines.add("interface Vlan1");
+                if (!managementIp.equals("unassigned")) cliLines.add(" ip address " + managementIp + " " + managementMask);
+                cliLines.add("!");
+            } else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
+        } else if (cliMode == CliMode.CONFIG) {
+            if (lower.startsWith("int ") || lower.startsWith("interface ")) {
+                String iface = cmd.substring(lower.startsWith("int ") ? 4 : 10).trim();
+                if (iface.toLowerCase().startsWith("fa")) iface = "FastEthernet" + iface.substring(2);
+                if (iface.toLowerCase().startsWith("gi")) iface = "GigabitEthernet" + iface.substring(2);
+
+                if (iface.toLowerCase().startsWith("vlan")) {
+                    cliMode = CliMode.CONFIG_IF;
+                    cliTarget = "VLAN" + iface.substring(4).trim();
+                } else {
+                    String mapped = null;
+                    for (String k : portConfigs.keySet()) {
+                        if (k.equalsIgnoreCase(iface)) mapped = k;
+                    }
+                    if (mapped != null) {
+                        cliMode = CliMode.CONFIG_IF;
+                        cliTarget = mapped;
+                    } else if (echo) cliLines.add("% Invalid interface");
+                }
+            } else if (lower.startsWith("vlan ")) {
+                cliMode = CliMode.CONFIG_VLAN;
+                cliTarget = cmd.substring(5).trim();
+                if (!vlanDatabase.containsKey(cliTarget)) vlanDatabase.put(cliTarget, "VLAN" + cliTarget);
+            } else if (lower.startsWith("hostname ")) {
+                switchHostname = cmd.substring(9).trim();
+                if (menu.blockEntity != null) menu.blockEntity.setSwitchName(switchHostname);
+            } else if (lower.equals("exit")) {
+                cliMode = CliMode.PRIVILEGED;
+            } else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
+        } else if (cliMode == CliMode.CONFIG_IF) {
+            if (cliTarget.startsWith("VLAN")) {
+                if (lower.startsWith("ip address ")) {
+                    String[] parts = lower.substring(11).trim().split(" ");
+                    if (parts.length >= 2) {
+                        managementIp = parts[0];
+                        managementMask = parts[1];
+                    } else if (echo) cliLines.add("% Incomplete command.");
+                } else if (lower.equals("exit")) {
+                    cliMode = CliMode.CONFIG;
+                } else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
+            } else {
+                PortConfig pc = portConfigs.get(cliTarget);
+                if (pc != null) {
+                    if (lower.startsWith("speed ")) {
+                        String s = lower.substring(6).trim();
+                        if (s.equals("10") || s.equals("100") || s.equals("1000")) pc.speed = s;
+                        else if (s.equals("auto")) pc.speed = "Auto";
+                    } else if (lower.startsWith("duplex ")) {
+                        String d = lower.substring(7).trim();
+                        if (d.equals("half")) pc.duplex = "Half";
+                        else if (d.equals("full")) pc.duplex = "Full";
+                        else if (d.equals("auto")) pc.duplex = "Auto";
+                    } else if (lower.equals("shutdown")) {
+                        pc.up = false;
+                    } else if (lower.equals("no shutdown")) {
+                        pc.up = true;
+                    } else if (lower.startsWith("switchport access vlan ")) {
+                        pc.accessVlan = lower.substring(23).trim();
+                    } else if (lower.startsWith("tx-ring-limit ")) {
+                        pc.txRingLimit = lower.substring(14).trim();
+                    } else if (lower.equals("exit")) {
+                        cliMode = CliMode.CONFIG;
+                    } else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
+                }
+            }
+        } else if (cliMode == CliMode.CONFIG_VLAN) {
+            if (lower.startsWith("name ")) {
+                vlanDatabase.put(cliTarget, cmd.substring(5).trim());
+            } else if (lower.equals("exit")) {
+                cliMode = CliMode.CONFIG;
+            } else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
+        }
+
+        updateVisibility();
+    }
+
+    @Override
+    public boolean keyPressed(int pKeyCode, int pScanCode, int pModifiers) {
+        if (this.currentTab == Tab.CLI) {
+            if (pKeyCode == 259) { // BACKSPACE
+                if (cliInput.length() > 0 && cliCursorPos > 0) {
+                    cliInput = cliInput.substring(0, cliCursorPos - 1) + cliInput.substring(cliCursorPos);
+                    cliCursorPos--;
+                }
+                return true;
+            } else if (pKeyCode == 257 || pKeyCode == 335) { // ENTER
+                executeCliCore(cliInput, true);
+                cliInput = "";
+                cliCursorPos = 0;
+                return true;
+            } else if (pKeyCode == 263) { // LEFT
+                if (cliCursorPos > 0) cliCursorPos--;
+                return true;
+            } else if (pKeyCode == 262) { // RIGHT
+                if (cliCursorPos < cliInput.length()) cliCursorPos++;
+                return true;
+            }
+
+            if (this.minecraft != null && this.minecraft.options.keyInventory.matches(pKeyCode, pScanCode)) {
+                return true;
+            }
+        }
+
+        if (this.currentTab == Tab.CONFIG) {
+            boolean handled = false;
+            boolean anyFocused = false;
+
+            if (this.nameBox != null && this.nameBox.isVisible() && this.nameBox.isFocused()) { anyFocused = true; if (this.nameBox.keyPressed(pKeyCode, pScanCode, pModifiers)) handled = true; }
+            if (this.hostnameBox != null && this.hostnameBox.isVisible() && this.hostnameBox.isFocused()) { anyFocused = true; if (this.hostnameBox.keyPressed(pKeyCode, pScanCode, pModifiers)) handled = true; }
+            if (this.managementIpBox != null && this.managementIpBox.isVisible() && this.managementIpBox.isFocused()) { anyFocused = true; if (this.managementIpBox.keyPressed(pKeyCode, pScanCode, pModifiers)) handled = true; }
+            if (this.managementMaskBox != null && this.managementMaskBox.isVisible() && this.managementMaskBox.isFocused()) { anyFocused = true; if (this.managementMaskBox.keyPressed(pKeyCode, pScanCode, pModifiers)) handled = true; }
+            if (this.vlanNumberBox != null && this.vlanNumberBox.isVisible() && this.vlanNumberBox.isFocused()) { anyFocused = true; if (this.vlanNumberBox.keyPressed(pKeyCode, pScanCode, pModifiers)) handled = true; }
+            if (this.vlanNameBox != null && this.vlanNameBox.isVisible() && this.vlanNameBox.isFocused()) { anyFocused = true; if (this.vlanNameBox.keyPressed(pKeyCode, pScanCode, pModifiers)) handled = true; }
+            if (this.vlanBox != null && this.vlanBox.isVisible() && this.vlanBox.isFocused()) { anyFocused = true; if (this.vlanBox.keyPressed(pKeyCode, pScanCode, pModifiers)) handled = true; }
+            if (this.txRingLimitBox != null && this.txRingLimitBox.isVisible() && this.txRingLimitBox.isFocused()) { anyFocused = true; if (this.txRingLimitBox.keyPressed(pKeyCode, pScanCode, pModifiers)) handled = true; }
+
+            if (handled) return true;
+
+            if (anyFocused && this.minecraft != null && this.minecraft.options.keyInventory.matches(pKeyCode, pScanCode)) {
+                return true;
+            }
+        }
+
+        if (pKeyCode == 256) { this.onClose(); return true; }
+        return super.keyPressed(pKeyCode, pScanCode, pModifiers);
+    }
+
+    @Override
+    public boolean charTyped(char pCodePoint, int pModifiers) {
+        if (this.currentTab == Tab.CLI) {
+            if (pCodePoint >= 32 && pCodePoint <= 126) {
+                cliInput = cliInput.substring(0, cliCursorPos) + pCodePoint + cliInput.substring(cliCursorPos);
+                cliCursorPos++;
+                return true;
+            }
+        }
+
+        if (this.currentTab == Tab.CONFIG) {
+            if (this.nameBox != null && this.nameBox.isVisible() && this.nameBox.isFocused() && this.nameBox.charTyped(pCodePoint, pModifiers)) return true;
+            if (this.hostnameBox != null && this.hostnameBox.isVisible() && this.hostnameBox.isFocused() && this.hostnameBox.charTyped(pCodePoint, pModifiers)) return true;
+            if (this.managementIpBox != null && this.managementIpBox.isVisible() && this.managementIpBox.isFocused() && this.managementIpBox.charTyped(pCodePoint, pModifiers)) return true;
+            if (this.managementMaskBox != null && this.managementMaskBox.isVisible() && this.managementMaskBox.isFocused() && this.managementMaskBox.charTyped(pCodePoint, pModifiers)) return true;
+            if (this.vlanNumberBox != null && this.vlanNumberBox.isVisible() && this.vlanNumberBox.isFocused() && this.vlanNumberBox.charTyped(pCodePoint, pModifiers)) return true;
+            if (this.vlanNameBox != null && this.vlanNameBox.isVisible() && this.vlanNameBox.isFocused() && this.vlanNameBox.charTyped(pCodePoint, pModifiers)) return true;
+            if (this.vlanBox != null && this.vlanBox.isVisible() && this.vlanBox.isFocused() && this.vlanBox.charTyped(pCodePoint, pModifiers)) return true;
+            if (this.txRingLimitBox != null && this.txRingLimitBox.isVisible() && this.txRingLimitBox.isFocused() && this.txRingLimitBox.charTyped(pCodePoint, pModifiers)) return true;
+        }
+        return super.charTyped(pCodePoint, pModifiers);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        if (this.currentTab == Tab.CLI) {
+            int maxScroll = Math.max(0, this.cliLines.size() - ((this.imageHeight - 50) / 12) + 1);
+            if (delta > 0 && cliScrollOffset < maxScroll) cliScrollOffset++;
+            else if (delta < 0 && cliScrollOffset > 0) cliScrollOffset--;
+            return true;
+        } else if (this.currentTab == Tab.CONFIG) {
+            if (mouseX >= (this.width - this.imageWidth) / 2 && mouseX <= (this.width - this.imageWidth) / 2 + 160) {
+                if (delta > 0 && this.configScrollOffset > 0) {
+                    this.configScrollOffset = Math.max(0.0f, this.configScrollOffset - 0.1f);
+                } else if (delta < 0 && this.configScrollOffset < 1.0f) {
+                    this.configScrollOffset = Math.min(1.0f, this.configScrollOffset + 0.1f);
+                }
+                return true;
+            }
+        }
+        return super.mouseScrolled(mouseX, mouseY, delta);
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        int x = (this.width - this.imageWidth) / 2;
+        int y = (this.height - this.imageHeight) / 2;
+
+        if (mouseY >= y + 10 && mouseY <= y + 30) {
+            for (int i = 0; i < Tab.values().length; i++) {
+                int tabX = x + 10 + (i * 82);
+                if (mouseX >= tabX && mouseX <= tabX + 80) {
+                    this.currentTab = Tab.values()[i];
+                    updateVisibility();
+                    return true;
+                }
+            }
+        }
+
+        if (this.currentTab == Tab.CONFIG) {
+            int sbWidth = 160;
+            int listY = y + 31;
+            int terminalHeight = 110;
+            int listHeight = this.imageHeight - 31 - terminalHeight;
+
+            // Sidebar List Clicks
+            if (mouseX >= x && mouseX <= x + sbWidth && mouseY >= listY && mouseY <= listY + listHeight) {
+                int visibleItemIndex = (int) ((mouseY - listY) / 15);
+                int actualIndex = (int) (this.configScrollOffset * this.maxConfigScrollLines) + visibleItemIndex;
+
+                if (actualIndex >= 0 && actualIndex < this.configTreeItems.size()) {
+                    String[] item = this.configTreeItems.get(actualIndex);
+                    if (item[3].equals("item")) {
+                        for (String[] i : this.configTreeItems) {
+                            if (i[3].equals("item")) { i[2] = "0"; i[1] = "0xAAAAAA"; }
+                        }
+                        item[2] = "1";
+                        item[1] = "0xFFFFFF";
+                        this.selectedConfigItem = item[0].trim();
+
+                        if (portConfigs.containsKey(this.selectedConfigItem)) {
+                            this.iosCommands.add("Switch(config)#interface " + this.selectedConfigItem);
+                            this.iosCommands.add("Switch(config-if)#");
+                            if (this.iosCommands.size() > 8) this.iosCommands.remove(0);
+                        } else if (this.selectedConfigItem.equals("VLAN Database")) {
+                            this.iosCommands.add("Switch(config)#interface VLAN Database");
+                            this.iosCommands.add("Switch(config-vlan)#");
+                            if (this.iosCommands.size() > 8) this.iosCommands.remove(0);
+                        }
+
+                        updateVisibility();
+                        return true;
+                    }
+                }
+            }
+
+            // Interactive Radio Buttons and Checkboxes logic
+            if (portConfigs.containsKey(this.selectedConfigItem)) {
+                PortConfig pc = portConfigs.get(this.selectedConfigItem);
+                int rightColX = x + 380;
+
+                // Port Status
+                if (mouseY >= y + 65 && mouseY <= y + 77 && mouseX >= rightColX + 110 && mouseX <= rightColX + 125) {
+                    pc.up = !pc.up;
+                    appendGuiCommand(pc.up ? "no shutdown" : "shutdown");
+                    return true;
+                }
+
+                // Link Speed
+                if (mouseY >= y + 90 && mouseY <= y + 102) {
+                    boolean isGigabit = this.selectedConfigItem.startsWith("Gigabit");
+                    if (isGigabit && mouseX >= rightColX - 80 && mouseX < rightColX - 10) {
+                        pc.speed = "1000"; appendGuiCommand("speed 1000"); return true;
+                    }
+                    if (mouseX >= rightColX && mouseX < rightColX + 65) {
+                        pc.speed = "100"; appendGuiCommand("speed 100"); return true;
+                    }
+                    if (mouseX >= rightColX + 70 && mouseX < rightColX + 130) {
+                        pc.speed = "10"; appendGuiCommand("speed 10"); return true;
+                    }
+                    if (mouseX >= rightColX + 140 && mouseX < rightColX + 190) {
+                        pc.speed = "Auto"; appendGuiCommand("speed auto"); return true;
+                    }
+                }
+
+                // Duplex
+                if (mouseY >= y + 115 && mouseY <= y + 127) {
+                    if (mouseX >= rightColX && mouseX < rightColX + 75) {
+                        pc.duplex = "Half"; appendGuiCommand("duplex half"); return true;
+                    }
+                    if (mouseX >= rightColX + 80 && mouseX < rightColX + 150) {
+                        pc.duplex = "Full"; appendGuiCommand("duplex full"); return true;
+                    }
+                    if (mouseX >= rightColX + 160 && mouseX < rightColX + 210) {
+                        pc.duplex = "Auto"; appendGuiCommand("duplex auto"); return true;
+                    }
+                }
+            }
+
+            if (this.nameBox != null && this.nameBox.isVisible()) {
+                if (this.nameBox.mouseClicked(mouseX, mouseY, button)) { this.nameBox.setFocused(true); return true; }
+                else this.nameBox.setFocused(false);
+            }
+            if (this.hostnameBox != null && this.hostnameBox.isVisible()) {
+                if (this.hostnameBox.mouseClicked(mouseX, mouseY, button)) { this.hostnameBox.setFocused(true); return true; }
+                else this.hostnameBox.setFocused(false);
+            }
+            if (this.managementIpBox != null && this.managementIpBox.isVisible()) {
+                if (this.managementIpBox.mouseClicked(mouseX, mouseY, button)) { this.managementIpBox.setFocused(true); return true; }
+                else this.managementIpBox.setFocused(false);
+            }
+            if (this.managementMaskBox != null && this.managementMaskBox.isVisible()) {
+                if (this.managementMaskBox.mouseClicked(mouseX, mouseY, button)) { this.managementMaskBox.setFocused(true); return true; }
+                else this.managementMaskBox.setFocused(false);
+            }
+            if (this.vlanNumberBox != null && this.vlanNumberBox.isVisible()) {
+                if (this.vlanNumberBox.mouseClicked(mouseX, mouseY, button)) { this.vlanNumberBox.setFocused(true); return true; }
+                else this.vlanNumberBox.setFocused(false);
+            }
+            if (this.vlanNameBox != null && this.vlanNameBox.isVisible()) {
+                if (this.vlanNameBox.mouseClicked(mouseX, mouseY, button)) { this.vlanNameBox.setFocused(true); return true; }
+                else this.vlanNameBox.setFocused(false);
+            }
+            if (this.vlanBox != null && this.vlanBox.isVisible()) {
+                if (this.vlanBox.mouseClicked(mouseX, mouseY, button)) { this.vlanBox.setFocused(true); return true; }
+                else this.vlanBox.setFocused(false);
+            }
+            if (this.txRingLimitBox != null && this.txRingLimitBox.isVisible()) {
+                if (this.txRingLimitBox.mouseClicked(mouseX, mouseY, button)) { this.txRingLimitBox.setFocused(true); return true; }
+                else this.txRingLimitBox.setFocused(false);
+            }
+        }
+
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
@@ -30,49 +695,457 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         this.renderBackground(g);
         super.render(g, mouseX, mouseY, partialTick);
 
-        int x = this.leftPos;
-        int y = this.topPos;
+        int x = (this.width - this.imageWidth) / 2;
+        int y = (this.height - this.imageHeight) / 2;
 
-        g.drawString(this.font, "Network Switch: " + this.menu.blockEntity.getSwitchName(), x + 10, y + 10, 0xFFFFFF, false);
-        g.drawString(this.font, "Ports (Max 24):", x + 10, y + 25, 0xAAAAAA, false);
+        g.fill(x, y + 30, x + this.imageWidth, y + this.imageHeight, 0xFF1E1E1E);
+        g.fill(x, y + 30, x + this.imageWidth, y + 31, 0xFF444444);
+        g.fill(x, y + 30, x + 1, y + this.imageHeight, 0xFF444444);
+        g.fill(x + this.imageWidth - 1, y + 30, x + this.imageWidth, y + this.imageHeight, 0xFF444444);
+        g.fill(x, y + this.imageHeight - 1, x + this.imageWidth, y + this.imageHeight, 0xFF444444);
 
-        List<BlockPos> connections = this.menu.blockEntity.getConnectedDevices();
+        for (int i = 0; i < Tab.values().length; i++) {
+            int tabX = x + 10 + (i * 82);
+            boolean isActive = (this.currentTab == Tab.values()[i]);
 
-        int portX = x + 15;
-        int portY = y + 40;
+            int bgColor = isActive ? 0xFF1E1E1E : 0xFF2D2D2D;
+            int textColor = isActive ? 0xFFFFFFFF : 0xFFAAAAAA;
 
-        for (int i = 0; i < NetworkSwitchBlockEntity.MAX_PORTS; i++) {
-            // Draw Port Background
-            g.fill(portX, portY, portX + 16, portY + 16, 0xFF222222);
-            g.fill(portX + 1, portY + 1, portX + 15, portY + 15, 0xFF111111);
+            g.fill(tabX, y + 10, tabX + 80, y + 31, bgColor);
+            g.fill(tabX, y + 10, tabX + 80, y + 11, 0xFF444444);
+            g.fill(tabX, y + 10, tabX + 1, y + 31, 0xFF444444);
+            g.fill(tabX + 79, y + 10, tabX + 80, y + 31, 0xFF444444);
 
-            if (i < connections.size()) {
-                // Active Port indicator (Green)
-                g.fill(portX + 1, portY + 1, portX + 15, portY + 15, 0xFF22C55E);
-
-                // Hover tooltip
-                if (mouseX >= portX && mouseX < portX + 16 && mouseY >= portY && mouseY < portY + 16) {
-                    BlockPos p = connections.get(i);
-                    g.renderTooltip(this.font, Component.literal("Connected: " + p.getX() + ", " + p.getY() + ", " + p.getZ()), mouseX, mouseY);
-                }
-            } else {
-                // Inactive port (Dark Grey)
-                g.fill(portX + 6, portY + 12, portX + 10, portY + 14, 0xFF555555);
+            if (!isActive) {
+                g.fill(tabX, y + 30, tabX + 80, y + 31, 0xFF444444);
             }
 
-            portX += 20;
-            if ((i + 1) % 12 == 0) {
-                portX = x + 15;
-                portY += 24;
+            int textWidth = this.font.width(Tab.values()[i].label);
+            g.drawString(this.font, Tab.values()[i].label, tabX + (40 - textWidth / 2), y + 16, textColor, false);
+        }
+
+        switch (this.currentTab) {
+            case PHYSICAL -> renderPhysicalTab(g, x, y, mouseX, mouseY);
+            case CONFIG -> renderConfigTab(g, x, y, mouseX, mouseY);
+            case CLI -> renderCLITab(g, x, y);
+            case MAC_TABLE -> renderMacTableTab(g, x, y);
+            case ATTRIBUTES -> renderAttributesTab(g, x, y);
+        }
+    }
+
+    private void renderPhysicalTab(GuiGraphics g, int x, int y, int mouseX, int mouseY) {
+        g.drawString(this.font, "Physical Device View", x + 20, y + 45, 0xFFFFFF, false);
+
+        int sX = x + 20;
+        int sY = y + 80;
+        int sW = 680;
+        int sH = 80;
+
+        g.fill(sX, sY, sX + sW, sY + sH, 0xFF35383B);
+        g.fill(sX + 1, sY + 1, sX + sW - 1, sY + sH - 1, 0xFF3D4044);
+
+        // Venting holes
+        g.fill(sX + 10, sY + 15, sX + 60, sY + 65, 0xFF222222);
+        for(int hole = 0; hole < 6; hole++) {
+            g.fill(sX + 15, sY + 20 + (hole * 7), sX + 55, sY + 23 + (hole * 7), 0xFF111111);
+        }
+
+        List<BlockPos> connections = this.menu.blockEntity != null ? this.menu.blockEntity.getConnectedDevices() : new ArrayList<>();
+        int portStartX = sX + 100;
+        int portStartY = sY + 15;
+
+        long time = System.currentTimeMillis();
+
+        for (int i = 0; i < 24; i++) {
+            int col = i % 12;
+            int row = i / 12;
+            int quadGap = (col / 4) * 16;
+            int px = portStartX + (col * 24) + quadGap;
+            int py = portStartY + (row * 30);
+
+            g.fill(px, py, px + 18, py + 16, 0xFF000000);
+            g.fill(px + 3, py + 3, px + 15, py + 13, 0xFF181A1D);
+
+            boolean isConnected = i < connections.size();
+            PortConfig pc = portConfigs.get("FastEthernet0/" + (i + 1));
+            boolean isPortUp = pc != null && pc.up;
+
+            int ledColor = 0xFF444444;
+            if (isConnected && isPortUp) {
+                // Simulate network traffic blinking
+                if (random.nextFloat() > 0.3f || (time % 500) < 250) {
+                    ledColor = 0xFF22C55E; // Bright Green
+                } else {
+                    ledColor = 0xFF16823B; // Dim Green
+                }
+            } else if (isConnected && !isPortUp) {
+                ledColor = 0xFFC58322; // Amber (Admin Down)
+            }
+
+            int ledY = (row == 0) ? py - 6 : py + 19;
+            g.fill(px + 6, ledY, px + 12, ledY + 3, ledColor);
+
+            g.pose().pushPose();
+            g.pose().translate(px + 5, (row == 0) ? py - 13 : py + 24, 0);
+            g.pose().scale(0.6f, 0.6f, 1.0f);
+            g.drawString(this.font, String.valueOf(i + 1), 0, 0, 0xFFAAAAAA, false);
+            g.pose().popPose();
+
+            if (isConnected) {
+                // Draw a visual "cable" plugged in
+                g.fill(px + 4, py + 4, px + 14, py + 12, 0xFF888888);
+                g.fill(px + 7, py + 8, px + 11, (row == 0) ? py + 25 : py + 45, 0xFF555555);
+            }
+
+            if (isConnected && mouseX >= px && mouseX < px + 18 && mouseY >= py && mouseY < py + 16) {
+                BlockPos p = connections.get(i);
+                String mac = macTable.get("FastEthernet0/" + (i + 1));
+                g.renderTooltip(this.font, List.of(
+                        Component.literal("Port Fa0/" + (i + 1)),
+                        Component.literal("Target: " + p.getX() + ", " + p.getY() + ", " + p.getZ()),
+                        Component.literal("MAC: " + (mac != null ? mac : "Unknown"))
+                ), java.util.Optional.empty(), mouseX, mouseY);
+            }
+        }
+
+        int uplinkX = portStartX + (12 * 24) + (12 / 4 * 16) + 40;
+        for (int i = 0; i < 2; i++) {
+            int px = uplinkX + (i * 24);
+            int py = portStartY + 15;
+
+            g.fill(px, py, px + 18, py + 16, 0xFF000000);
+            g.fill(px + 3, py + 3, px + 15, py + 13, 0xFF181A1D);
+            g.fill(px + 6, py - 4, px + 12, py - 1, 0xFF444444);
+
+            g.pose().pushPose();
+            g.pose().translate(px + 4, py + 22, 0);
+            g.pose().scale(0.6f, 0.6f, 1.0f);
+            g.drawString(this.font, "Gi" + (i + 1), 0, 0, 0xFFAAAAAA, false);
+            g.pose().popPose();
+        }
+    }
+
+    private void renderConfigTab(GuiGraphics g, int x, int y, int mouseX, int mouseY) {
+        int sbWidth = 160;
+        int listY = y + 31;
+        int terminalHeight = 110;
+        int listHeight = this.imageHeight - 31 - terminalHeight;
+
+        g.fill(x, listY, x + sbWidth, listY + listHeight, 0xFF1E1E1E);
+        g.fill(x + sbWidth, listY, x + sbWidth + 1, listY + listHeight, 0xFF444444);
+
+        int totalItemsHeight = this.configTreeItems.size() * 15;
+        this.maxConfigScrollLines = Math.max(0, this.configTreeItems.size() - (listHeight / 15) + 1);
+        int startIndex = (int)(this.configScrollOffset * this.maxConfigScrollLines);
+
+        int currentY = listY + 10;
+
+        g.enableScissor(x, listY, x + sbWidth, listY + listHeight);
+        for (int i = startIndex; i < this.configTreeItems.size() && currentY < listY + listHeight; i++) {
+            String[] item = this.configTreeItems.get(i);
+            String text = item[0];
+            int color = Long.decode(item[1]).intValue();
+            boolean isSelected = item[2].equals("1");
+            String type = item[3];
+
+            if (type.equals("empty")) {
+                currentY += 10;
+                continue;
+            }
+
+            if (isSelected) g.fill(x, currentY - 3, x + sbWidth, currentY + 11, 0xFF404040);
+            if (type.equals("header")) {
+                g.fill(x, currentY - 3, x + sbWidth, currentY + 11, 0xFF1E1E1E);
+                g.fill(x, currentY + 10, x + sbWidth, currentY + 11, 0xFF444444);
+            }
+            g.drawString(this.font, text, x + 10, currentY, color, false);
+            currentY += 15;
+        }
+        g.disableScissor();
+
+        if (this.maxConfigScrollLines > 0) {
+            int trackX = x + sbWidth - 8;
+            g.fill(trackX, listY, trackX + 8, listY + listHeight, 0xFF1A1A1A);
+            int thumbHeight = Math.max(20, (int)((listHeight / (float)totalItemsHeight) * listHeight));
+            int thumbY = listY + (int)(this.configScrollOffset * (listHeight - thumbHeight));
+            g.fill(trackX, thumbY, trackX + 8, thumbY + thumbHeight, 0xFF555555);
+        }
+
+        int contentX = x + sbWidth + 20;
+        int rightColX = x + 380;
+
+        g.fill(contentX - 20, y + 31, x + this.imageWidth, y + 45, 0xFF1E1E1E);
+        g.fill(contentX - 20, y + 45, x + this.imageWidth, y + 46, 0xFF444444);
+
+        String headerText = this.selectedConfigItem;
+        if (headerText.equals("Settings")) headerText = "Global Settings";
+        if (headerText.equals("VLAN Database")) headerText = "VLAN Configuration";
+        int textWidth = this.font.width(headerText);
+        g.drawString(this.font, headerText, contentX - 20 + ((this.imageWidth - sbWidth) - textWidth)/2, y + 35, 0xFFFFFF, false);
+
+        if (this.selectedConfigItem.equals("Settings")) {
+
+            g.fill(contentX - 10, y + 60, x + this.imageWidth - 10, y + 76, 0xFF1E1E1E);
+            g.fill(contentX - 10, y + 77, x + this.imageWidth - 10, y + 93, 0xFF1E1E1E);
+            g.fill(contentX - 10, y + 94, x + this.imageWidth - 10, y + 110, 0xFF1E1E1E);
+
+            g.fill(contentX - 10, y + 60, x + this.imageWidth - 10, y + 61, 0xFF444444);
+            g.fill(contentX - 10, y + 76, x + this.imageWidth - 10, y + 77, 0xFF444444);
+            g.fill(contentX - 10, y + 93, x + this.imageWidth - 10, y + 94, 0xFF444444);
+            g.fill(contentX - 10, y + 110, x + this.imageWidth - 10, y + 111, 0xFF444444);
+            g.fill(contentX - 10, y + 60, contentX - 9, y + 111, 0xFF444444);
+
+            // Middle Divider for IP config
+            g.fill(contentX + 235, y + 93, contentX + 236, y + 111, 0xFF444444);
+            g.fill(x + this.imageWidth - 10, y + 60, x + this.imageWidth - 9, y + 111, 0xFF444444);
+
+            g.drawString(this.font, "Display Name", contentX - 5, y + 64, 0xFFFFFF, false);
+            g.drawString(this.font, "Hostname", contentX - 5, y + 81, 0xFFFFFF, false);
+            g.drawString(this.font, "Management IP", contentX - 5, y + 98, 0xFFFFFF, false);
+            g.drawString(this.font, "Subnet Mask", contentX + 245, y + 98, 0xFFFFFF, false);
+
+            int btnY = y + 130;
+            int rowHeight = 22;
+
+            g.fill(contentX - 10, btnY - 5, x + this.imageWidth - 10, btnY - 4, 0xFF444444);
+            g.drawString(this.font, "NVRAM", contentX - 5, btnY + 4, 0xFFFFFF, false);
+            drawBoxBtn(g, contentX + 81, btnY, 180, 16, "Erase");
+            drawBoxBtn(g, contentX + 261, btnY, 180, 16, "Save");
+
+            btnY += rowHeight;
+            g.fill(contentX - 10, btnY - 5, x + this.imageWidth - 10, btnY - 4, 0xFF444444);
+            g.drawString(this.font, "Startup Config", contentX - 5, btnY + 4, 0xFFFFFF, false);
+            drawBoxBtn(g, contentX + 81, btnY, 180, 16, "Load...");
+            drawBoxBtn(g, contentX + 261, btnY, 180, 16, "Export...");
+
+            btnY += rowHeight;
+            g.fill(contentX - 10, btnY - 5, x + this.imageWidth - 10, btnY - 4, 0xFF444444);
+            g.drawString(this.font, "Running Config", contentX - 5, btnY + 4, 0xFFFFFF, false);
+            drawBoxBtn(g, contentX + 81, btnY, 180, 16, "Export...");
+            drawBoxBtn(g, contentX + 261, btnY, 180, 16, "Merge...");
+
+            btnY += rowHeight;
+            g.fill(contentX - 10, btnY - 5, x + this.imageWidth - 10, btnY - 4, 0xFF444444);
+
+            g.fill(contentX - 10, y + 125, contentX - 9, btnY - 4, 0xFF444444);
+            g.fill(contentX + 80, y + 125, contentX + 81, btnY - 4, 0xFF444444);
+            g.fill(contentX + 261, y + 125, contentX + 262, btnY - 4, 0xFF444444);
+            g.fill(x + this.imageWidth - 10, y + 125, x + this.imageWidth - 9, btnY - 4, 0xFF444444);
+
+            g.drawString(this.font, "Device Clock: 00:35:31 Tue Mar 2 1993 UTC", contentX - 5, btnY + 10, 0xAAAAAA, false);
+
+        } else if (this.selectedConfigItem.equals("VLAN Database")) {
+
+            g.fill(contentX - 10, y + 60, x + this.imageWidth - 10, y + 76, 0xFF1E1E1E);
+            g.fill(contentX - 10, y + 77, x + this.imageWidth - 10, y + 93, 0xFF1E1E1E);
+            g.fill(contentX - 10, y + 60, x + this.imageWidth - 10, y + 61, 0xFF444444);
+            g.fill(contentX - 10, y + 76, x + this.imageWidth - 10, y + 77, 0xFF444444);
+            g.fill(contentX - 10, y + 93, x + this.imageWidth - 10, y + 94, 0xFF444444);
+            g.fill(contentX - 10, y + 60, contentX - 9, y + 93, 0xFF444444);
+            g.fill(contentX + 80, y + 60, contentX + 81, y + 93, 0xFF444444);
+            g.fill(x + this.imageWidth - 10, y + 60, x + this.imageWidth - 9, y + 93, 0xFF444444);
+
+            g.drawString(this.font, "VLAN Number", contentX - 5, y + 64, 0xFFFFFF, false);
+            g.drawString(this.font, "VLAN Name", contentX - 5, y + 81, 0xFFFFFF, false);
+
+            int rowY = y + 100;
+            drawBoxBtn(g, contentX + 200, rowY, 70, 16, "Add");
+            drawBoxBtn(g, contentX + 280, rowY, 70, 16, "Remove");
+
+            int tableY = rowY + 25;
+            g.fill(contentX - 10, tableY, x + this.imageWidth - 10, tableY + 14, 0xFF2A2A2A);
+            g.fill(contentX - 10, tableY, x + this.imageWidth - 10, tableY + 1, 0xFF444444);
+            g.fill(contentX - 10, tableY + 14, x + this.imageWidth - 10, tableY + 15, 0xFF444444);
+            g.drawString(this.font, "VLAN No", contentX - 5, tableY + 4, 0xFFFFFF, false);
+            g.drawString(this.font, "VLAN Name", contentX + 80, tableY + 4, 0xFFFFFF, false);
+
+            int ty = tableY + 20;
+            for (Map.Entry<String, String> v : vlanDatabase.entrySet()) {
+                g.drawString(this.font, v.getKey(), contentX - 5, ty, 0xFFFFFF, false);
+                g.drawString(this.font, v.getValue(), contentX + 80, ty, 0xFFFFFF, false);
+                ty += 14;
+            }
+
+        } else if (portConfigs.containsKey(this.selectedConfigItem)) {
+            PortConfig pc = portConfigs.get(this.selectedConfigItem);
+            int rowY = y + 65;
+
+            g.drawString(this.font, "Port Status", contentX, rowY + 1, 0xFFFFFF, false);
+            g.drawString(this.font, "On", rightColX + 125, rowY + 1, 0xFFFFFF, false);
+            drawCheckbox(g, rightColX + 110, rowY, pc.up);
+            rowY += 25;
+
+            g.drawString(this.font, "Link Speed", contentX, rowY + 1, 0xFFFFFF, false);
+            boolean isGig = this.selectedConfigItem.startsWith("Gigabit");
+            if (isGig) {
+                drawRadioButton(g, rightColX - 80, rowY, pc.speed.equals("1000"));
+                g.drawString(this.font, "1000 Mbps", rightColX - 68, rowY + 1, 0xAAAAAA, false);
+            }
+            drawRadioButton(g, rightColX, rowY, pc.speed.equals("100"));
+            g.drawString(this.font, "100 Mbps", rightColX + 12, rowY + 1, 0xAAAAAA, false);
+            drawRadioButton(g, rightColX + 70, rowY, pc.speed.equals("10"));
+            g.drawString(this.font, "10 Mbps", rightColX + 82, rowY + 1, 0xAAAAAA, false);
+            drawCheckbox(g, rightColX + 140, rowY, pc.speed.equals("Auto"));
+            g.drawString(this.font, "Auto", rightColX + 152, rowY + 1, 0xFFFFFF, false);
+            rowY += 25;
+
+            g.drawString(this.font, "Duplex", contentX, rowY + 1, 0xFFFFFF, false);
+            drawRadioButton(g, rightColX, rowY, pc.duplex.equals("Half"));
+            g.drawString(this.font, "Half Duplex", rightColX + 12, rowY + 1, 0xAAAAAA, false);
+            drawRadioButton(g, rightColX + 80, rowY, pc.duplex.equals("Full"));
+            g.drawString(this.font, "Full Duplex", rightColX + 92, rowY + 1, 0xAAAAAA, false);
+            drawCheckbox(g, rightColX + 160, rowY, pc.duplex.equals("Auto"));
+            g.drawString(this.font, "Auto", rightColX + 172, rowY + 1, 0xFFFFFF, false);
+            rowY += 25;
+
+            g.fill(contentX, rowY - 2, contentX + 80, rowY + 12, 0xFF1E1E1E);
+            g.fill(contentX, rowY - 2, contentX + 80, rowY - 1, 0xFF444444);
+            g.fill(contentX, rowY - 2, contentX + 1, rowY + 12, 0xFF444444);
+            g.fill(contentX, rowY + 11, contentX + 80, rowY + 12, 0xFF444444);
+            g.fill(contentX + 79, rowY - 2, contentX + 80, rowY + 12, 0xFF444444);
+            g.drawString(this.font, "Access", contentX + 6, rowY + 1, 0xFFFFFF, false);
+            g.drawString(this.font, "v", contentX + 70, rowY + 1, 0xFFAAAAAA, false);
+
+            // Align VLAN Box baseline perfectly
+            this.vlanBox.setPosition(rightColX + 38, rowY - 1);
+            g.drawString(this.font, "VLAN", rightColX, rowY + 1, 0xFFFFFF, false);
+
+            g.fill(rightColX + 36, rowY - 2, rightColX + 110, rowY + 12, 0x00000000);
+            g.fill(rightColX + 36, rowY - 2, rightColX + 110, rowY - 1, 0xFF444444);
+            g.fill(rightColX + 36, rowY + 11, rightColX + 110, rowY + 12, 0xFF444444);
+            g.fill(rightColX + 36, rowY - 2, rightColX + 37, rowY + 12, 0xFF444444);
+            g.fill(rightColX + 109, rowY - 2, rightColX + 110, rowY + 12, 0xFF444444);
+            g.fill(rightColX + 96, rowY - 2, rightColX + 97, rowY + 12, 0xFF444444);
+            g.drawString(this.font, "v", rightColX + 100, rowY + 1, 0xFFAAAAAA, false);
+
+            rowY += 25;
+
+            // Align Tx Ring Limit Box baseline perfectly
+            this.txRingLimitBox.setPosition(x + 180 + 80, rowY - 1);
+            g.drawString(this.font, "Tx Ring Limit", contentX, rowY + 1, 0xFFFFFF, false);
+        }
+
+        // GUI Command Log display (Bottom panel)
+        int terminalY = y + this.imageHeight - terminalHeight;
+        g.fill(x, terminalY, x + this.imageWidth, y + this.imageHeight, 0xFF1E1E1E);
+        g.fill(x, terminalY, x + this.imageWidth, terminalY + 1, 0xFF444444);
+        g.drawString(this.font, "Equivalent IOS Commands", x + 10, terminalY + 5, 0xFFFFFF, false);
+
+        g.fill(x + 10, terminalY + 18, x + this.imageWidth - 10, y + this.imageHeight - 10, 0xFFFFFFFF);
+        g.fill(x + 10, terminalY + 18, x + this.imageWidth - 10, terminalY + 19, 0xFF888888);
+        g.fill(x + 10, terminalY + 18, x + 11, y + this.imageHeight - 10, 0xFF888888);
+        g.fill(x + this.imageWidth - 11, terminalY + 18, x + this.imageWidth - 10, y + this.imageHeight - 10, 0xFF888888);
+        g.fill(x + 10, y + this.imageHeight - 11, x + this.imageWidth - 10, y + this.imageHeight - 10, 0xFF888888);
+
+        int txtY = terminalY + 22;
+        for (int i = 0; i < this.iosCommands.size(); i++) {
+            g.drawString(this.font, this.iosCommands.get(i), x + 14, txtY, 0x000000, false);
+            txtY += 10;
+        }
+    }
+
+    private void renderMacTableTab(GuiGraphics g, int x, int y) {
+        g.drawString(this.font, "Learned MAC Addresses", x + 20, y + 45, 0xFFFFFF, false);
+
+        int headerY = y + 65;
+        g.fill(x + 20, headerY, x + 700, headerY + 15, 0xFF2A2A2A);
+        g.fill(x + 20, headerY, x + 700, headerY + 1, 0xFF444444);
+        g.fill(x + 20, headerY + 14, x + 700, headerY + 15, 0xFF444444);
+
+        g.drawString(this.font, "VLAN", x + 30, headerY + 4, 0xFFFFFF, false);
+        g.drawString(this.font, "MAC Address", x + 120, headerY + 4, 0xFFFFFF, false);
+        g.drawString(this.font, "Type", x + 320, headerY + 4, 0xFFFFFF, false);
+        g.drawString(this.font, "Ports", x + 450, headerY + 4, 0xFFFFFF, false);
+
+        int ty = headerY + 20;
+        for(Map.Entry<String, String> entry : macTable.entrySet()) {
+            String port = entry.getKey();
+            String mac = entry.getValue();
+            String vlan = "1";
+            if (portConfigs.containsKey(port)) {
+                vlan = portConfigs.get(port).accessVlan;
+            }
+
+            g.drawString(this.font, vlan, x + 30, ty, 0xFFAAAAAA, false);
+            g.drawString(this.font, mac, x + 120, ty, 0xFF55FF55, false); // Green highlighting for MAC
+            g.drawString(this.font, "DYNAMIC", x + 320, ty, 0xFFAAAAAA, false);
+            g.drawString(this.font, port.replace("Ethernet", "Eth"), x + 450, ty, 0xFF0092C8, false); // Blue for interface
+            ty += 14;
+        }
+
+        if (macTable.isEmpty()) {
+            g.drawString(this.font, "No dynamically learned MAC addresses on active ports.", x + 30, ty + 10, 0xFF888888, false);
+        }
+    }
+
+    private void renderCLITab(GuiGraphics g, int x, int y) {
+        g.fill(x, y + 31, x + this.imageWidth, y + this.imageHeight, 0xFF000000);
+
+        int textY = y + 40;
+        int maxLines = (this.imageHeight - 50) / 12;
+        int startLogIdx = Math.max(0, this.cliLines.size() - maxLines - this.cliScrollOffset + 1);
+
+        for (int i = startLogIdx; i < this.cliLines.size() - this.cliScrollOffset; i++) {
+            g.drawString(this.font, this.cliLines.get(i), x + 10, textY, 0xFFCCCCCC, false);
+            textY += 12;
+        }
+
+        if (this.cliScrollOffset == 0) {
+            String prompt = getPrompt();
+            g.drawString(this.font, prompt + cliInput, x + 10, textY, 0xFFFFFFFF, false);
+
+            // Blinking Cursor
+            if ((System.currentTimeMillis() / 500) % 2 == 0) {
+                int cursorX = x + 10 + this.font.width(prompt) + this.font.width(cliInput.substring(0, cliCursorPos));
+                g.fill(cursorX, textY - 1, cursorX + 6, textY + 9, 0xFFFFFFFF);
             }
         }
     }
 
-    @Override
-    protected void renderBg(GuiGraphics g, float partialTick, int mouseX, int mouseY) {
-        int x = this.leftPos;
-        int y = this.topPos;
-        g.fill(x, y, x + this.imageWidth, y + this.imageHeight, 0xFF1A1B1D);
-        g.fill(x + 2, y + 2, x + this.imageWidth - 2, y + this.imageHeight - 2, 0xFF252526);
+    private void renderAttributesTab(GuiGraphics g, int x, int y) {
+        int tableX = x + 20;
+        int tableY = y + 50;
+
+        g.drawString(this.font, "Attribute", tableX, tableY, 0xFFFFFF, false);
+        g.drawString(this.font, "Value", tableX + 150, tableY, 0xFFFFFF, false);
+        g.fill(tableX, tableY + 12, x + this.imageWidth - 20, tableY + 13, 0xFF444444);
+
+        int rowY = tableY + 20;
+        String[][] attributes = {
+                {"Model", "Cisco Catalyst 2960-24TT"}, {"Cost", "$ 299"}, {"Power", "15 W"},
+                {"Interfaces", "24x FastEthernet, 2x GigabitEthernet"}, {"Form Factor", "1RU Rack-mountable"},
+                {"MAC Address Table", "8000 entries max"}, {"Flash Memory", "64 MB"}
+        };
+        for (String[] attr : attributes) {
+            g.drawString(this.font, attr[0], tableX, rowY, 0xAAAAAA, false);
+            g.drawString(this.font, attr[1], tableX + 150, rowY, 0xAAAAAA, false);
+            rowY += 20;
+        }
     }
+
+    private void drawBoxBtn(GuiGraphics g, int x, int y, int w, int h, String text) {
+        g.fill(x, y, x + w, y + h, 0xFF2A2A2A);
+        g.fill(x, y, x + w, y + 1, 0xFF444444);
+        g.fill(x, y + h - 1, x + w, y + h, 0xFF444444);
+        g.fill(x, y, x + 1, y + h, 0xFF444444);
+        g.fill(x + w - 1, y, x + w, y + h, 0xFF444444);
+        int tw = this.font.width(text);
+        g.drawString(this.font, text, x + (w - tw)/2, y + 4, 0xFFFFFF, false);
+    }
+
+    private void drawCheckbox(GuiGraphics g, int x, int y, boolean checked) {
+        g.fill(x, y, x + 9, y + 9, 0xFFFFFFFF);
+        g.fill(x, y, x + 9, y + 1, 0xFF888888);
+        g.fill(x, y, x + 1, y + 9, 0xFF888888);
+        if (checked) g.fill(x + 2, y + 2, x + 7, y + 7, 0xFF0078D7);
+    }
+
+    private void drawRadioButton(GuiGraphics g, int x, int y, boolean checked) {
+        g.fill(x, y, x + 8, y + 8, 0xFF777777);
+        g.fill(x + 1, y + 1, x + 7, y + 7, 0xFF1E1E1E);
+        if (checked) g.fill(x + 2, y + 2, x + 6, y + 6, 0xFFFFFFFF);
+    }
+
+    @Override
+    protected void renderBg(GuiGraphics g, float partialTick, int mouseX, int mouseY) { }
 }
