@@ -19,6 +19,9 @@ import com.k1ngtle.vsia.signality.internet.server.NetworkCableItem;
 import com.k1ngtle.vsia.signality.internet.server.NetworkSwitchBlock;
 import com.k1ngtle.vsia.signality.internet.server.NetworkSwitchBlockEntity;
 import com.k1ngtle.vsia.signality.internet.server.NetworkSwitchItem;
+import com.k1ngtle.vsia.signality.internet.server.FirewallBlock;
+import com.k1ngtle.vsia.signality.internet.server.FirewallBlockEntity;
+import com.k1ngtle.vsia.signality.internet.server.FirewallItem;
 import com.k1ngtle.vsia.signality.internet.server.ServerRackBlock;
 import com.k1ngtle.vsia.signality.internet.server.ServerRackBlockEntity;
 import com.k1ngtle.vsia.signality.internet.server.ServerRackItem;
@@ -119,6 +122,32 @@ public class SignalityBlocks {
             () -> BlockEntityType.Builder.of(
                     NetworkSwitchBlockEntity::new,
                     NETWORK_SWITCH.get()
+            ).build(null)
+    );
+
+    public static final RegistryObject<Block> FIREWALL = BLOCKS.register(
+            "firewall",
+            () -> new FirewallBlock(
+                    BlockBehaviour.Properties.of()
+                            .mapColor(MapColor.METAL)
+                            .strength(3.0F, 8.0F)
+                            .noOcclusion()
+            )
+    );
+
+    public static final RegistryObject<Item> FIREWALL_ITEM = ITEMS.register(
+            "firewall",
+            () -> new FirewallItem(
+                    FIREWALL.get(),
+                    new Item.Properties()
+            )
+    );
+
+    public static final RegistryObject<BlockEntityType<FirewallBlockEntity>> FIREWALL_BE = BLOCK_ENTITIES.register(
+            "firewall",
+            () -> BlockEntityType.Builder.of(
+                    FirewallBlockEntity::new,
+                    FIREWALL.get()
             ).build(null)
     );
 

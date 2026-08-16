@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "vsia:block/firewall", "y": 180 },
+    "facing=east":  { "model": "vsia:block/firewall", "y": 90 },
+    "facing=south": { "model": "vsia:block/firewall" },
+    "facing=west":  { "model": "vsia:block/firewall", "y": 270 }
+  }
+}

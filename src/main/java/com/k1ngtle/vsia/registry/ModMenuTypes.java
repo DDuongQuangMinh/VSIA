@@ -22,6 +22,9 @@ public class ModMenuTypes {
     public static final RegistryObject<MenuType<com.k1ngtle.vsia.world.inventory.NetworkSwitchMenu>> NETWORK_SWITCH_MENU =
             MENUS.register("network_switch_menu", () -> IForgeMenuType.create(com.k1ngtle.vsia.world.inventory.NetworkSwitchMenu::new));
 
+    public static final RegistryObject<MenuType<com.k1ngtle.vsia.world.inventory.FirewallMenu>> FIREWALL_MENU =
+            MENUS.register("firewall_menu", () -> IForgeMenuType.create(com.k1ngtle.vsia.world.inventory.FirewallMenu::new));
+
     public static void register(IEventBus eventBus) {
         MENUS.register(eventBus);
     }
