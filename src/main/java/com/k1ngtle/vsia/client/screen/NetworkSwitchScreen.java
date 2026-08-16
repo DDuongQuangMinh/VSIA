@@ -336,11 +336,11 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         }
 
         // Initialize the first switch as the actual one clicked
-        switches[0] = new SwitchState(baseId, baseName);
+        switches[0] = new SwitchState(0, baseName);
 
         // Initialize dummy switches for the rest of the rack view
         for (int i = 1; i < 7; i++) {
-            switches[i] = new SwitchState(baseId + i, "Switch" + (baseId + i));
+            switches[i] = new SwitchState(i, "Switch" + (i + 1));
         }
 
         if (menu.blockEntity != null) {
@@ -809,8 +809,7 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
                 g.fill(x - 30, tabY, x, tabY + 40, bgColor);
                 g.fill(x - 30, tabY, x - 26, tabY + 40, colors[i]);
 
-                int displayId = switches[i].id;
-                g.drawString(this.font, "SW" + (displayId + 1), x - 22, tabY + 16, isActive ? 0xFFFFFF : 0xFFAAAAAA, false);
+                g.drawString(this.font, "SW" + (i + 1), x - 22, tabY + 16, isActive ? 0xFFFFFF : 0xFFAAAAAA, false);
 
                 g.fill(x - 30, tabY, x, tabY + 1, 0xFF444444);
                 g.fill(x - 30, tabY + 39, x, tabY + 40, 0xFF444444);

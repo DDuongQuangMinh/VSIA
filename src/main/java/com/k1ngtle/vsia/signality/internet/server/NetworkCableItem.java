@@ -118,26 +118,49 @@ public class NetworkCableItem extends Item {
             }
 
             if (isValidConnection) {
-                // Logic to request a DHCP IP if connecting a storage server to a rack
-                if (storageServer != null && serverRack != null && storageServer.isDhcpEnabled()) {
-                    String assignedIp = serverRack.requestDynamicIp("vsia:storage_server_" + storageServer.getBlockPos().asLong(), false);
-                    if (assignedIp != null) {
-                        storageServer.setIpAddress(assignedIp);
+                boolean handledDhcp = false;
+
+                // Storage Server DHCP Logic
+                if (storageServer != null && storageServer.isDhcpEnabled()) {
+                    ServerRackBlockEntity rackToUse = serverRack;
+                    if (rackToUse == null && netSwitch != null) {
+                        rackToUse = netSwitch.findFirstRack(new java.util.HashSet<>());
+                    }
+
+                    if (rackToUse != null) {
+                        String assignedIp = rackToUse.requestDynamicIp("vsia:storage_server_" + storageServer.getBlockPos().asLong(), false);
+                        if (assignedIp != null) {
+                            storageServer.setIpAddress(assignedIp);
+                            storageServer.setSubnetMask(rackToUse.subnetMask());
+                            storageServer.setGateway(rackToUse.gatewayIp());
+                        }
+                        String assignedIpv6 = rackToUse.requestDynamicIp("vsia:storage_server_" + storageServer.getBlockPos().asLong(), true);
+                        if (assignedIpv6 != null) {
+                            storageServer.setIpv6Address(assignedIpv6);
+                        }
+                        handledDhcp = true;
                         player.displayClientMessage(Component.literal("Network connection established! DHCP IP assigned: " + assignedIp).withStyle(ChatFormatting.GREEN), true);
-                    } else {
-                        player.displayClientMessage(Component.literal("Network connection established! (DHCP Pool exhausted, using static IP)").withStyle(ChatFormatting.YELLOW), true);
                     }
-                } else if (netSwitch != null) {
-                    player.displayClientMessage(Component.literal("Network connection established to Switch!").withStyle(ChatFormatting.GREEN), true);
-                    BlockPos switchPos = netSwitch.getBlockPos();
-                    level.sendBlockUpdated(switchPos, level.getBlockState(switchPos), level.getBlockState(switchPos), 3);
-                    // Also update the other switch if it was a switch-to-switch connection
-                    if (storedEntity instanceof NetworkSwitchBlockEntity) {
-                        level.sendBlockUpdated(storedPos, level.getBlockState(storedPos), level.getBlockState(storedPos), 3);
-                    }
-                } else {
-                    player.displayClientMessage(Component.literal("Network connection established! (DHCP OFF, using static IP)").withStyle(ChatFormatting.GREEN), true);
                 }
+
+                // Switch and Rack propagation logic
+                if (serverRack != null && netSwitch != null) {
+                    netSwitch.refreshNetworkDhcp(new java.util.HashSet<>());
+                    player.displayClientMessage(Component.literal("Uplink established. Transmitting DHCP to downstream devices...").withStyle(ChatFormatting.GREEN), true);
+                } else if (targetEntity instanceof NetworkSwitchBlockEntity && storedEntity instanceof NetworkSwitchBlockEntity) {
+                    ((NetworkSwitchBlockEntity) targetEntity).refreshNetworkDhcp(new java.util.HashSet<>());
+                    player.displayClientMessage(Component.literal("Switch to Switch connection established. Refreshing DHCP...").withStyle(ChatFormatting.GREEN), true);
+                } else if (!handledDhcp) {
+                    if (storageServer != null) {
+                        player.displayClientMessage(Component.literal("Network connection established! (Using static IP / No DHCP available)").withStyle(ChatFormatting.YELLOW), true);
+                    } else if (netSwitch != null) {
+                        player.displayClientMessage(Component.literal("Network connection established to Switch!").withStyle(ChatFormatting.GREEN), true);
+                    }
+                }
+
+                // Ensure block updates are sent
+                level.sendBlockUpdated(pos, level.getBlockState(pos), level.getBlockState(pos), 3);
+                level.sendBlockUpdated(storedPos, level.getBlockState(storedPos), level.getBlockState(storedPos), 3);
             } else {
                 player.displayClientMessage(Component.literal("Invalid connection endpoints. Requires Storage Server, Server Rack, or Switch.").withStyle(ChatFormatting.RED), true);
             }

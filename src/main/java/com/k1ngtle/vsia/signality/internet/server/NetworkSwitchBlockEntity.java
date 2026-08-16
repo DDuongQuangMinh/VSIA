@@ -22,7 +22,9 @@ import software.bernie.geckolib.core.animation.AnimatableManager;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEntity, MenuProvider {
 
@@ -89,6 +91,55 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
     public void setSwitchName(String name) {
         this.switchName = name;
         setChanged();
+    }
+
+    public void propagateDhcp(ServerRackBlockEntity rack, Set<BlockPos> visited) {
+        if (level == null || level.isClientSide) return;
+        visited.add(this.getBlockPos());
+
+        for (BlockPos p : connectedDevices) {
+            if (visited.contains(p)) continue;
+            BlockEntity be = level.getBlockEntity(p);
+
+            if (be instanceof StorageServerBlockEntity storage) {
+                if (storage.isDhcpEnabled()) {
+                    String ip = rack.requestDynamicIp("vsia:storage_server_" + p.asLong(), false);
+                    if (ip != null) {
+                        storage.setIpAddress(ip);
+                        storage.setSubnetMask(rack.subnetMask());
+                        storage.setGateway(rack.gatewayIp());
+                    }
+                    String ipv6 = rack.requestDynamicIp("vsia:storage_server_" + p.asLong(), true);
+                    if (ipv6 != null) {
+                        storage.setIpv6Address(ipv6);
+                    }
+                }
+            } else if (be instanceof NetworkSwitchBlockEntity netSwitch) {
+                netSwitch.propagateDhcp(rack, visited);
+            }
+        }
+    }
+
+    public void refreshNetworkDhcp(Set<BlockPos> visited) {
+        if (level == null || level.isClientSide) return;
+        ServerRackBlockEntity rack = findFirstRack(new HashSet<>());
+        if (rack != null) {
+            propagateDhcp(rack, new HashSet<>());
+        }
+    }
+
+    public ServerRackBlockEntity findFirstRack(Set<BlockPos> visited) {
+        if (level == null || level.isClientSide) return null;
+        visited.add(this.getBlockPos());
+        for (BlockPos p : connectedDevices) {
+            BlockEntity be = level.getBlockEntity(p);
+            if (be instanceof ServerRackBlockEntity r && r.dhcpEnabled()) return r;
+            if (be instanceof NetworkSwitchBlockEntity sw && !visited.contains(p)) {
+                ServerRackBlockEntity r = sw.findFirstRack(visited);
+                if (r != null) return r;
+            }
+        }
+        return null;
     }
 
     @Override
