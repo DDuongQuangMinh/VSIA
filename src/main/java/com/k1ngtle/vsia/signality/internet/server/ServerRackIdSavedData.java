@@ -3,35 +3,37 @@ package com.k1ngtle.vsia.signality.internet.server;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.saveddata.SavedData;
+import org.jetbrains.annotations.NotNull;
 
-/** Persistent per-world sequence used to give every rack a stable automatic ID. */
-public final class ServerRackIdSavedData extends SavedData {
-    private static final String DATA_NAME = "vsia_server_rack_ids";
-    private int nextId;
+public class ServerRackIdSavedData extends SavedData {
 
-    public ServerRackIdSavedData() {}
+    private static final String DATA_NAME = "vsia_network_ids";
+    private int nextId = 0;
 
-    public static ServerRackIdSavedData load(CompoundTag tag) {
-        ServerRackIdSavedData data = new ServerRackIdSavedData();
-        data.nextId = Math.max(0, tag.getInt("NextId"));
-        return data;
+    public ServerRackIdSavedData() {
     }
 
-    public static int allocate(ServerLevel level) {
-        // Store the sequence in the Overworld so IDs remain unique across every dimension.
-        ServerRackIdSavedData data = level.getServer().overworld().getDataStorage().computeIfAbsent(
-                ServerRackIdSavedData::load,
-                ServerRackIdSavedData::new,
-                DATA_NAME
-        );
-        int allocated = data.nextId++;
-        data.setDirty();
-        return allocated;
+    public ServerRackIdSavedData(CompoundTag tag) {
+        if (tag.contains("NextId")) {
+            this.nextId = tag.getInt("NextId");
+        }
     }
 
     @Override
-    public CompoundTag save(CompoundTag tag) {
-        tag.putInt("NextId", nextId);
+    public @NotNull CompoundTag save(CompoundTag tag) {
+        tag.putInt("NextId", this.nextId);
         return tag;
+    }
+
+    public int allocateId() {
+        int id = this.nextId++;
+        this.setDirty();
+        return id;
+    }
+
+    public static int allocate(ServerLevel level) {
+        ServerRackIdSavedData data = level.getServer().overworld().getDataStorage()
+                .computeIfAbsent(ServerRackIdSavedData::new, ServerRackIdSavedData::new, DATA_NAME);
+        return data.allocateId();
     }
 }

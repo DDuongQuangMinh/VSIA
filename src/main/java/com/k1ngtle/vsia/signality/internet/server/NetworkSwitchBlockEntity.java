@@ -14,31 +14,49 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.server.level.ServerLevel;
 import org.jetbrains.annotations.Nullable;
 import software.bernie.geckolib.animatable.GeoBlockEntity;
 import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.core.animation.AnimatableManager;
-import software.bernie.geckolib.core.animation.AnimationController;
-import software.bernie.geckolib.core.animation.AnimationState;
-import software.bernie.geckolib.core.object.PlayState;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class NetworkSwitchBlockEntity extends BlockEntity implements MenuProvider, GeoBlockEntity {
+public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEntity, MenuProvider {
 
     public static final int MAX_PORTS = 24;
     private final List<BlockPos> connectedDevices = new ArrayList<>();
     private String switchName = "Core Switch 1";
+    private int switchId = -1;
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
     public NetworkSwitchBlockEntity(BlockPos pos, BlockState state) {
-        super(SignalityBlocks.NETWORK_SWITCH_BE.get(), pos, state); // Ensure NETWORK_SWITCH_BE is registered
+        super(SignalityBlocks.NETWORK_SWITCH_BE.get(), pos, state);
     }
 
     public List<BlockPos> getConnectedDevices() {
         return connectedDevices;
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (level instanceof ServerLevel serverLevel && switchId == -1) {
+            assignAutomaticId(ServerRackIdSavedData.allocate(serverLevel));
+        }
+    }
+
+    public void assignAutomaticId(int id) {
+        if (this.switchId != -1) return;
+        this.switchId = id;
+        this.switchName = "Switch" + id;
+        setChanged();
+    }
+
+    public int getSwitchId() {
+        return switchId;
     }
 
     public boolean connectDevice(BlockPos pos) {
@@ -77,6 +95,7 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements MenuProvide
     protected void saveAdditional(CompoundTag tag) {
         super.saveAdditional(tag);
         tag.putString("SwitchName", switchName);
+        tag.putInt("SwitchId", switchId);
 
         ListTag links = new ListTag();
         for (BlockPos p : connectedDevices) {
@@ -92,6 +111,9 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements MenuProvide
         super.load(tag);
         if (tag.contains("SwitchName")) {
             switchName = tag.getString("SwitchName");
+        }
+        if (tag.contains("SwitchId")) {
+            switchId = tag.getInt("SwitchId");
         }
 
         connectedDevices.clear();
@@ -129,15 +151,11 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements MenuProvide
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        controllers.add(new AnimationController<>(this, "switch_controller", 0, this::predicate));
-    }
-
-    private PlayState predicate(AnimationState<NetworkSwitchBlockEntity> state) {
-        return PlayState.STOP;
+        // Add animations here later if the switch requires moving parts
     }
 
     @Override
     public AnimatableInstanceCache getAnimatableInstanceCache() {
-        return cache;
+        return this.cache;
     }
 }
