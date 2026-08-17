@@ -1,0 +1,18 @@
+{
+  "kind": "WIFI",
+  "display_name": "Wi-Fi 7",
+  "compatibility_group": "signality:80211",
+  "frequencies_hz": [
+    2437000000,
+    5200000000,
+    6100000000
+  ],
+  "default_frequency_hz": 6100000000,
+  "bandwidth_hz": 320000000,
+  "transmit_power_watts": 0.1,
+  "antenna_gain": 1.0,
+  "sensitivity_watts": 1e-12,
+  "maximum_range_blocks": 220,
+  "protocol": "signality:80211be",
+  "security": "signality:wpa3"
+}

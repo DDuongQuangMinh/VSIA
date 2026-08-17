@@ -1,0 +1,16 @@
+{
+  "kind": "CELLULAR",
+  "display_name": "5G",
+  "compatibility_group": "signality:cellular_5g",
+  "frequencies_hz": [
+    3500000000
+  ],
+  "default_frequency_hz": 3500000000,
+  "bandwidth_hz": 100000000,
+  "transmit_power_watts": 0.2,
+  "antenna_gain": 1.0,
+  "sensitivity_watts": 1e-13,
+  "maximum_range_blocks": 2000,
+  "protocol": "signality:5g_nr",
+  "security": "signality:5g_aka"
+}

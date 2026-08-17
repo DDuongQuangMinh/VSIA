@@ -5,9 +5,12 @@ import com.k1ngtle.vsia.signality.api.signal.ISignalTransmitter;
 import com.k1ngtle.vsia.signality.api.signal.SignalBand;
 import com.k1ngtle.vsia.signality.api.signal.SignalPacket;
 import com.k1ngtle.vsia.signality.core.signal.SignalBus;
+import com.k1ngtle.vsia.signality.internet.network.NetworkProfile;
+import com.k1ngtle.vsia.signality.internet.network.NetworkProfileRegistry;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -20,13 +23,6 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.util.UUID;
 
-/**
- * Base class for all internet-connected devices
- * (Computers, Routers, and Data Centers).
- *
- * Hooks into Signality Layer 1 (radio waves/Wi-Fi 7)
- * to process OSI packets.
- */
 public abstract class NetworkDeviceBlockEntity
         extends BlockEntity
         implements ISignalReceiver, ISignalTransmitter {
@@ -37,6 +33,12 @@ public abstract class NetworkDeviceBlockEntity
     protected String ipAddress = "0.0.0.0";
     protected String defaultGatewayMac = "";
 
+    private ResourceLocation networkProfileId =
+            NetworkProfileRegistry.DEFAULT_PROFILE_ID;
+
+    private double activeFrequencyHz =
+            NetworkProfileRegistry.defaultProfile().defaultFrequencyHz();
+
     public NetworkDeviceBlockEntity(
             BlockEntityType<?> type,
             BlockPos pos,
@@ -44,22 +46,18 @@ public abstract class NetworkDeviceBlockEntity
     ) {
         super(type, pos, state);
 
-        // Generate a unique MAC address for new devices.
         this.macAddress = UUID.randomUUID()
                 .toString()
                 .replace("-", "")
                 .substring(0, 12);
     }
 
-    // -------------------------------------------------------------------------
-    // SIGNAL BUS REGISTRATION
-    // -------------------------------------------------------------------------
-
     @Override
     public void onLoad() {
         super.onLoad();
 
         if (this.level != null && !this.level.isClientSide) {
+            normalizeNetworkProfile();
             SignalBus.registerReceiver(this);
             SignalBus.registerTransmitter(this);
         }
@@ -71,10 +69,6 @@ public abstract class NetworkDeviceBlockEntity
         SignalBus.unregisterTransmitter(this.signalId);
         super.setRemoved();
     }
-
-    // -------------------------------------------------------------------------
-    // ISignalReceiver / ISignalTransmitter
-    // -------------------------------------------------------------------------
 
     @Override
     public UUID id() {
@@ -91,33 +85,82 @@ public abstract class NetworkDeviceBlockEntity
         return Vec3.atCenterOf(this.worldPosition).add(0.0, 0.5, 0.0);
     }
 
+    public ResourceLocation networkProfileId() {
+        return this.networkProfileId;
+    }
+
+    public NetworkProfile networkProfile() {
+        return NetworkProfileRegistry.getOrDefault(this.networkProfileId);
+    }
+
+    public double activeFrequencyHz() {
+        return this.activeFrequencyHz;
+    }
+
+    public boolean setNetworkProfile(ResourceLocation profileId) {
+        NetworkProfile profile = NetworkProfileRegistry.get(profileId).orElse(null);
+
+        if (profile == null) {
+            return false;
+        }
+
+        this.networkProfileId = profile.id();
+        this.activeFrequencyHz = profile.defaultFrequencyHz();
+        setChanged();
+        return true;
+    }
+
+    public boolean setActiveFrequencyHz(double frequencyHz) {
+        NetworkProfile profile = networkProfile();
+
+        if (!profile.supportsFrequency(frequencyHz)) {
+            return false;
+        }
+
+        this.activeFrequencyHz = frequencyHz;
+        setChanged();
+        return true;
+    }
+
+    private void normalizeNetworkProfile() {
+        NetworkProfile profile = NetworkProfileRegistry.get(this.networkProfileId)
+                .orElseGet(NetworkProfileRegistry::defaultProfile);
+
+        this.networkProfileId = profile.id();
+
+        if (!profile.supportsFrequency(this.activeFrequencyHz)) {
+            this.activeFrequencyHz = profile.defaultFrequencyHz();
+        }
+    }
+
     @Override
     public SignalBand band() {
-        /*
-         * Wi-Fi 7 uses 6 GHz.
-         *
-         * SignalBand.SHF covers frequencies from 3 GHz through 30 GHz,
-         * so SHF is the correct existing SignalBand value.
-         */
-        return SignalBand.SHF;
+        return SignalBand.forFrequency(this.activeFrequencyHz);
     }
 
     @Override
     public double[] tunedFrequenciesHz() {
-        // 6 GHz Wi-Fi 7 frequency.
-        return new double[]{6_000_000_000.0};
+        return new double[]{this.activeFrequencyHz};
     }
 
     @Override
     public double tuningBandwidthHz() {
-        // 320 MHz Wi-Fi 7 channel bandwidth.
-        return 320_000_000.0;
+        return networkProfile().bandwidthHz();
+    }
+
+    @Override
+    public double antennaGain() {
+        return networkProfile().antennaGain();
     }
 
     @Override
     public double sensitivityWatts() {
-        // Approximate Wi-Fi receiver sensitivity.
-        return 1e-12;
+        return networkProfile().sensitivityWatts();
+    }
+
+    @Override
+    public double maximumReceptionRangeBlocks() {
+        return networkProfile().maximumRangeBlocks();
     }
 
     @Override
@@ -133,22 +176,28 @@ public abstract class NetworkDeviceBlockEntity
 
             payloadData = NbtIo.read(dataInput);
         } catch (Exception ignored) {
-            // The payload probably was not an OSI packet or valid NBT.
         }
 
-        if (payloadData != null && payloadData.contains("osi_packet")) {
-            OSINetworkPacket osiPacket =
-                    OSINetworkPacket.deserializeNBT(
-                            payloadData.getCompound("osi_packet")
-                    );
-
-            processLayer2(osiPacket);
+        if (payloadData == null || !payloadData.contains("osi_packet")) {
+            return;
         }
+
+        if (payloadData.contains("signality_medium")) {
+            String incomingMedium = payloadData.getString("signality_medium");
+            String requiredMedium = networkProfile().compatibilityGroup();
+
+            if (!requiredMedium.equals(incomingMedium)) {
+                return;
+            }
+        }
+
+        OSINetworkPacket osiPacket =
+                OSINetworkPacket.deserializeNBT(
+                        payloadData.getCompound("osi_packet")
+                );
+
+        processLayer2(osiPacket);
     }
-
-    // -------------------------------------------------------------------------
-    // LAYER 2: DATA LINK
-    // -------------------------------------------------------------------------
 
     protected void processLayer2(OSINetworkPacket packet) {
         boolean addressedToThisDevice =
@@ -162,10 +211,6 @@ public abstract class NetworkDeviceBlockEntity
         }
     }
 
-    // -------------------------------------------------------------------------
-    // LAYER 3: NETWORK
-    // -------------------------------------------------------------------------
-
     protected void processLayer3(OSINetworkPacket packet) {
         boolean addressedToThisDevice =
                 packet.targetIp.equals(this.ipAddress);
@@ -177,10 +222,6 @@ public abstract class NetworkDeviceBlockEntity
             processLayer4(packet);
         }
     }
-
-    // -------------------------------------------------------------------------
-    // LAYER 4: TRANSPORT
-    // -------------------------------------------------------------------------
 
     protected void processLayer4(OSINetworkPacket packet) {
         if (packet.targetPort == 80) {
@@ -198,11 +239,6 @@ public abstract class NetworkDeviceBlockEntity
         }
     }
 
-    // -------------------------------------------------------------------------
-    // LAYER 7: APPLICATION
-    // Child server classes can override these methods.
-    // -------------------------------------------------------------------------
-
     protected void handleWebRequest(OSINetworkPacket packet) {
     }
 
@@ -217,10 +253,6 @@ public abstract class NetworkDeviceBlockEntity
 
     protected void handleIncomingData(OSINetworkPacket packet) {
     }
-
-    // -------------------------------------------------------------------------
-    // DHCP CLIENT
-    // -------------------------------------------------------------------------
 
     protected void handleDhcpResponse(OSINetworkPacket packet) {
         boolean isDhcp =
@@ -273,17 +305,35 @@ public abstract class NetworkDeviceBlockEntity
         transmitPacket(dhcpRequest);
     }
 
-    // -------------------------------------------------------------------------
-    // TRANSMISSION
-    // -------------------------------------------------------------------------
-
     protected void transmitPacket(OSINetworkPacket osiPacket) {
+        NetworkProfile profile = networkProfile();
+
         CompoundTag rawPayload =
                 new CompoundTag();
 
         rawPayload.put(
                 "osi_packet",
                 osiPacket.serializeNBT()
+        );
+
+        rawPayload.putString(
+                "signality_network_profile",
+                profile.id().toString()
+        );
+
+        rawPayload.putString(
+                "signality_medium",
+                profile.compatibilityGroup()
+        );
+
+        rawPayload.putString(
+                "signality_protocol",
+                profile.protocol()
+        );
+
+        rawPayload.putString(
+                "signality_security",
+                profile.security()
         );
 
         byte[] payloadBytes;
@@ -304,18 +354,13 @@ public abstract class NetworkDeviceBlockEntity
             return;
         }
 
-        /*
-         * Construct the physical-layer signal packet.
-         *
-         * 6 GHz is inside SignalBand.SHF.
-         */
         SignalPacket outgoing =
                 new SignalPacket(
                         this.signalId,
                         this.positionWorld(),
-                        6_000_000_000.0,
-                        1.0,
-                        1.0,
+                        this.activeFrequencyHz,
+                        profile.transmitPowerWatts(),
+                        profile.antennaGain(),
                         payloadBytes,
                         System.nanoTime(),
                         64,
@@ -326,10 +371,6 @@ public abstract class NetworkDeviceBlockEntity
             SignalBus.broadcast(outgoing, serverLevel);
         }
     }
-
-    // -------------------------------------------------------------------------
-    // SAVING AND LOADING
-    // -------------------------------------------------------------------------
 
     @Override
     protected void saveAdditional(CompoundTag tag) {
@@ -353,6 +394,16 @@ public abstract class NetworkDeviceBlockEntity
         tag.putString(
                 "DefaultGatewayMac",
                 this.defaultGatewayMac
+        );
+
+        tag.putString(
+                "NetworkProfile",
+                this.networkProfileId.toString()
+        );
+
+        tag.putDouble(
+                "ActiveFrequencyHz",
+                this.activeFrequencyHz
         );
     }
 
@@ -379,5 +430,23 @@ public abstract class NetworkDeviceBlockEntity
             this.defaultGatewayMac =
                     tag.getString("DefaultGatewayMac");
         }
+
+        if (tag.contains("NetworkProfile")) {
+            ResourceLocation parsed =
+                    ResourceLocation.tryParse(
+                            tag.getString("NetworkProfile")
+                    );
+
+            if (parsed != null) {
+                this.networkProfileId = parsed;
+            }
+        }
+
+        if (tag.contains("ActiveFrequencyHz")) {
+            this.activeFrequencyHz =
+                    tag.getDouble("ActiveFrequencyHz");
+        }
+
+        normalizeNetworkProfile();
     }
 }

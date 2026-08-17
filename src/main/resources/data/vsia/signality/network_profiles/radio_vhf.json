@@ -1,0 +1,16 @@
+{
+  "kind": "RADIO",
+  "display_name": "VHF Radio",
+  "compatibility_group": "signality:radio_vhf",
+  "frequencies_hz": [
+    150000000
+  ],
+  "default_frequency_hz": 150000000,
+  "bandwidth_hz": 25000,
+  "transmit_power_watts": 5.0,
+  "antenna_gain": 1.0,
+  "sensitivity_watts": 1e-14,
+  "maximum_range_blocks": 5000,
+  "protocol": "signality:radio",
+  "security": "signality:none"
+}
