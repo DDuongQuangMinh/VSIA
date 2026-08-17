@@ -1,6 +1,7 @@
 package com.k1ngtle.vsia.client.screen;
 
 import com.k1ngtle.vsia.world.inventory.FirewallMenu;
+import com.k1ngtle.vsia.signality.internet.server.FirewallOsSimulator;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -25,179 +26,10 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
         Tab(String label) { this.label = label; }
     }
 
-    private enum CliMode {
-        EXEC, PRIVILEGED, CONFIG, CONFIG_IF
-    }
-
-    private static class PortConfig {
-        boolean up = true;
-        String speed = "Auto";
-        String duplex = "Auto";
-        String ipAddress = "unassigned";
-        String subnetMask = "unassigned";
-    }
-
-    private class FirewallState {
-        final int id;
-        String displayName;
-        String hostname;
-        String macAddress;
-
-        final Map<String, PortConfig> portConfigs = new LinkedHashMap<>();
-
-        final List<String> asaCommands = new ArrayList<>();
-        final List<String> cliLines = new ArrayList<>();
-
-        boolean isBooted = false;
-        long bootStartTime;
-        int bootStep = 0;
-
-        CliMode cliMode = CliMode.EXEC;
-        String cliTarget = "";
-        String cliInput = "";
-        int cliCursorPos = 0;
-        int cliScrollOffset = 0;
-
-        FirewallState(int rackId, int fwId, String initialHostname) {
-            this.id = fwId;
-            this.hostname = initialHostname;
-            this.displayName = rackId + "_" + fwId;
-            this.bootStartTime = System.currentTimeMillis();
-
-            this.macAddress = String.format("0002.4A0B.%02X%02X", rackId, fwId);
-
-            for (int i = 1; i <= 8; i++) {
-                portConfigs.put("GigabitEthernet1/" + i, new PortConfig());
-            }
-            portConfigs.put("Management1/1", new PortConfig());
-
-            asaCommands.add("INFO: Starting SW-DRBG health test...");
-            asaCommands.add("INFO: SW-DRBG health test passed.");
-            asaCommands.add("");
-            asaCommands.add("Type help or '?' for a list of available commands.");
-            asaCommands.add("");
-        }
-
-        String getPrompt() {
-            switch(cliMode) {
-                case EXEC: return hostname + ">";
-                case PRIVILEGED: return hostname + "#";
-                case CONFIG: return hostname + "(config)#";
-                case CONFIG_IF: return hostname + "(config-if)#";
-            }
-            return hostname + ">";
-        }
-
-        void executeCliCore(String input, boolean echo) {
-            String cmd = input.trim();
-            if (cmd.isEmpty() && echo) {
-                cliLines.add(getPrompt());
-                cliScrollOffset = 0;
-                return;
-            }
-
-            if (echo) {
-                cliLines.add(getPrompt() + cmd);
-                cliScrollOffset = 0;
-            }
-
-            String lower = cmd.toLowerCase();
-
-            if (cliMode == CliMode.EXEC) {
-                if (lower.equals("en") || lower.equals("enable")) cliMode = CliMode.PRIVILEGED;
-                else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
-            } else if (cliMode == CliMode.PRIVILEGED) {
-                if (lower.equals("conf t") || lower.equals("configure terminal")) cliMode = CliMode.CONFIG;
-                else if (lower.equals("disable") || lower.equals("exit")) cliMode = CliMode.EXEC;
-                else if (lower.equals("write memory") || lower.equals("wr")) {
-                    if (echo) {
-                        cliLines.add("Building configuration...");
-                        cliLines.add("[OK]");
-                    }
-                }
-                else if (lower.startsWith("show version") && echo) {
-                    cliLines.add("Cisco Adaptive Security Appliance Software Version 9.14(1)");
-                    cliLines.add("Copyright (c) 1986-2026 by k1ngtle systems, Inc.");
-                    cliLines.add("Hardware:   ASA5506, 4096 MB RAM, CPU Atom C2000 1250 MHz");
-                    cliLines.add(hostname + " up 1 day 4 hours");
-                }
-                else if (lower.equals("show running-config") && echo) {
-                    cliLines.add("Building configuration...");
-                    cliLines.add("!");
-                    cliLines.add("hostname " + hostname);
-                    cliLines.add("!");
-                    for (String p : portConfigs.keySet()) {
-                        cliLines.add("interface " + p);
-                        PortConfig pc = portConfigs.get(p);
-                        if (!pc.ipAddress.equals("unassigned")) cliLines.add(" ip address " + pc.ipAddress + " " + pc.subnetMask);
-                        if (!pc.up) cliLines.add(" shutdown");
-                        cliLines.add("!");
-                    }
-                    cliLines.add("!");
-                } else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
-            } else if (cliMode == CliMode.CONFIG) {
-                if (lower.startsWith("int ") || lower.startsWith("interface ")) {
-                    String iface = cmd.substring(lower.startsWith("int ") ? 4 : 10).trim();
-                    if (iface.toLowerCase().startsWith("gi")) iface = "GigabitEthernet" + iface.substring(2);
-                    else if (iface.toLowerCase().startsWith("ma")) iface = "Management1/1";
-
-                    if (portConfigs.containsKey(iface)) {
-                        cliMode = CliMode.CONFIG_IF;
-                        cliTarget = iface;
-                    } else if (echo) cliLines.add("% Invalid interface");
-                } else if (lower.startsWith("hostname ")) {
-                    hostname = cmd.substring(9).trim();
-                    if (id == 1 && FirewallScreen.this.menu.blockEntity != null) {
-                        FirewallScreen.this.menu.blockEntity.setDeviceName(hostname);
-                    }
-                } else if (lower.equals("exit")) {
-                    cliMode = CliMode.PRIVILEGED;
-                } else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
-            } else if (cliMode == CliMode.CONFIG_IF) {
-                PortConfig pc = portConfigs.get(cliTarget);
-                if (pc != null) {
-                    if (lower.startsWith("ip address ")) {
-                        String[] parts = lower.substring(11).trim().split(" ");
-                        if (parts.length >= 2) {
-                            pc.ipAddress = parts[0];
-                            pc.subnetMask = parts[1];
-                        }
-                    } else if (lower.startsWith("speed ")) {
-                        String s = lower.substring(6).trim();
-                        if (s.equals("10") || s.equals("100") || s.equals("1000")) pc.speed = s;
-                        else if (s.equals("auto")) pc.speed = "Auto";
-                    } else if (lower.startsWith("duplex ")) {
-                        String d = lower.substring(7).trim();
-                        if (d.equals("half")) pc.duplex = "Half";
-                        else if (d.equals("full")) pc.duplex = "Full";
-                        else if (d.equals("auto")) pc.duplex = "Auto";
-                    } else if (lower.equals("shutdown")) {
-                        pc.up = false;
-                    } else if (lower.equals("no shutdown")) {
-                        pc.up = true;
-                    } else if (lower.equals("exit")) {
-                        cliMode = CliMode.CONFIG;
-                    } else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
-                }
-            }
-            FirewallScreen.this.updateVisibility();
-        }
-
-        void appendGuiCommand(String command, String selectedConfigItem) {
-            String pre = hostname + "(config)# ";
-            if (portConfigs.containsKey(selectedConfigItem)) pre = hostname + "(config-if)# ";
-
-            asaCommands.add(pre + command);
-            if (asaCommands.size() > 8) asaCommands.remove(0);
-
-            executeCliCore(command, false);
-        }
-    }
-
     private Tab currentTab = Tab.PHYSICAL;
     private int currentFirewallIndex = 0;
     private int baseId = 1;
-    private final FirewallState[] firewalls = new FirewallState[7];
+    private final FirewallOsSimulator[] firewalls = new FirewallOsSimulator[7];
 
     private String selectedConfigItem = "Settings";
     private boolean isUpdatingVisibility = false;
@@ -231,14 +63,21 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
 
             baseName = menu.blockEntity.getDeviceName();
             if (baseName.startsWith("Firewall")) {
-                baseName = "ASA" + baseId + "_1"; // Use default Cisco ASA naming logic if unmodified
+                baseName = "ASA" + baseId + "_1";
             }
         }
 
-        firewalls[0] = new FirewallState(baseId, 1, baseName);
+        Runnable stateCallback = () -> {
+            if (currentFirewallIndex == 0 && this.menu.blockEntity != null) {
+                this.menu.blockEntity.setDeviceName(firewalls[0].hostname);
+            }
+            updateVisibility();
+        };
+
+        firewalls[0] = new FirewallOsSimulator(baseId, 1, baseName, stateCallback);
 
         for (int i = 1; i < 7; i++) {
-            firewalls[i] = new FirewallState(baseId, i + 1, "ASA" + baseId + "_" + (i + 1));
+            firewalls[i] = new FirewallOsSimulator(baseId, i + 1, "ASA" + baseId + "_" + (i + 1), stateCallback);
         }
     }
 
@@ -294,7 +133,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
         this.ipv4Box.setTextColor(0xFFFFFF);
         this.ipv4Box.setResponder(val -> {
             if (!isUpdatingVisibility && "Management1/1".equals(selectedConfigItem)) {
-                PortConfig pc = firewalls[currentFirewallIndex].portConfigs.get("Management1/1");
+                FirewallOsSimulator.PortConfig pc = firewalls[currentFirewallIndex].portConfigs.get("Management1/1");
                 if (pc != null) {
                     pc.ipAddress = val.isEmpty() ? "unassigned" : val;
                     if (!pc.ipAddress.equals("unassigned")) {
@@ -310,7 +149,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
         this.subnetMaskBox.setTextColor(0xFFFFFF);
         this.subnetMaskBox.setResponder(val -> {
             if (!isUpdatingVisibility && "Management1/1".equals(selectedConfigItem)) {
-                PortConfig pc = firewalls[currentFirewallIndex].portConfigs.get("Management1/1");
+                FirewallOsSimulator.PortConfig pc = firewalls[currentFirewallIndex].portConfigs.get("Management1/1");
                 if (pc != null) {
                     pc.subnetMask = val.isEmpty() ? "unassigned" : val;
                     if (!pc.ipAddress.equals("unassigned") && !pc.subnetMask.equals("unassigned")) {
@@ -326,7 +165,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
 
     private void updateVisibility() {
         this.isUpdatingVisibility = true;
-        FirewallState act = firewalls[currentFirewallIndex];
+        FirewallOsSimulator act = firewalls[currentFirewallIndex];
 
         boolean isSettings = this.currentTab == Tab.CONFIG && this.selectedConfigItem.equals("Settings");
         boolean isMgmt = this.currentTab == Tab.CONFIG && this.selectedConfigItem.equals("Management1/1");
@@ -343,14 +182,14 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
         if (this.ipv4Box != null) {
             this.ipv4Box.setVisible(isMgmt);
             if (isMgmt) {
-                PortConfig pc = act.portConfigs.get("Management1/1");
+                FirewallOsSimulator.PortConfig pc = act.portConfigs.get("Management1/1");
                 if (!this.ipv4Box.isFocused() && pc != null) this.ipv4Box.setValue(pc.ipAddress.equals("unassigned") ? "" : pc.ipAddress);
             }
         }
         if (this.subnetMaskBox != null) {
             this.subnetMaskBox.setVisible(isMgmt);
             if (isMgmt) {
-                PortConfig pc = act.portConfigs.get("Management1/1");
+                FirewallOsSimulator.PortConfig pc = act.portConfigs.get("Management1/1");
                 if (!this.subnetMaskBox.isFocused() && pc != null) this.subnetMaskBox.setValue(pc.subnetMask.equals("unassigned") ? "" : pc.subnetMask);
             }
         }
@@ -360,7 +199,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
 
     @Override
     public boolean keyPressed(int pKeyCode, int pScanCode, int pModifiers) {
-        FirewallState act = firewalls[currentFirewallIndex];
+        FirewallOsSimulator act = firewalls[currentFirewallIndex];
 
         if (this.currentTab == Tab.CLI) {
             if (pKeyCode == 259) { // BACKSPACE
@@ -405,7 +244,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
 
     @Override
     public boolean charTyped(char pCodePoint, int pModifiers) {
-        FirewallState act = firewalls[currentFirewallIndex];
+        FirewallOsSimulator act = firewalls[currentFirewallIndex];
 
         if (this.currentTab == Tab.CLI && act.isBooted) {
             if (pCodePoint >= 32 && pCodePoint <= 126) {
@@ -425,7 +264,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
-        FirewallState act = firewalls[currentFirewallIndex];
+        FirewallOsSimulator act = firewalls[currentFirewallIndex];
 
         if (this.currentTab == Tab.PHYSICAL) {
             float maxScroll = Math.max(0, (7 * 90) - (this.imageHeight - 40));
@@ -480,7 +319,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
         }
 
         if (this.currentTab == Tab.CONFIG) {
-            FirewallState act = firewalls[currentFirewallIndex];
+            FirewallOsSimulator act = firewalls[currentFirewallIndex];
             int sbWidth = 160;
             int listY = y + 31;
             int listHeight = this.imageHeight - 31 - 110;
@@ -505,7 +344,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
 
             int contentX = x + 180;
             if (act.portConfigs.containsKey(this.selectedConfigItem)) {
-                PortConfig pc = act.portConfigs.get(this.selectedConfigItem);
+                FirewallOsSimulator.PortConfig pc = act.portConfigs.get(this.selectedConfigItem);
                 int rightColX = x + 380;
 
                 // Port Status
@@ -633,7 +472,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
         long time = System.currentTimeMillis();
 
         for (int fwIdx = 0; fwIdx < 7; fwIdx++) {
-            FirewallState act = firewalls[fwIdx];
+            FirewallOsSimulator act = firewalls[fwIdx];
             int sX = x + 20;
             int sY = y + 65 + (fwIdx * 90) - currentScrollY;
 
@@ -692,7 +531,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
         }
     }
 
-    private void drawPhysicalPort(GuiGraphics g, int px, int py, String label, PortConfig pc, boolean isBooted, long time, int index) {
+    private void drawPhysicalPort(GuiGraphics g, int px, int py, String label, FirewallOsSimulator.PortConfig pc, boolean isBooted, long time, int index) {
         g.fill(px, py, px + 22, py + 22, 0xFF000000);
         g.fill(px + 3, py + 5, px + 19, py + 18, 0xFF111111);
 
@@ -710,7 +549,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
     }
 
     private void renderConfigTab(GuiGraphics g, int x, int y, int mouseX, int mouseY) {
-        FirewallState act = firewalls[currentFirewallIndex];
+        FirewallOsSimulator act = firewalls[currentFirewallIndex];
         int sbWidth = 160;
         int listY = y + 31;
         int terminalHeight = 110;
@@ -789,7 +628,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
             g.fill(x + this.imageWidth - 10, y + 93, x + this.imageWidth - 9, btnY - 4, 0xFF444444);
 
         } else if (this.selectedConfigItem.equals("Management1/1")) {
-            PortConfig pc = act.portConfigs.get("Management1/1");
+            FirewallOsSimulator.PortConfig pc = act.portConfigs.get("Management1/1");
 
             drawFormBackground(g, contentX, y, 4, 60);
 
@@ -820,10 +659,13 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
 
             rowY += 17;
             g.drawString(this.font, "MAC Address", contentX - 5, rowY, 0xFFFFFF, false);
-            g.drawString(this.font, act.macAddress, contentX + 220, rowY, 0xAAAAAA, false);
+            g.fill(contentX + 219, rowY - 2, contentX + 381, rowY + 11, 0xFF2A2A2A);
+            g.fill(contentX + 219, rowY - 2, contentX + 381, rowY - 1, 0xFF444444);
+            g.fill(contentX + 219, rowY - 2, contentX + 220, rowY + 11, 0xFF444444);
+            g.drawString(this.font, act.macAddress, contentX + 225, rowY + 1, 0xAAAAAA, false);
 
             // IP Configuration Sub-Section
-            int ipSecY = rowY + 30;
+            int ipSecY = rowY + 25;
             drawFormBackground(g, contentX, y, 2, ipSecY - y);
 
             g.drawString(this.font, "IP Configuration", contentX - 5, ipSecY + 4, 0xFFFFFF, false);
@@ -831,17 +673,17 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
             ipSecY += 17;
             g.drawString(this.font, "IPv4 Address", contentX - 5, ipSecY + 4, 0xFFFFFF, false);
             // Re-align input box
-            if (this.ipv4Box != null) this.ipv4Box.setPosition(contentX + 225, ipSecY + 4);
+            if (this.ipv4Box != null) this.ipv4Box.setPosition(contentX + 225, ipSecY + 3);
 
             ipSecY += 17;
             g.drawString(this.font, "Subnet Mask", contentX - 5, ipSecY + 4, 0xFFFFFF, false);
-            if (this.subnetMaskBox != null) this.subnetMaskBox.setPosition(contentX + 225, ipSecY + 4);
+            if (this.subnetMaskBox != null) this.subnetMaskBox.setPosition(contentX + 225, ipSecY + 3);
 
             // Vertical divider for inputs
-            g.fill(contentX + 220, y + 147, contentX + 221, y + 181, 0xFF444444);
+            g.fill(contentX + 220, y + 152, contentX + 221, y + 186, 0xFF444444);
 
         } else if (act.portConfigs.containsKey(this.selectedConfigItem)) {
-            PortConfig pc = act.portConfigs.get(this.selectedConfigItem);
+            FirewallOsSimulator.PortConfig pc = act.portConfigs.get(this.selectedConfigItem);
             int rowY = y + 65;
 
             g.drawString(this.font, "Port Status", contentX, rowY + 1, 0xFFFFFF, false);
@@ -892,7 +734,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
     }
 
     private void renderCLITab(GuiGraphics g, int x, int y) {
-        FirewallState act = firewalls[currentFirewallIndex];
+        FirewallOsSimulator act = firewalls[currentFirewallIndex];
 
         if (!act.isBooted) {
             long bootTime = System.currentTimeMillis() - act.bootStartTime;
