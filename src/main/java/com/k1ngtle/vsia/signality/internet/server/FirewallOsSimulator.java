@@ -10,8 +10,6 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class FirewallOsSimulator {
 
@@ -25,6 +23,7 @@ public class FirewallOsSimulator {
         public String duplex = "Auto";
         public String ipAddress = "unassigned";
         public String subnetMask = "unassigned";
+        public String ipv6Address = "unassigned";
         public String nameif = "";
         public int securityLevel = 0;
 
@@ -35,6 +34,7 @@ public class FirewallOsSimulator {
             tag.putString("Duplex", duplex);
             tag.putString("IpAddress", ipAddress);
             tag.putString("SubnetMask", subnetMask);
+            tag.putString("Ipv6Address", ipv6Address);
             tag.putString("NameIf", nameif);
             tag.putInt("SecurityLevel", securityLevel);
             return tag;
@@ -46,6 +46,7 @@ public class FirewallOsSimulator {
             duplex = tag.getString("Duplex");
             ipAddress = tag.getString("IpAddress");
             subnetMask = tag.getString("SubnetMask");
+            if (tag.contains("Ipv6Address")) ipv6Address = tag.getString("Ipv6Address");
             nameif = tag.getString("NameIf");
             securityLevel = tag.getInt("SecurityLevel");
         }
@@ -54,11 +55,10 @@ public class FirewallOsSimulator {
     public static class ParsedAclRule {
         public String name;
         public boolean permit;
-        public String protocol; // "ip", "tcp", "udp", "icmp"
+        public String protocol;
         public long srcIp, srcMask;
         public long dstIp, dstMask;
-        public int dstPort = -1; // -1 means any
-
+        public int dstPort = -1;
         public String rawCommand;
 
         public boolean matches(long sIp, long dIp, String proto, int dPort) {
@@ -76,7 +76,6 @@ public class FirewallOsSimulator {
         public String natCommand = "";
     }
 
-    // Stateful Connection Tracking (ASA feature)
     private static class ConnectionState {
         long srcIp, dstIp;
         int srcPort, dstPort;
@@ -91,14 +90,12 @@ public class FirewallOsSimulator {
 
     public final Map<String, PortConfig> portConfigs = new LinkedHashMap<>();
 
-    // Core Engine State
     public final List<ParsedAclRule> parsedAcls = new ArrayList<>();
-    public final Map<String, String> accessGroups = new LinkedHashMap<>(); // Interface -> ACL name
+    public final Map<String, String> accessGroups = new LinkedHashMap<>();
     public final List<String> routes = new ArrayList<>();
     public final Map<String, NetworkObject> networkObjects = new LinkedHashMap<>();
     private final List<ConnectionState> connectionTable = new ArrayList<>();
 
-    // GUI CLI State
     public final List<String> asaCommands = new ArrayList<>();
     public final List<String> cliLines = new ArrayList<>();
     public boolean isBooted = false;
@@ -132,16 +129,6 @@ public class FirewallOsSimulator {
         asaCommands.add("");
     }
 
-    // ========================================================================
-    // STATEFUL PACKET INSPECTION ENGINE (SPI)
-    // ========================================================================
-
-    /**
-     * Evaluates an incoming packet against the ASA's security levels, ACLs, and NAT.
-     * @param packet The raw incoming OSINetworkPacket
-     * @param ingressPortName The port the packet entered on (e.g., "GigabitEthernet1/1")
-     * @return The routed and translated packet, or null if it was dropped by the firewall.
-     */
     public OSINetworkPacket filterAndRoutePacket(OSINetworkPacket packet, String ingressPortName) {
         if (!isBooted) return null;
 
@@ -151,7 +138,6 @@ public class FirewallOsSimulator {
         long pSrcIp = ipToLong(packet.sourceIp);
         long pDstIp = ipToLong(packet.targetIp);
 
-        // 1. Check existing stateful connection table (Bypass ACL if established)
         maintainConnectionTable();
         for (ConnectionState conn : connectionTable) {
             if (conn.protocol.equalsIgnoreCase(packet.applicationProtocol) &&
@@ -159,21 +145,18 @@ public class FirewallOsSimulator {
                             (conn.dstIp == pSrcIp && conn.srcIp == pDstIp && conn.dstPort == packet.sourcePort && conn.srcPort == packet.targetPort))) {
 
                 conn.lastActivityMillis = System.currentTimeMillis();
-                return routePacket(packet); // Fast path
+                return routePacket(packet);
             }
         }
 
-        // 2. Determine Egress Interface (Routing)
         String egressPortName = lookupRoute(packet.targetIp);
-        if (egressPortName == null) return null; // No route to host
+        if (egressPortName == null) return null;
 
         PortConfig egressPort = portConfigs.get(egressPortName);
         if (egressPort == null || !egressPort.up || egressPort.nameif.isEmpty()) return null;
 
-        // 3. Security Level Logic
         boolean permittedBySecurityLevel = ingressPort.securityLevel > egressPort.securityLevel;
 
-        // 4. Access Control List (ACL) Evaluation
         boolean permittedByAcl = false;
         boolean aclApplied = false;
 
@@ -184,25 +167,23 @@ public class FirewallOsSimulator {
                 if (rule.name.equals(appliedAclName)) {
                     if (rule.matches(pSrcIp, pDstIp, packet.applicationProtocol, packet.targetPort)) {
                         permittedByAcl = rule.permit;
-                        break; // First match wins
+                        break;
                     }
                 }
             }
         }
 
-        // Final Permit/Drop Decision
         boolean finalPermit;
         if (aclApplied) {
-            finalPermit = permittedByAcl; // Implicit deny any any at the end of an applied ACL
+            finalPermit = permittedByAcl;
         } else {
-            finalPermit = permittedBySecurityLevel; // Default ASA behavior if no ACL is bound
+            finalPermit = permittedBySecurityLevel;
         }
 
         if (!finalPermit) {
-            return null; // PACKET DROPPED
+            return null;
         }
 
-        // 5. Establish Stateful Connection
         ConnectionState newState = new ConnectionState();
         newState.srcIp = pSrcIp;
         newState.dstIp = pDstIp;
@@ -212,26 +193,20 @@ public class FirewallOsSimulator {
         newState.lastActivityMillis = System.currentTimeMillis();
         connectionTable.add(newState);
 
-        // 6. NAT translation & Forwarding
         return applyNatAndRoute(packet, ingressPort, egressPort);
     }
 
     private String lookupRoute(String targetIp) {
         long tIp = ipToLong(targetIp);
-
-        // Check directly connected subnets first
         for (Map.Entry<String, PortConfig> entry : portConfigs.entrySet()) {
             PortConfig pc = entry.getValue();
             if (!pc.up || pc.ipAddress.equals("unassigned")) continue;
 
             long pIp = ipToLong(pc.ipAddress);
             long mask = ipToLong(pc.subnetMask);
-            if ((tIp & mask) == (pIp & mask)) {
-                return entry.getKey(); // Connected route wins
-            }
+            if ((tIp & mask) == (pIp & mask)) return entry.getKey();
         }
 
-        // Check static routes
         for (String route : routes) {
             String[] parts = route.trim().split("\\s+");
             if (parts.length >= 4 && parts[0].equals("route")) {
@@ -239,7 +214,6 @@ public class FirewallOsSimulator {
                 long net = ipToLong(parts[2]);
                 long mask = ipToLong(parts[3]);
                 if ((tIp & mask) == (net & mask)) {
-                    // In a full implementation, we'd resolve the gateway IP here.
                     for (Map.Entry<String, PortConfig> entry : portConfigs.entrySet()) {
                         if (entry.getValue().nameif.equals(egressIf)) return entry.getKey();
                     }
@@ -247,7 +221,6 @@ public class FirewallOsSimulator {
             }
         }
 
-        // Default route (0.0.0.0) fallback
         for (String route : routes) {
             if (route.contains("0.0.0.0 0.0.0.0")) {
                 String[] parts = route.trim().split("\\s+");
@@ -256,12 +229,10 @@ public class FirewallOsSimulator {
                 }
             }
         }
-
         return null;
     }
 
     private OSINetworkPacket applyNatAndRoute(OSINetworkPacket packet, PortConfig in, PortConfig out) {
-        // Simplified NAT execution for "object network" dynamic interface PAT
         for (NetworkObject obj : networkObjects.values()) {
             if (obj.natCommand.contains("(" + in.nameif + "," + out.nameif + ") dynamic interface")) {
                 long pSrcIp = ipToLong(packet.sourceIp);
@@ -270,7 +241,6 @@ public class FirewallOsSimulator {
                     long objNet = ipToLong(subParts[0]);
                     long objMask = ipToLong(subParts[1]);
                     if ((pSrcIp & objMask) == (objNet & objMask)) {
-                        // Translate source IP to the egress interface IP
                         packet.sourceIp = out.ipAddress;
                     }
                 }
@@ -280,7 +250,6 @@ public class FirewallOsSimulator {
     }
 
     private OSINetworkPacket routePacket(OSINetworkPacket packet) {
-        // In a real mod environment, we'd decrement TTL and update MACs.
         return packet;
     }
 
@@ -289,16 +258,11 @@ public class FirewallOsSimulator {
         Iterator<ConnectionState> it = connectionTable.iterator();
         while (it.hasNext()) {
             ConnectionState conn = it.next();
-            // Drop idle connections after 60 seconds (mock timeout)
             if (now - conn.lastActivityMillis > 60000) {
                 it.remove();
             }
         }
     }
-
-    // ========================================================================
-    // CLI PARSER ENGINE
-    // ========================================================================
 
     public String getPrompt() {
         switch (cliMode) {
@@ -309,6 +273,61 @@ public class FirewallOsSimulator {
             case CONFIG_OBJ: return hostname + "(config-network-object)#";
         }
         return hostname + ">";
+    }
+
+    public void handleAutocomplete() {
+        if (cliInput.isEmpty()) return;
+        String lower = cliInput.toLowerCase();
+
+        if (cliMode == CliMode.CONFIG && (lower.startsWith("int ") || lower.startsWith("interface "))) {
+            String[] parts = cliInput.split(" ", -1);
+            if (parts.length == 2 && !parts[1].isEmpty()) {
+                String iface = parts[1].toLowerCase();
+                if (iface.startsWith("gi")) cliInput = "interface GigabitEthernet1/" + cliInput.substring(cliInput.toLowerCase().indexOf("gi") + 2);
+                else if (iface.startsWith("ma")) cliInput = "interface Management1/1";
+                else if (!lower.startsWith("interface ")) cliInput = "interface " + parts[1];
+                cliCursorPos = cliInput.length();
+                if (onStateChange != null) onStateChange.run();
+                return;
+            } else if (parts.length == 2 && parts[1].isEmpty()) {
+                cliInput = "interface ";
+                cliCursorPos = cliInput.length();
+                if (onStateChange != null) onStateChange.run();
+                return;
+            }
+        }
+
+        String[] tokens = lower.split(" ", -1);
+        if (tokens.length == 1) {
+            String[] options = new String[0];
+            if (cliMode == CliMode.EXEC) options = new String[]{"enable", "ping", "help", "exit"};
+            else if (cliMode == CliMode.PRIVILEGED) options = new String[]{"configure", "disable", "exit", "write", "show", "help"};
+            else if (cliMode == CliMode.CONFIG) options = new String[]{"interface", "hostname", "access-list", "access-group", "object", "route", "exit", "help"};
+            else if (cliMode == CliMode.CONFIG_IF) options = new String[]{"nameif", "security-level", "ip", "shutdown", "no", "exit", "help"};
+            else if (cliMode == CliMode.CONFIG_OBJ) options = new String[]{"subnet", "nat", "exit", "help"};
+
+            String match = findCommonPrefix(tokens[0], options);
+            if (match != null && match.length() > tokens[0].length()) {
+                cliInput = match + " ";
+                cliCursorPos = cliInput.length();
+                if (onStateChange != null) onStateChange.run();
+            }
+        }
+    }
+
+    private String findCommonPrefix(String input, String[] options) {
+        String common = null;
+        for (String opt : options) {
+            if (opt.startsWith(input)) {
+                if (common == null) common = opt;
+                else {
+                    int i = 0;
+                    while (i < common.length() && i < opt.length() && common.charAt(i) == opt.charAt(i)) i++;
+                    common = common.substring(0, i);
+                }
+            }
+        }
+        return common;
     }
 
     public void appendGuiCommand(String command, String selectedConfigItem) {
@@ -322,13 +341,45 @@ public class FirewallOsSimulator {
     }
 
     public void executeCliCore(String input, boolean echo) {
+        if (input.endsWith("?")) {
+            if (echo) { cliLines.add(getPrompt() + input); cliScrollOffset = 0; }
+            String prefix = input.substring(0, input.length() - 1);
+            boolean spaceBefore = prefix.endsWith(" ");
+            prefix = prefix.trim().toLowerCase();
+
+            if (prefix.isEmpty()) {
+                showRootHelp();
+            } else if (spaceBefore) {
+                showContextHelp(prefix);
+            } else {
+                showPrefixHelp(prefix);
+            }
+            if (onStateChange != null) onStateChange.run();
+            return;
+        }
+
         String cmd = input.trim();
         if (cmd.isEmpty() && echo) { cliLines.add(getPrompt()); cliScrollOffset = 0; return; }
-        if (echo) { cliLines.add(getPrompt() + cmd); cliScrollOffset = 0; }
+
         String lower = cmd.toLowerCase();
+        if (lower.equals("help")) {
+            if (echo) { cliLines.add(getPrompt() + cmd); cliScrollOffset = 0; }
+            showRootHelp();
+            if (onStateChange != null) onStateChange.run();
+            return;
+        }
+
+        if (echo) { cliLines.add(getPrompt() + cmd); cliScrollOffset = 0; }
 
         if (cliMode == CliMode.EXEC) {
             if (lower.equals("en") || lower.equals("enable")) cliMode = CliMode.PRIVILEGED;
+            else if (lower.startsWith("ping ")) {
+                if (echo) {
+                    cliLines.add("Exec commands:");
+                    cliLines.add("  enable  Turn on privileged commands");
+                    cliLines.add("  help    Description of the interactive help system");
+                }
+            }
             else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
 
         } else if (cliMode == CliMode.PRIVILEGED) {
@@ -373,7 +424,8 @@ public class FirewallOsSimulator {
                 for (ParsedAclRule acl : parsedAcls) cliLines.add(acl.rawCommand);
                 for (Map.Entry<String, String> ag : accessGroups.entrySet()) cliLines.add("access-group " + ag.getValue() + " in interface " + ag.getKey());
                 for (String route : routes) cliLines.add(route);
-            } else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
+            }
+            else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
 
         } else if (cliMode == CliMode.CONFIG) {
             if (lower.startsWith("int ") || lower.startsWith("interface ")) {
@@ -420,6 +472,7 @@ public class FirewallOsSimulator {
                 } else if (lower.equals("shutdown")) { pc.up = false; }
                 else if (lower.equals("no shutdown")) { pc.up = true; }
                 else if (lower.equals("exit")) { cliMode = CliMode.CONFIG; }
+                else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
             }
         } else if (cliMode == CliMode.CONFIG_OBJ) {
             NetworkObject obj = networkObjects.get(cliTarget);
@@ -427,16 +480,133 @@ public class FirewallOsSimulator {
                 if (lower.startsWith("subnet ")) { obj.subnet = cmd.substring(7).trim(); }
                 else if (lower.startsWith("nat ")) { obj.natCommand = cmd.substring(4).trim(); }
                 else if (lower.equals("exit")) { cliMode = CliMode.CONFIG; }
+                else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
             }
         }
 
         if (onStateChange != null) onStateChange.run();
     }
 
+    private void showRootHelp() {
+        if (cliMode == CliMode.EXEC) {
+            cliLines.add("Exec commands:");
+            cliLines.add("  enable  Turn on privileged commands");
+            cliLines.add("  ping    Send echo messages");
+            cliLines.add("  help    Description of the interactive help system");
+            cliLines.add("  exit    Exit from the EXEC");
+        } else if (cliMode == CliMode.PRIVILEGED) {
+            cliLines.add("Privileged Exec commands:");
+            cliLines.add("  configure  Enter configuration mode");
+            cliLines.add("  disable    Turn off privileged commands");
+            cliLines.add("  exit       Exit from the EXEC");
+            cliLines.add("  show       Show running system information");
+            cliLines.add("  write      Write running configuration to memory");
+        } else if (cliMode == CliMode.CONFIG) {
+            cliLines.add("Configure commands:");
+            cliLines.add("  access-group  Bind an access list to an interface");
+            cliLines.add("  access-list   Add an access list entry");
+            cliLines.add("  exit          Exit from configure mode");
+            cliLines.add("  hostname      Set system's network name");
+            cliLines.add("  interface     Select an interface to configure");
+            cliLines.add("  object        Configure a network object");
+            cliLines.add("  route         Configure a static route");
+        } else if (cliMode == CliMode.CONFIG_IF) {
+            cliLines.add("Interface configuration commands:");
+            cliLines.add("  exit            Exit from interface configuration mode");
+            cliLines.add("  ip              Interface Internet Protocol config commands");
+            cliLines.add("  nameif          Assign a name to the interface");
+            cliLines.add("  no              Negate a command or set its defaults");
+            cliLines.add("  security-level  Specify the security level of the interface");
+            cliLines.add("  shutdown        Shutdown the selected interface");
+        } else if (cliMode == CliMode.CONFIG_OBJ) {
+            cliLines.add("Network object commands:");
+            cliLines.add("  exit    Exit from object configuration mode");
+            cliLines.add("  nat     Configure NAT operations");
+            cliLines.add("  subnet  Configure a subnet");
+        }
+    }
+
+    private void showContextHelp(String prefix) {
+        if (prefix.equals("show")) {
+            cliLines.add("  access-list      Display access list information");
+            cliLines.add("  interface        Show interface status and configuration");
+            cliLines.add("  running-config   Current operating configuration");
+            cliLines.add("  version          System hardware and software status");
+            cliLines.add("Example: show interface ip brief");
+        } else if (prefix.equals("show interface") || prefix.equals("show int")) {
+            cliLines.add("  ip  Show IP interface status");
+        } else if (prefix.equals("show interface ip") || prefix.equals("show int ip")) {
+            cliLines.add("  brief  Brief summary of IP status and configuration");
+        } else if (prefix.equals("configure") || prefix.equals("conf")) {
+            cliLines.add("  terminal  Configure from the terminal");
+        } else if (prefix.equals("interface") || prefix.equals("int")) {
+            cliLines.add("  GigabitEthernet  GigabitEthernet IEEE 802.3z");
+            cliLines.add("  Management       Management interface");
+            cliLines.add("Example: interface GigabitEthernet1/1");
+        } else if (prefix.equals("object")) {
+            cliLines.add("  network  Configure a network object");
+        } else if (prefix.equals("object network")) {
+            cliLines.add("  WORD  Network object name");
+            cliLines.add("Example: object network inside_subnet");
+        } else if (prefix.equals("access-list")) {
+            cliLines.add("  WORD  Access list name");
+            cliLines.add("Example: access-list OUTSIDE_IN permit tcp any any eq 80");
+        } else if (prefix.equals("access-group")) {
+            cliLines.add("  WORD  Access group name");
+            cliLines.add("Example: access-group OUTSIDE_IN in interface GigabitEthernet1/1");
+        } else if (prefix.equals("ip")) {
+            cliLines.add("  address  Set the IP address of an interface");
+        } else if (prefix.equals("ip address")) {
+            cliLines.add("  A.B.C.D  IP address");
+            cliLines.add("Example: ip address 10.0.0.1 255.255.255.0");
+        } else if (prefix.equals("nameif")) {
+            cliLines.add("  WORD  Name of the interface");
+        } else if (prefix.equals("security-level")) {
+            cliLines.add("  <0-100>  Security level of the interface");
+        } else if (prefix.equals("route")) {
+            cliLines.add("  WORD  Interface name (e.g., outside)");
+            cliLines.add("Example: route outside 0.0.0.0 0.0.0.0 192.168.1.1");
+        } else if (prefix.equals("ping")) {
+            cliLines.add("  WORD  Ping destination address or hostname");
+        } else if (prefix.equals("hostname")) {
+            cliLines.add("  WORD  This system's network name");
+        } else if (prefix.equals("subnet")) {
+            cliLines.add("  A.B.C.D  Network address");
+            cliLines.add("Example: subnet 10.0.0.0 255.255.255.0");
+        } else if (prefix.equals("nat")) {
+            cliLines.add("  (if_name,if_name)  NAT interface mapping");
+            cliLines.add("Example: nat (inside,outside) dynamic interface");
+        } else {
+            cliLines.add("% Unrecognized command");
+        }
+    }
+
+    private void showPrefixHelp(String prefix) {
+        List<String> matches = new ArrayList<>();
+        String[] execOpts = {"enable", "ping", "help", "exit"};
+        String[] privOpts = {"configure", "disable", "exit", "write", "show", "help"};
+        String[] confOpts = {"access-group", "access-list", "exit", "hostname", "interface", "object", "route", "help"};
+        String[] ifOpts = {"exit", "ip", "nameif", "no", "security-level", "shutdown", "help"};
+        String[] objOpts = {"exit", "nat", "subnet", "help"};
+
+        String[] toCheck = switch(cliMode) {
+            case EXEC -> execOpts;
+            case PRIVILEGED -> privOpts;
+            case CONFIG -> confOpts;
+            case CONFIG_IF -> ifOpts;
+            case CONFIG_OBJ -> objOpts;
+        };
+
+        for (String opt : toCheck) {
+            if (opt.startsWith(prefix)) matches.add(opt);
+        }
+
+        if (matches.isEmpty()) cliLines.add("% Unrecognized command");
+        else cliLines.add(String.join("  ", matches));
+    }
+
     private void parseAclRule(String cmd) {
         try {
-            // Very basic ASA extended ACL parser mapping to our packet engine
-            // Format: access-list <name> extended <permit/deny> <protocol> <srcIp> <mask> <dstIp> <mask> [eq <port>]
             String[] parts = cmd.split("\\s+");
             if (parts.length < 6) return;
 
@@ -478,12 +648,9 @@ public class FirewallOsSimulator {
         }
     }
 
-    // ========================================================================
-    // NBT PERSISTENCE
-    // ========================================================================
-
     public CompoundTag saveToNBT() {
         CompoundTag tag = new CompoundTag();
+        tag.putBoolean("IsBooted", isBooted);
         tag.putString("Hostname", hostname);
         tag.putString("DisplayName", displayName);
 
@@ -528,6 +695,15 @@ public class FirewallOsSimulator {
     }
 
     public void loadFromNBT(CompoundTag tag) {
+        if (tag.contains("IsBooted")) {
+            isBooted = tag.getBoolean("IsBooted");
+            if (isBooted && cliLines.isEmpty()) {
+                cliLines.add("System Bootstrap, Version 2.1(0)FW");
+                cliLines.add("Platform ASA-5506-X, 4096 MB RAM, CPU Atom C2000");
+                cliLines.add("System resumed from sleep.");
+                cliLines.add("");
+            }
+        }
         if (tag.contains("Hostname")) hostname = tag.getString("Hostname");
         if (tag.contains("DisplayName")) displayName = tag.getString("DisplayName");
 

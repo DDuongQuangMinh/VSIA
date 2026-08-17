@@ -35,6 +35,11 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
     private String deviceName = "ciscoasa";
     private boolean strictMode = true;
 
+    // IP Configuration
+    private String subnetMask = "unassigned";
+    private String ipv6Address = "unassigned";
+    private boolean dhcpEnabled = true;
+
     // Connections
     private BlockPos wanConnection = null;
     private BlockPos lanConnection = null;
@@ -73,10 +78,60 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
     public String getManagementIp() { return managementIp; }
     public void setManagementIp(String ip) { this.managementIp = ip; setChanged(); }
 
+    public String getSubnetMask() { return subnetMask; }
+    public void setSubnetMask(String subnetMask) { this.subnetMask = subnetMask; setChanged(); }
+
+    public String getIpv6Address() { return ipv6Address; }
+    public void setIpv6Address(String ipv6Address) { this.ipv6Address = ipv6Address; setChanged(); }
+
+    public boolean isDhcpEnabled() { return dhcpEnabled; }
+    public void setDhcpEnabled(boolean dhcpEnabled) { this.dhcpEnabled = dhcpEnabled; setChanged(); }
+
     public boolean isStrictMode() { return strictMode; }
     public void setStrictMode(boolean strictMode) { this.strictMode = strictMode; setChanged(); }
 
     public List<FirewallRule> getRules() { return activeRules; }
+
+    public boolean connectDevice(BlockPos pos) {
+        if (pos.equals(this.worldPosition)) return false;
+        if (pos.equals(lanConnection) || pos.equals(wanConnection)) return false;
+
+        if (lanConnection == null) {
+            lanConnection = pos;
+            setChanged();
+            if (level != null && !level.isClientSide) level.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
+            return true;
+        } else if (wanConnection == null) {
+            wanConnection = pos;
+            setChanged();
+            if (level != null && !level.isClientSide) level.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
+            return true;
+        }
+        return false;
+    }
+
+    public boolean disconnectDevice(BlockPos pos) {
+        boolean removed = false;
+        if (pos.equals(lanConnection)) {
+            lanConnection = null;
+            removed = true;
+        } else if (pos.equals(wanConnection)) {
+            wanConnection = null;
+            removed = true;
+        }
+        if (removed) {
+            setChanged();
+            if (level != null && !level.isClientSide) level.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
+        }
+        return removed;
+    }
+
+    public List<BlockPos> getConnectedDevices() {
+        List<BlockPos> connections = new ArrayList<>();
+        if (lanConnection != null) connections.add(lanConnection);
+        if (wanConnection != null) connections.add(wanConnection);
+        return connections;
+    }
 
     @Override
     protected void saveAdditional(CompoundTag tag) {
@@ -84,6 +139,9 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
         tag.putInt("DeviceId", deviceId);
         tag.putString("DeviceName", deviceName);
         tag.putString("ManagementIP", managementIp);
+        tag.putString("SubnetMask", subnetMask);
+        tag.putString("Ipv6Address", ipv6Address);
+        tag.putBoolean("DhcpEnabled", dhcpEnabled);
         tag.putBoolean("StrictMode", strictMode);
 
         if (wanConnection != null) tag.putLong("WanPos", wanConnection.asLong());
@@ -108,6 +166,9 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
         if (tag.contains("DeviceId")) deviceId = tag.getInt("DeviceId");
         if (tag.contains("DeviceName")) deviceName = tag.getString("DeviceName");
         if (tag.contains("ManagementIP")) managementIp = tag.getString("ManagementIP");
+        if (tag.contains("SubnetMask")) subnetMask = tag.getString("SubnetMask");
+        if (tag.contains("Ipv6Address")) ipv6Address = tag.getString("Ipv6Address");
+        if (tag.contains("DhcpEnabled")) dhcpEnabled = tag.getBoolean("DhcpEnabled");
         if (tag.contains("StrictMode")) strictMode = tag.getBoolean("StrictMode");
 
         if (tag.contains("WanPos")) wanConnection = BlockPos.of(tag.getLong("WanPos"));
@@ -178,4 +239,3 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
         }
     }
 }
-

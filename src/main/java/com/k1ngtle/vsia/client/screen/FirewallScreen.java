@@ -9,9 +9,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 
 public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
@@ -40,13 +38,13 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
 
     private EditBox ipv4Box;
     private EditBox subnetMaskBox;
+    private EditBox ipv6Box;
+    private net.minecraft.client.gui.components.Button dhcpButton;
 
-    // Config Tab Scroll State
     private float configScrollOffset = 0.0f;
     private int maxConfigScrollLines = 0;
     private final List<String[]> configTreeItems = new ArrayList<>();
 
-    // Physical Tab Scroll State
     private float physicalScrollOffset = 0.0f;
 
     private final Random random = new Random();
@@ -136,7 +134,8 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
                 FirewallOsSimulator.PortConfig pc = firewalls[currentFirewallIndex].portConfigs.get("Management1/1");
                 if (pc != null) {
                     pc.ipAddress = val.isEmpty() ? "unassigned" : val;
-                    if (!pc.ipAddress.equals("unassigned")) {
+                    if (currentFirewallIndex == 0 && this.menu.blockEntity != null) this.menu.blockEntity.setManagementIp(pc.ipAddress);
+                    if (!pc.ipAddress.equals("unassigned") && !pc.subnetMask.equals("unassigned")) {
                         firewalls[currentFirewallIndex].appendGuiCommand("ip address " + pc.ipAddress + " " + pc.subnetMask, "Management1/1");
                     }
                 }
@@ -152,6 +151,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
                 FirewallOsSimulator.PortConfig pc = firewalls[currentFirewallIndex].portConfigs.get("Management1/1");
                 if (pc != null) {
                     pc.subnetMask = val.isEmpty() ? "unassigned" : val;
+                    if (currentFirewallIndex == 0 && this.menu.blockEntity != null) this.menu.blockEntity.setSubnetMask(pc.subnetMask);
                     if (!pc.ipAddress.equals("unassigned") && !pc.subnetMask.equals("unassigned")) {
                         firewalls[currentFirewallIndex].appendGuiCommand("ip address " + pc.ipAddress + " " + pc.subnetMask, "Management1/1");
                     }
@@ -159,6 +159,32 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
             }
         });
         this.addRenderableWidget(this.subnetMaskBox);
+
+        this.ipv6Box = new EditBox(this.font, contentX + 225, y + 183, 300, 12, Component.literal("IPv6 Address"));
+        this.ipv6Box.setBordered(false);
+        this.ipv6Box.setTextColor(0xFFFFFF);
+        this.ipv6Box.setResponder(val -> {
+            if (!isUpdatingVisibility && "Management1/1".equals(selectedConfigItem)) {
+                FirewallOsSimulator.PortConfig pc = firewalls[currentFirewallIndex].portConfigs.get("Management1/1");
+                if (pc != null) {
+                    pc.ipv6Address = val.isEmpty() ? "unassigned" : val;
+                    if (currentFirewallIndex == 0 && this.menu.blockEntity != null) this.menu.blockEntity.setIpv6Address(pc.ipv6Address);
+                }
+            }
+        });
+        this.addRenderableWidget(this.ipv6Box);
+
+        this.dhcpButton = net.minecraft.client.gui.components.Button.builder(
+                Component.literal("DHCP: ON"),
+                b -> {
+                    if (this.menu.blockEntity != null) {
+                        boolean current = this.menu.blockEntity.isDhcpEnabled();
+                        this.menu.blockEntity.setDhcpEnabled(!current);
+                        b.setMessage(Component.literal("DHCP: " + (!current ? "ON" : "OFF")));
+                    }
+                }
+        ).bounds(contentX + 220, y + 200, 85, 18).build();
+        this.addRenderableWidget(this.dhcpButton);
 
         updateVisibility();
     }
@@ -193,6 +219,16 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
                 if (!this.subnetMaskBox.isFocused() && pc != null) this.subnetMaskBox.setValue(pc.subnetMask.equals("unassigned") ? "" : pc.subnetMask);
             }
         }
+        if (this.ipv6Box != null) {
+            this.ipv6Box.setVisible(isMgmt);
+            if (isMgmt) {
+                FirewallOsSimulator.PortConfig pc = act.portConfigs.get("Management1/1");
+                if (!this.ipv6Box.isFocused() && pc != null) this.ipv6Box.setValue(pc.ipv6Address.equals("unassigned") ? "" : pc.ipv6Address);
+            }
+        }
+        if (this.dhcpButton != null) {
+            this.dhcpButton.visible = isMgmt;
+        }
 
         this.isUpdatingVisibility = false;
     }
@@ -202,7 +238,10 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
         FirewallOsSimulator act = firewalls[currentFirewallIndex];
 
         if (this.currentTab == Tab.CLI) {
-            if (pKeyCode == 259) { // BACKSPACE
+            if (pKeyCode == 258) { // TAB Autocomplete
+                act.handleAutocomplete();
+                return true;
+            } else if (pKeyCode == 259) { // BACKSPACE
                 if (act.cliInput.length() > 0 && act.cliCursorPos > 0) {
                     act.cliInput = act.cliInput.substring(0, act.cliCursorPos - 1) + act.cliInput.substring(act.cliCursorPos);
                     act.cliCursorPos--;
@@ -233,6 +272,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
             if (this.hostnameBox != null && this.hostnameBox.isVisible() && this.hostnameBox.isFocused()) { anyFocused = true; if (this.hostnameBox.keyPressed(pKeyCode, pScanCode, pModifiers)) handled = true; }
             if (this.ipv4Box != null && this.ipv4Box.isVisible() && this.ipv4Box.isFocused()) { anyFocused = true; if (this.ipv4Box.keyPressed(pKeyCode, pScanCode, pModifiers)) handled = true; }
             if (this.subnetMaskBox != null && this.subnetMaskBox.isVisible() && this.subnetMaskBox.isFocused()) { anyFocused = true; if (this.subnetMaskBox.keyPressed(pKeyCode, pScanCode, pModifiers)) handled = true; }
+            if (this.ipv6Box != null && this.ipv6Box.isVisible() && this.ipv6Box.isFocused()) { anyFocused = true; if (this.ipv6Box.keyPressed(pKeyCode, pScanCode, pModifiers)) handled = true; }
 
             if (handled) return true;
             if (anyFocused && this.minecraft != null && this.minecraft.options.keyInventory.matches(pKeyCode, pScanCode)) return true;
@@ -258,6 +298,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
             if (this.hostnameBox != null && this.hostnameBox.isVisible() && this.hostnameBox.isFocused() && this.hostnameBox.charTyped(pCodePoint, pModifiers)) return true;
             if (this.ipv4Box != null && this.ipv4Box.isVisible() && this.ipv4Box.isFocused() && this.ipv4Box.charTyped(pCodePoint, pModifiers)) return true;
             if (this.subnetMaskBox != null && this.subnetMaskBox.isVisible() && this.subnetMaskBox.isFocused() && this.subnetMaskBox.charTyped(pCodePoint, pModifiers)) return true;
+            if (this.ipv6Box != null && this.ipv6Box.isVisible() && this.ipv6Box.isFocused() && this.ipv6Box.charTyped(pCodePoint, pModifiers)) return true;
         }
         return super.charTyped(pCodePoint, pModifiers);
     }
@@ -293,7 +334,6 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
         int x = (this.width - this.imageWidth) / 2;
         int y = (this.height - this.imageHeight) / 2;
 
-        // Top Main Tabs
         if (mouseY >= y + 10 && mouseY <= y + 30) {
             for (int i = 0; i < Tab.values().length; i++) {
                 int tabX = x + 10 + (i * 82);
@@ -305,7 +345,6 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
             }
         }
 
-        // Left Side Firewall Selector Tabs
         if (this.currentTab != Tab.PHYSICAL) {
             int startY = y + 31;
             for (int i = 0; i < 7; i++) {
@@ -324,7 +363,6 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
             int listY = y + 31;
             int listHeight = this.imageHeight - 31 - 110;
 
-            // Sidebar Lists
             if (mouseX >= x && mouseX <= x + sbWidth && mouseY >= listY && mouseY <= listY + listHeight) {
                 int visibleItemIndex = (int) ((mouseY - listY) / 15);
                 int actualIndex = (int) (this.configScrollOffset * this.maxConfigScrollLines) + visibleItemIndex;
@@ -347,14 +385,12 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
                 FirewallOsSimulator.PortConfig pc = act.portConfigs.get(this.selectedConfigItem);
                 int rightColX = x + 380;
 
-                // Port Status
                 if (mouseY >= y + 65 && mouseY <= y + 77 && mouseX >= rightColX + 110 && mouseX <= rightColX + 125) {
                     pc.up = !pc.up;
                     act.appendGuiCommand(pc.up ? "no shutdown" : "shutdown", this.selectedConfigItem);
                     return true;
                 }
 
-                // Link Speed
                 if (mouseY >= y + 90 && mouseY <= y + 102) {
                     if (mouseX >= rightColX - 80 && mouseX < rightColX - 10) {
                         pc.speed = "1000"; act.appendGuiCommand("speed 1000", this.selectedConfigItem); return true;
@@ -370,7 +406,6 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
                     }
                 }
 
-                // Duplex
                 if (mouseY >= y + 115 && mouseY <= y + 127) {
                     if (mouseX >= rightColX && mouseX < rightColX + 75) {
                         pc.duplex = "Half"; act.appendGuiCommand("duplex half", this.selectedConfigItem); return true;
@@ -384,7 +419,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
                 }
             }
 
-            for (EditBox box : new EditBox[]{nameBox, hostnameBox, ipv4Box, subnetMaskBox}) {
+            for (EditBox box : new EditBox[]{nameBox, hostnameBox, ipv4Box, subnetMaskBox, ipv6Box}) {
                 if (box != null && box.isVisible()) {
                     if (box.mouseClicked(mouseX, mouseY, button)) { box.setFocused(true); return true; }
                     else box.setFocused(false);
@@ -399,6 +434,33 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         this.renderBackground(g);
         super.render(g, mouseX, mouseY, partialTick);
+
+        // Keep UI seamlessly synced with any background block updates (like DHCP assigning an IP)
+        if (this.menu.blockEntity != null && currentFirewallIndex == 0) {
+            String beIp = this.menu.blockEntity.getManagementIp();
+            String beMask = this.menu.blockEntity.getSubnetMask();
+            String beIpv6 = this.menu.blockEntity.getIpv6Address();
+            boolean beDhcp = this.menu.blockEntity.isDhcpEnabled();
+
+            FirewallOsSimulator.PortConfig pc = firewalls[0].portConfigs.get("Management1/1");
+            if (pc != null) {
+                if (!beIp.equals(pc.ipAddress) && this.ipv4Box != null && !this.ipv4Box.isFocused()) {
+                    pc.ipAddress = beIp;
+                    if (this.currentTab == Tab.CONFIG && "Management1/1".equals(this.selectedConfigItem)) this.ipv4Box.setValue(beIp.equals("unassigned") ? "" : beIp);
+                }
+                if (!beMask.equals(pc.subnetMask) && this.subnetMaskBox != null && !this.subnetMaskBox.isFocused()) {
+                    pc.subnetMask = beMask;
+                    if (this.currentTab == Tab.CONFIG && "Management1/1".equals(this.selectedConfigItem)) this.subnetMaskBox.setValue(beMask.equals("unassigned") ? "" : beMask);
+                }
+                if (!beIpv6.equals(pc.ipv6Address) && this.ipv6Box != null && !this.ipv6Box.isFocused()) {
+                    pc.ipv6Address = beIpv6;
+                    if (this.currentTab == Tab.CONFIG && "Management1/1".equals(this.selectedConfigItem)) this.ipv6Box.setValue(beIpv6.equals("unassigned") ? "" : beIpv6);
+                }
+            }
+            if (this.dhcpButton != null && this.dhcpButton.visible) {
+                this.dhcpButton.setMessage(Component.literal("DHCP: " + (beDhcp ? "ON" : "OFF")));
+            }
+        }
 
         int x = (this.width - this.imageWidth) / 2;
         int y = (this.height - this.imageHeight) / 2;
@@ -417,11 +479,11 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
             int textColor = isActive ? 0xFFFFFFFF : 0xFFAAAAAA;
 
             g.fill(tabX, y + 10, tabX + 80, y + 31, bgColor);
-            g.fill(tabX, y + 10, tabX + 80, y + 11, 0xFFD32F2F); // Cisco Red Top Highlight
+            g.fill(tabX, y + 10, tabX + 80, y + 11, 0xFFD32F2F);
             g.fill(tabX, y + 10, tabX + 1, y + 31, 0xFF444444);
             g.fill(tabX + 79, y + 10, tabX + 80, y + 31, 0xFF444444);
 
-            if (!isActive) g.fill(tabX, y + 30, tabX + 80, y + 31, 0xFFD32F2F); // Fill bottom line with Red when inactive
+            if (!isActive) g.fill(tabX, y + 30, tabX + 80, y + 31, 0xFFD32F2F);
 
             int textWidth = this.font.width(Tab.values()[i].label);
             g.drawString(this.font, Tab.values()[i].label, tabX + (40 - textWidth / 2), y + 16, textColor, false);
@@ -481,17 +543,14 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
             int sW = 680;
             int sH = 80;
 
-            // Chassis Frame
             g.fill(sX, sY, sX + sW, sY + sH, 0xFF2B2D31);
             g.fill(sX + 1, sY + 1, sX + sW - 1, sY + sH - 1, 0xFF35383B);
 
-            // Side Vent Array
             g.fill(sX + 10, sY + 15, sX + 60, sY + 65, 0xFF222222);
             for(int hole = 0; hole < 6; hole++) {
                 g.fill(sX + 15, sY + 20 + (hole * 7), sX + 55, sY + 23 + (hole * 7), 0xFF111111);
             }
 
-            // Chassis Branding
             g.pose().pushPose();
             g.pose().translate(sX + 80, sY + 20, 0);
             g.pose().scale(1.2f, 1.2f, 1.0f);
@@ -499,7 +558,6 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
             g.pose().popPose();
             g.drawString(this.font, "FW-Edge-PRO", sX + 80, sY + 40, 0xFFAAAAAA, false);
 
-            // Status Indicators
             int ledX = sX + 260;
             int ledY = sY + 20;
             g.drawString(this.font, "PWR", ledX, ledY - 10, 0xFFAAAAAA, false);
@@ -509,7 +567,6 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
             int sysColor = act.isBooted ? ((time % 1000) > 500 ? 0xFF22C55E : 0xFF16823B) : 0xFF444444;
             g.fill(ledX + 34, ledY, ledX + 42, ledY + 8, sysColor);
 
-            // Interface Blocks
             int portStartX = sX + 380;
             int portStartY = sY + 20;
 
@@ -555,7 +612,6 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
         int terminalHeight = 110;
         int listHeight = this.imageHeight - 31 - terminalHeight;
 
-        // Configuration Nav Tree Panel
         g.fill(x, listY, x + sbWidth, listY + listHeight, 0xFF1E1E1E);
         g.fill(x + sbWidth, listY, x + sbWidth + 1, listY + listHeight, 0xFF444444);
 
@@ -584,7 +640,6 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
         }
         g.disableScissor();
 
-        // Right Detail Editor Area
         int contentX = x + sbWidth + 20;
         int rightColX = x + 380;
 
@@ -621,7 +676,6 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
             g.fill(contentX - 10, btnY - 5, x + this.imageWidth - 10, btnY - 4, 0xFF444444);
             g.drawString(this.font, "Device Clock: 00:10:51 Mon Mar 1 1993 UTC", contentX - 5, btnY + 10, 0xAAAAAA, false);
 
-            // Grid Columns for alignment
             g.fill(contentX - 10, y + 93, contentX - 9, btnY - 4, 0xFF444444);
             g.fill(contentX + 80, y + 93, contentX + 81, btnY - 4, 0xFF444444);
             g.fill(contentX + 261, y + 93, contentX + 262, btnY - 4, 0xFF444444);
@@ -664,23 +718,28 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
             g.fill(contentX + 219, rowY - 2, contentX + 220, rowY + 11, 0xFF444444);
             g.drawString(this.font, act.macAddress, contentX + 225, rowY + 1, 0xAAAAAA, false);
 
-            // IP Configuration Sub-Section
             int ipSecY = rowY + 25;
-            drawFormBackground(g, contentX, y, 2, ipSecY - y);
+            drawFormBackground(g, contentX, y, 4, ipSecY - y);
 
             g.drawString(this.font, "IP Configuration", contentX - 5, ipSecY + 4, 0xFFFFFF, false);
 
             ipSecY += 17;
             g.drawString(this.font, "IPv4 Address", contentX - 5, ipSecY + 4, 0xFFFFFF, false);
-            // Re-align input box
             if (this.ipv4Box != null) this.ipv4Box.setPosition(contentX + 225, ipSecY + 3);
 
             ipSecY += 17;
             g.drawString(this.font, "Subnet Mask", contentX - 5, ipSecY + 4, 0xFFFFFF, false);
             if (this.subnetMaskBox != null) this.subnetMaskBox.setPosition(contentX + 225, ipSecY + 3);
 
-            // Vertical divider for inputs
-            g.fill(contentX + 220, y + 152, contentX + 221, y + 186, 0xFF444444);
+            ipSecY += 17;
+            g.drawString(this.font, "IPv6 Address", contentX - 5, ipSecY + 4, 0xFFFFFF, false);
+            if (this.ipv6Box != null) this.ipv6Box.setPosition(contentX + 225, ipSecY + 3);
+
+            ipSecY += 17;
+            g.drawString(this.font, "DHCP Mode", contentX - 5, ipSecY + 4, 0xFFFFFF, false);
+            if (this.dhcpButton != null) this.dhcpButton.setPosition(contentX + 220, ipSecY);
+
+            g.fill(contentX + 220, y + 152, contentX + 221, ipSecY + 20, 0xFF444444);
 
         } else if (act.portConfigs.containsKey(this.selectedConfigItem)) {
             FirewallOsSimulator.PortConfig pc = act.portConfigs.get(this.selectedConfigItem);
@@ -816,7 +875,7 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
         g.fill(x, y, x + 9, y + 9, 0xFFFFFFFF);
         g.fill(x, y, x + 9, y + 1, 0xFF888888);
         g.fill(x, y, x + 1, y + 9, 0xFF888888);
-        if (checked) g.fill(x + 2, y + 2, x + 7, y + 7, 0xFF0078D7); // Changed from Red to Blue for Management Checkbox match
+        if (checked) g.fill(x + 2, y + 2, x + 7, y + 7, 0xFF0078D7);
     }
 
     private void drawRadioButton(GuiGraphics g, int x, int y, boolean checked) {

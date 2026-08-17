@@ -1,6 +1,7 @@
 package com.k1ngtle.vsia.signality.internet.server;
 
 import com.k1ngtle.vsia.signality.SignalityBlocks;
+import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
 import com.k1ngtle.vsia.world.inventory.NetworkSwitchMenu;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -28,14 +29,20 @@ import java.util.Set;
 
 public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEntity, MenuProvider {
 
-    public static final int MAX_PORTS = 24;
+    public static final int MAX_PORTS = 26; // 24 FE + 2 GE
     private final List<BlockPos> connectedDevices = new ArrayList<>();
-    private String switchName = "Core Switch 1";
+
+    private String switchName = "Switch0";
     private int switchId = -1;
+
+    // Internal L2 Switching Engine
+    public final SwitchOsSimulator osSimulator;
+
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
     public NetworkSwitchBlockEntity(BlockPos pos, BlockState state) {
         super(SignalityBlocks.NETWORK_SWITCH_BE.get(), pos, state);
+        this.osSimulator = new SwitchOsSimulator(0, this.switchName, this::setChanged);
     }
 
     public List<BlockPos> getConnectedDevices() {
@@ -54,12 +61,29 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
         if (this.switchId != -1) return;
         this.switchId = id;
         this.switchName = "Switch" + id;
+        this.osSimulator.id = id;
+        this.osSimulator.switchHostname = this.switchName;
+        this.osSimulator.macAddress = String.format("00:1A:2B:3C:4D:%02X", 0x5E + id);
         setChanged();
     }
 
     public int getSwitchId() {
         return switchId;
     }
+
+    public String getSwitchName() {
+        return switchName;
+    }
+
+    public void setSwitchName(String name) {
+        this.switchName = name;
+        this.osSimulator.switchHostname = name;
+        setChanged();
+    }
+
+    // ========================================================================
+    // CABLE CONNECTIONS & PORT MAPPING
+    // ========================================================================
 
     public boolean connectDevice(BlockPos pos) {
         if (connectedDevices.size() >= MAX_PORTS || connectedDevices.contains(pos) || pos.equals(this.worldPosition)) {
@@ -84,14 +108,62 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
         return removed;
     }
 
-    public String getSwitchName() {
-        return switchName;
+    private String getInterfaceNameForPos(BlockPos pos) {
+        int index = connectedDevices.indexOf(pos);
+        if (index == -1) return null;
+        if (index < 24) return "FastEthernet0/" + (index + 1);
+        else return "GigabitEthernet0/" + (index - 23);
     }
 
-    public void setSwitchName(String name) {
-        this.switchName = name;
-        setChanged();
+    private BlockPos getPosForInterfaceName(String name) {
+        int index = -1;
+        if (name.startsWith("FastEthernet0/")) {
+            index = Integer.parseInt(name.substring(14)) - 1;
+        } else if (name.startsWith("GigabitEthernet0/")) {
+            index = Integer.parseInt(name.substring(17)) + 23;
+        }
+        if (index >= 0 && index < connectedDevices.size()) {
+            return connectedDevices.get(index);
+        }
+        return null;
     }
+
+    // ========================================================================
+    // LAYER 2 PACKET FORWARDING
+    // ========================================================================
+
+    public void receiveWiredPacket(OSINetworkPacket packet, BlockPos ingressPos) {
+        if (level == null || level.isClientSide) return;
+
+        String ingressPort = getInterfaceNameForPos(ingressPos);
+        if (ingressPort == null) return;
+
+        // Process through the Switch OS Simulator (VLANs, MAC learning, Forwarding)
+        List<String> egressPorts = osSimulator.processAndForwardPacket(packet, ingressPort);
+
+        for (String egressPort : egressPorts) {
+            BlockPos targetPos = getPosForInterfaceName(egressPort);
+            if (targetPos != null) {
+                BlockEntity be = level.getBlockEntity(targetPos);
+
+                // Clone the packet if we are flooding to prevent cross-reference bugs
+                OSINetworkPacket forwardedPacket = egressPorts.size() > 1 ?
+                        OSINetworkPacket.deserializeNBT(packet.serializeNBT().copy()) : packet;
+
+                if (be instanceof ServerRackBlockEntity rack) {
+                    rack.receiveWiredPacket(forwardedPacket);
+                } else if (be instanceof NetworkSwitchBlockEntity sw) {
+                    sw.receiveWiredPacket(forwardedPacket, this.worldPosition);
+                } else if (be instanceof FirewallBlockEntity fw) {
+                    // Placeholder: Target firewall routing in future.
+                }
+            }
+        }
+    }
+
+    // ========================================================================
+    // DHCP PROPAGATION (Uplink to Rack)
+    // ========================================================================
 
     public void propagateDhcp(ServerRackBlockEntity rack, Set<BlockPos> visited) {
         if (level == null || level.isClientSide) return;
@@ -112,6 +184,21 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
                     String ipv6 = rack.requestDynamicIp("vsia:storage_server_" + p.asLong(), true);
                     if (ipv6 != null) {
                         storage.setIpv6Address(ipv6);
+                    }
+                }
+            } else if (be instanceof FirewallBlockEntity fw) {
+                if (fw.isDhcpEnabled()) {
+                    String ip = rack.requestDynamicIp("vsia:firewall_" + p.asLong(), false);
+                    if (ip != null) {
+                        fw.setManagementIp(ip);
+                        fw.setSubnetMask(rack.subnetMask());
+                    }
+                    String ipv6 = rack.requestDynamicIp("vsia:firewall_" + p.asLong(), true);
+                    if (ipv6 != null) {
+                        fw.setIpv6Address(ipv6);
+                    }
+                    if (ip != null || ipv6 != null) {
+                        level.sendBlockUpdated(p, fw.getBlockState(), fw.getBlockState(), 3);
                     }
                 }
             } else if (be instanceof NetworkSwitchBlockEntity netSwitch) {
@@ -142,6 +229,10 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
         return null;
     }
 
+    // ========================================================================
+    // NBT & SERIALIZATION
+    // ========================================================================
+
     @Override
     protected void saveAdditional(CompoundTag tag) {
         super.saveAdditional(tag);
@@ -155,6 +246,8 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
             links.add(entry);
         }
         tag.put("Connections", links);
+
+        tag.put("OsState", osSimulator.saveToNBT());
     }
 
     @Override
@@ -162,9 +255,12 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
         super.load(tag);
         if (tag.contains("SwitchName")) {
             switchName = tag.getString("SwitchName");
+            osSimulator.switchHostname = switchName;
         }
         if (tag.contains("SwitchId")) {
             switchId = tag.getInt("SwitchId");
+            osSimulator.id = switchId;
+            osSimulator.macAddress = String.format("00:1A:2B:3C:4D:%02X", 0x5E + switchId);
         }
 
         connectedDevices.clear();
@@ -173,6 +269,10 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
             for (int i = 0; i < links.size(); i++) {
                 connectedDevices.add(BlockPos.of(links.getCompound(i).getLong("Pos")));
             }
+        }
+
+        if (tag.contains("OsState")) {
+            osSimulator.loadFromNBT(tag.getCompound("OsState"));
         }
     }
 
@@ -202,7 +302,6 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        // Add animations here later if the switch requires moving parts
     }
 
     @Override

@@ -1,6 +1,6 @@
 package com.k1ngtle.vsia.client.screen;
 
-import com.k1ngtle.vsia.signality.internet.server.NetworkSwitchBlockEntity;
+import com.k1ngtle.vsia.signality.internet.server.SwitchOsSimulator;
 import com.k1ngtle.vsia.world.inventory.NetworkSwitchMenu;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -10,8 +10,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -29,274 +27,9 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         Tab(String label) { this.label = label; }
     }
 
-    private enum CliMode {
-        EXEC, PRIVILEGED, CONFIG, CONFIG_IF, CONFIG_VLAN
-    }
-
-    private static class PortConfig {
-        boolean up = true;
-        String speed = "Auto";
-        String duplex = "Auto";
-        String accessVlan = "1";
-        String txRingLimit = "10";
-    }
-
-    private class SwitchState {
-        final int id;
-        final Map<String, PortConfig> portConfigs = new HashMap<>();
-        final Map<String, String> vlanDatabase = new LinkedHashMap<>();
-        final Map<String, String> macTable = new LinkedHashMap<>();
-        String switchHostname;
-        String managementIp = "unassigned";
-        String managementMask = "unassigned";
-
-        final List<String> iosCommands = new ArrayList<>();
-        final List<String> cliLines = new ArrayList<>();
-        CliMode cliMode = CliMode.EXEC;
-        String cliTarget = "";
-        String cliInput = "";
-        int cliCursorPos = 0;
-        int cliScrollOffset = 0;
-
-        SwitchState(int id, String initialHostname) {
-            this.id = id;
-            this.switchHostname = initialHostname;
-
-            for (int i = 1; i <= 24; i++) portConfigs.put("FastEthernet0/" + i, new PortConfig());
-            portConfigs.put("GigabitEthernet0/1", new PortConfig());
-            portConfigs.put("GigabitEthernet0/2", new PortConfig());
-
-            vlanDatabase.put("1", "default");
-            vlanDatabase.put("1002", "fddi-default");
-            vlanDatabase.put("1003", "token-ring-default");
-            vlanDatabase.put("1004", "fddinet-default");
-            vlanDatabase.put("1005", "trnet-default");
-
-            cliLines.add("System Bootstrap, Version 15.0(2)EZ1");
-            cliLines.add("Copyright (c) 1986-2026 by k1ngtle systems, Inc.");
-            cliLines.add("Compiled Mon 16-Aug-26 11:26 by itg");
-            cliLines.add("");
-            cliLines.add("Base ethernet MAC Address: 00:1A:2B:3C:4D:" + String.format("%02X", 0x5E + id));
-            cliLines.add("24 FastEthernet interfaces");
-            cliLines.add("2 Gigabit Ethernet interfaces");
-            cliLines.add("");
-            cliLines.add("Press RETURN to get started.");
-            cliLines.add("");
-        }
-
-        String getPrompt() {
-            switch(cliMode) {
-                case EXEC: return switchHostname + ">";
-                case PRIVILEGED: return switchHostname + "#";
-                case CONFIG: return switchHostname + "(config)#";
-                case CONFIG_IF: return switchHostname + "(config-if)#";
-                case CONFIG_VLAN: return switchHostname + "(config-vlan)#";
-            }
-            return switchHostname + ">";
-        }
-
-        void executeCliCore(String input, boolean echo) {
-            String cmd = input.trim();
-            if (cmd.isEmpty() && echo) {
-                cliLines.add(getPrompt());
-                cliScrollOffset = 0;
-                return;
-            }
-
-            if (echo) {
-                cliLines.add(getPrompt() + cmd);
-                cliScrollOffset = 0;
-            }
-
-            String lower = cmd.toLowerCase();
-
-            if (cliMode == CliMode.EXEC) {
-                if (lower.equals("en") || lower.equals("enable")) cliMode = CliMode.PRIVILEGED;
-                else if (lower.startsWith("ping ")) {
-                    if (echo) {
-                        cliLines.add("Type escape sequence to abort.");
-                        cliLines.add("Sending 5, 100-byte ICMP Echos to " + cmd.substring(5) + ", timeout is 2 seconds:");
-                        cliLines.add("!!!!!");
-                        cliLines.add("Success rate is 100 percent (5/5), round-trip min/avg/max = 1/2/4 ms");
-                    }
-                }
-                else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
-            } else if (cliMode == CliMode.PRIVILEGED) {
-                if (lower.equals("conf t") || lower.equals("conf ter") || lower.equals("config terminal") || lower.equals("config ter") || lower.equals("configure terminal")) cliMode = CliMode.CONFIG;
-                else if (lower.equals("disable") || lower.equals("exit")) cliMode = CliMode.EXEC;
-                else if (lower.equals("write memory") || lower.equals("wr") || lower.equals("copy running-config startup-config") || lower.equals("copy run start")) {
-                    if (echo) {
-                        cliLines.add("Building configuration...");
-                        cliLines.add("[OK]");
-                    }
-                }
-                else if (lower.startsWith("show version") && echo) {
-                    cliLines.add("Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.0(2)EZ1");
-                    cliLines.add("Copyright (c) 1986-2026 by k1ngtle systems, Inc.");
-                    cliLines.add("ROM: Bootstrap program is C2960 boot loader");
-                    cliLines.add(switchHostname + " uptime is 1 day, 4 hours, 2 minutes");
-                    cliLines.add("System returned to ROM by power-on");
-                    cliLines.add("24 FastEthernet interfaces");
-                    cliLines.add("2 Gigabit Ethernet interfaces");
-                    cliLines.add("64K bytes of flash-simulated non-volatile configuration memory.");
-                }
-                else if (lower.equals("show ip int brief") || lower.equals("show ip interface brief")) {
-                    if (echo) {
-                        cliLines.add("Interface              IP-Address      OK? Method Status                Protocol");
-                        cliLines.add(String.format("%-22s %-15s YES manual %-21s %s", "Vlan1", managementIp, "up", "up"));
-                        for (String p : portConfigs.keySet()) {
-                            PortConfig pc = portConfigs.get(p);
-                            String stat = pc.up ? (macTable.containsKey(p) ? "up" : "down") : "administratively down";
-                            String prot = pc.up ? (macTable.containsKey(p) ? "up" : "down") : "down";
-                            cliLines.add(String.format("%-22s %-15s YES unset  %-21s %s", p.replace("Ethernet", "Eth"), "unassigned", stat, prot));
-                        }
-                    }
-                }
-                else if (lower.startsWith("show mac address-table") || lower.startsWith("show mac-address-table")) {
-                    if (echo) {
-                        cliLines.add("          Mac Address Table");
-                        cliLines.add("-------------------------------------------");
-                        cliLines.add("Vlan    Mac Address       Type        Ports");
-                        cliLines.add("----    -----------       --------    -----");
-                        for (Map.Entry<String, String> entry : macTable.entrySet()) {
-                            String port = entry.getKey();
-                            String mac = entry.getValue();
-                            String vlan = "1";
-                            if (portConfigs.containsKey(port)) vlan = portConfigs.get(port).accessVlan;
-                            cliLines.add(String.format("%-7s %-17s %-11s %s", vlan, mac, "DYNAMIC", port.replace("Ethernet", "Eth")));
-                        }
-                        if (macTable.isEmpty()) cliLines.add("No MAC addresses learned.");
-                    }
-                }
-                else if (lower.startsWith("show vlan") && echo) {
-                    cliLines.add("VLAN Name                             Status    Ports");
-                    cliLines.add("---- -------------------------------- --------- -------------------------------");
-                    for (Map.Entry<String, String> v : vlanDatabase.entrySet()) {
-                        StringBuilder ports = new StringBuilder();
-                        for (Map.Entry<String, PortConfig> p : portConfigs.entrySet()) {
-                            if (p.getValue().accessVlan.equals(v.getKey())) {
-                                if (ports.length() > 0) ports.append(", ");
-                                ports.append(p.getKey().replace("Ethernet", "Eth"));
-                            }
-                        }
-                        String line = String.format("%-4s %-32s active    %s", v.getKey(), v.getValue(), ports.toString());
-                        cliLines.add(line);
-                    }
-                }
-                else if (lower.equals("show running-config") && echo) {
-                    cliLines.add("Building configuration...");
-                    cliLines.add("");
-                    cliLines.add("hostname " + switchHostname);
-                    cliLines.add("!");
-                    for (String p : portConfigs.keySet()) {
-                        cliLines.add("interface " + p);
-                        PortConfig pc = portConfigs.get(p);
-                        if (!pc.up) cliLines.add(" shutdown");
-                        if (!pc.speed.equals("Auto")) cliLines.add(" speed " + pc.speed);
-                        if (!pc.duplex.equals("Auto")) cliLines.add(" duplex " + pc.duplex);
-                        if (!pc.accessVlan.equals("1")) cliLines.add(" switchport access vlan " + pc.accessVlan);
-                        cliLines.add("!");
-                    }
-                    cliLines.add("interface Vlan1");
-                    if (!managementIp.equals("unassigned")) cliLines.add(" ip address " + managementIp + " " + managementMask);
-                    cliLines.add("!");
-                } else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
-            } else if (cliMode == CliMode.CONFIG) {
-                if (lower.startsWith("int ") || lower.startsWith("interface ")) {
-                    String iface = cmd.substring(lower.startsWith("int ") ? 4 : 10).trim();
-                    if (iface.toLowerCase().startsWith("fa")) iface = "FastEthernet" + iface.substring(2);
-                    if (iface.toLowerCase().startsWith("gi")) iface = "GigabitEthernet" + iface.substring(2);
-
-                    if (iface.toLowerCase().startsWith("vlan")) {
-                        cliMode = CliMode.CONFIG_IF;
-                        cliTarget = "VLAN" + iface.substring(4).trim();
-                    } else {
-                        String mapped = null;
-                        for (String k : portConfigs.keySet()) {
-                            if (k.equalsIgnoreCase(iface)) mapped = k;
-                        }
-                        if (mapped != null) {
-                            cliMode = CliMode.CONFIG_IF;
-                            cliTarget = mapped;
-                        } else if (echo) cliLines.add("% Invalid interface");
-                    }
-                } else if (lower.startsWith("vlan ")) {
-                    cliMode = CliMode.CONFIG_VLAN;
-                    cliTarget = cmd.substring(5).trim();
-                    if (!vlanDatabase.containsKey(cliTarget)) vlanDatabase.put(cliTarget, "VLAN" + cliTarget);
-                } else if (lower.startsWith("hostname ")) {
-                    switchHostname = cmd.substring(9).trim();
-                    if (NetworkSwitchScreen.this.menu.blockEntity != null) {
-                        NetworkSwitchScreen.this.menu.blockEntity.setSwitchName(switchHostname);
-                    }
-                } else if (lower.equals("exit")) {
-                    cliMode = CliMode.PRIVILEGED;
-                } else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
-            } else if (cliMode == CliMode.CONFIG_IF) {
-                if (cliTarget.startsWith("VLAN")) {
-                    if (lower.startsWith("ip address ")) {
-                        String[] parts = lower.substring(11).trim().split(" ");
-                        if (parts.length >= 2) {
-                            managementIp = parts[0];
-                            managementMask = parts[1];
-                        } else if (echo) cliLines.add("% Incomplete command.");
-                    } else if (lower.equals("exit")) {
-                        cliMode = CliMode.CONFIG;
-                    } else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
-                } else {
-                    PortConfig pc = portConfigs.get(cliTarget);
-                    if (pc != null) {
-                        if (lower.startsWith("speed ")) {
-                            String s = lower.substring(6).trim();
-                            if (s.equals("10") || s.equals("100") || s.equals("1000")) pc.speed = s;
-                            else if (s.equals("auto")) pc.speed = "Auto";
-                        } else if (lower.startsWith("duplex ")) {
-                            String d = lower.substring(7).trim();
-                            if (d.equals("half")) pc.duplex = "Half";
-                            else if (d.equals("full")) pc.duplex = "Full";
-                            else if (d.equals("auto")) pc.duplex = "Auto";
-                        } else if (lower.equals("shutdown")) {
-                            pc.up = false;
-                        } else if (lower.equals("no shutdown")) {
-                            pc.up = true;
-                        } else if (lower.startsWith("switchport access vlan ")) {
-                            pc.accessVlan = lower.substring(23).trim();
-                        } else if (lower.startsWith("tx-ring-limit ")) {
-                            pc.txRingLimit = lower.substring(14).trim();
-                        } else if (lower.equals("exit")) {
-                            cliMode = CliMode.CONFIG;
-                        } else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
-                    }
-                }
-            } else if (cliMode == CliMode.CONFIG_VLAN) {
-                if (lower.startsWith("name ")) {
-                    vlanDatabase.put(cliTarget, cmd.substring(5).trim());
-                } else if (lower.equals("exit")) {
-                    cliMode = CliMode.CONFIG;
-                } else if (echo && !lower.isEmpty()) cliLines.add("% Invalid input detected");
-            }
-
-            NetworkSwitchScreen.this.updateVisibility();
-        }
-
-        void appendGuiCommand(String command, String selectedConfigItem) {
-            String pre = "Switch(config";
-            if (portConfigs.containsKey(selectedConfigItem)) pre += "-if)#";
-            else if (selectedConfigItem.equals("VLAN Database")) pre += "-vlan)#";
-            else pre += ")#";
-
-            iosCommands.add(pre + command);
-            if (iosCommands.size() > 10) {
-                iosCommands.remove(0);
-            }
-
-            executeCliCore(command, false);
-        }
-    }
-
     private Tab currentTab = Tab.PHYSICAL;
     private int currentSwitchIndex = 0;
-    private final SwitchState[] switches = new SwitchState[7];
+    private final SwitchOsSimulator[] switches = new SwitchOsSimulator[7];
 
     private String selectedConfigItem = "Settings";
     private boolean isUpdatingVisibility = false;
@@ -311,14 +44,11 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
     private EditBox vlanBox;
     private EditBox txRingLimitBox;
 
-    // Config Tab Scroll State
     private float configScrollOffset = 0.0f;
     private int maxConfigScrollLines = 0;
     private final List<String[]> configTreeItems = new ArrayList<>();
 
-    // Physical Tab Scroll State
     private float physicalScrollOffset = 0.0f;
-
     private final Random random = new Random();
 
     public NetworkSwitchScreen(NetworkSwitchMenu menu, Inventory playerInventory, Component title) {
@@ -326,30 +56,23 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         this.imageWidth = 720;
         this.imageHeight = 460;
 
-        int baseId = 0;
-        String baseName = "Switch";
-
         if (menu.blockEntity != null) {
-            baseId = menu.blockEntity.getSwitchId();
-            if (baseId == -1) baseId = 0;
-            baseName = menu.blockEntity.getSwitchName();
+            switches[0] = menu.blockEntity.osSimulator;
+        } else {
+            switches[0] = new SwitchOsSimulator(0, "Switch", () -> updateVisibility());
         }
 
-        // Initialize the first switch as the actual one clicked
-        switches[0] = new SwitchState(0, baseName);
-
-        // Initialize dummy switches for the rest of the rack view
         for (int i = 1; i < 7; i++) {
-            switches[i] = new SwitchState(i, "Switch" + (i + 1));
+            switches[i] = new SwitchOsSimulator(i, "Switch" + (i + 1), () -> updateVisibility());
         }
 
-        if (menu.blockEntity != null) {
+        if (menu.blockEntity != null && switches[0].macTable.isEmpty()) {
             List<BlockPos> connections = menu.blockEntity.getConnectedDevices();
             for (int i = 0; i < connections.size(); i++) {
                 BlockPos p = connections.get(i);
-                String mac = String.format("00:1A:2B:%02X:%02X:%02X",
+                String fallbackMac = String.format("00:1A:2B:%02X:%02X:%02X",
                         (p.getX() & 0xFF), (Math.abs(p.getY()) & 0xFF), (Math.abs(p.getZ()) & 0xFF));
-                switches[0].macTable.put("FastEthernet0/" + (i + 1), mac);
+                switches[0].macTable.put(fallbackMac, "FastEthernet0/" + (i + 1));
             }
         }
     }
@@ -453,7 +176,7 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
     private void updateVisibility() {
         this.isUpdatingVisibility = true;
 
-        SwitchState act = switches[currentSwitchIndex];
+        SwitchOsSimulator act = switches[currentSwitchIndex];
 
         boolean isSettings = this.currentTab == Tab.CONFIG && this.selectedConfigItem.equals("Settings");
         boolean isVlan = this.currentTab == Tab.CONFIG && this.selectedConfigItem.equals("VLAN Database");
@@ -483,7 +206,7 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         if (this.txRingLimitBox != null) this.txRingLimitBox.setVisible(isInterface);
 
         if (isInterface) {
-            PortConfig pc = act.portConfigs.get(this.selectedConfigItem);
+            SwitchOsSimulator.PortConfig pc = act.portConfigs.get(this.selectedConfigItem);
             if (!this.vlanBox.isFocused()) this.vlanBox.setValue(pc.accessVlan);
             if (!this.txRingLimitBox.isFocused()) this.txRingLimitBox.setValue(pc.txRingLimit);
         }
@@ -493,10 +216,13 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
 
     @Override
     public boolean keyPressed(int pKeyCode, int pScanCode, int pModifiers) {
-        SwitchState act = switches[currentSwitchIndex];
+        SwitchOsSimulator act = switches[currentSwitchIndex];
 
         if (this.currentTab == Tab.CLI) {
-            if (pKeyCode == 259) { // BACKSPACE
+            if (pKeyCode == 258) { // TAB autocomplete
+                act.handleAutocomplete();
+                return true;
+            } else if (pKeyCode == 259) { // BACKSPACE
                 if (act.cliInput.length() > 0 && act.cliCursorPos > 0) {
                     act.cliInput = act.cliInput.substring(0, act.cliCursorPos - 1) + act.cliInput.substring(act.cliCursorPos);
                     act.cliCursorPos--;
@@ -515,7 +241,6 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
                 return true;
             }
 
-            // Consume the inventory key (E) so it doesn't close the GUI while typing
             if (this.minecraft != null && this.minecraft.options.keyInventory.matches(pKeyCode, pScanCode)) {
                 return true;
             }
@@ -547,7 +272,7 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
 
     @Override
     public boolean charTyped(char pCodePoint, int pModifiers) {
-        SwitchState act = switches[currentSwitchIndex];
+        SwitchOsSimulator act = switches[currentSwitchIndex];
 
         if (this.currentTab == Tab.CLI) {
             if (pCodePoint >= 32 && pCodePoint <= 126) {
@@ -572,10 +297,9 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
-        SwitchState act = switches[currentSwitchIndex];
+        SwitchOsSimulator act = switches[currentSwitchIndex];
 
         if (this.currentTab == Tab.PHYSICAL) {
-            // Viewable area vs total rack height (7 switches * 90px height)
             float maxScroll = Math.max(0, (7 * 90) - (this.imageHeight - 40));
             if (maxScroll > 0) {
                 if (delta > 0 && this.physicalScrollOffset > 0) {
@@ -608,7 +332,6 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         int x = (this.width - this.imageWidth) / 2;
         int y = (this.height - this.imageHeight) / 2;
 
-        // Top Main Tabs
         if (mouseY >= y + 10 && mouseY <= y + 30) {
             for (int i = 0; i < Tab.values().length; i++) {
                 int tabX = x + 10 + (i * 82);
@@ -620,7 +343,6 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
             }
         }
 
-        // Left Side Switch Selector Tabs
         if (this.currentTab != Tab.PHYSICAL) {
             int startY = y + 31;
             for (int i = 0; i < 7; i++) {
@@ -634,13 +356,12 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         }
 
         if (this.currentTab == Tab.CONFIG) {
-            SwitchState act = switches[currentSwitchIndex];
+            SwitchOsSimulator act = switches[currentSwitchIndex];
             int sbWidth = 160;
             int listY = y + 31;
             int terminalHeight = 110;
             int listHeight = this.imageHeight - 31 - terminalHeight;
 
-            // Sidebar List Clicks
             if (mouseX >= x && mouseX <= x + sbWidth && mouseY >= listY && mouseY <= listY + listHeight) {
                 int visibleItemIndex = (int) ((mouseY - listY) / 15);
                 int actualIndex = (int) (this.configScrollOffset * this.maxConfigScrollLines) + visibleItemIndex;
@@ -671,19 +392,16 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
                 }
             }
 
-            // Interactive Radio Buttons and Checkboxes logic
             if (act.portConfigs.containsKey(this.selectedConfigItem)) {
-                PortConfig pc = act.portConfigs.get(this.selectedConfigItem);
+                SwitchOsSimulator.PortConfig pc = act.portConfigs.get(this.selectedConfigItem);
                 int rightColX = x + 380;
 
-                // Port Status
                 if (mouseY >= y + 65 && mouseY <= y + 77 && mouseX >= rightColX + 110 && mouseX <= rightColX + 125) {
                     pc.up = !pc.up;
                     act.appendGuiCommand(pc.up ? "no shutdown" : "shutdown", this.selectedConfigItem);
                     return true;
                 }
 
-                // Link Speed
                 if (mouseY >= y + 90 && mouseY <= y + 102) {
                     boolean isGigabit = this.selectedConfigItem.startsWith("Gigabit");
                     if (isGigabit && mouseX >= rightColX - 80 && mouseX < rightColX - 10) {
@@ -700,7 +418,6 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
                     }
                 }
 
-                // Duplex
                 if (mouseY >= y + 115 && mouseY <= y + 127) {
                     if (mouseX >= rightColX && mouseX < rightColX + 75) {
                         pc.duplex = "Half"; act.appendGuiCommand("duplex half", this.selectedConfigItem); return true;
@@ -832,11 +549,11 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         long time = System.currentTimeMillis();
 
         for (int swIdx = 0; swIdx < 7; swIdx++) {
-            SwitchState act = switches[swIdx];
+            SwitchOsSimulator act = switches[swIdx];
             int sX = x + 20;
             int sY = y + 65 + (swIdx * 90) - currentScrollY;
 
-            if (sY > y + this.imageHeight || sY + 80 < y + 60) continue; // Culling outside scissor bounds
+            if (sY > y + this.imageHeight || sY + 80 < y + 60) continue;
 
             int sW = 680;
             int sH = 80;
@@ -863,7 +580,7 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
                 g.fill(px + 3, py + 3, px + 15, py + 13, 0xFF181A1D);
 
                 boolean isConnected = swIdx == 0 && i < connections.size();
-                PortConfig pc = act.portConfigs.get("FastEthernet0/" + (i + 1));
+                SwitchOsSimulator.PortConfig pc = act.portConfigs.get("FastEthernet0/" + (i + 1));
                 boolean isPortUp = pc != null && pc.up;
 
                 int ledColor = 0xFF444444;
@@ -890,11 +607,20 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
 
                 if (isConnected && mouseX >= px && mouseX < px + 18 && mouseY >= py && mouseY < py + 16) {
                     BlockPos p = connections.get(i);
-                    String mac = act.macTable.get("FastEthernet0/" + (i + 1));
+                    String vlan = pc != null ? pc.accessVlan : "1";
+
+                    String mac = "Unknown";
+                    for(Map.Entry<String, String> m : act.macTable.entrySet()) {
+                        if (m.getValue().equals("FastEthernet0/" + (i + 1))) {
+                            mac = m.getKey(); break;
+                        }
+                    }
+
                     g.renderTooltip(this.font, List.of(
                             Component.literal("Port Fa0/" + (i + 1)),
                             Component.literal("Target: " + p.getX() + ", " + p.getY() + ", " + p.getZ()),
-                            Component.literal("MAC: " + (mac != null ? mac : "Unknown"))
+                            Component.literal("VLAN: " + vlan),
+                            Component.literal("MAC: " + mac)
                     ), java.util.Optional.empty(), mouseX, mouseY);
                 }
             }
@@ -927,7 +653,7 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
     }
 
     private void renderConfigTab(GuiGraphics g, int x, int y, int mouseX, int mouseY) {
-        SwitchState act = switches[currentSwitchIndex];
+        SwitchOsSimulator act = switches[currentSwitchIndex];
         int sbWidth = 160;
         int listY = y + 31;
         int terminalHeight = 110;
@@ -986,7 +712,6 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         g.drawString(this.font, headerText, contentX - 20 + ((this.imageWidth - sbWidth) - textWidth)/2, y + 35, 0xFFFFFF, false);
 
         if (this.selectedConfigItem.equals("Settings")) {
-
             g.fill(contentX - 10, y + 60, x + this.imageWidth - 10, y + 76, 0xFF1E1E1E);
             g.fill(contentX - 10, y + 77, x + this.imageWidth - 10, y + 93, 0xFF1E1E1E);
             g.fill(contentX - 10, y + 94, x + this.imageWidth - 10, y + 110, 0xFF1E1E1E);
@@ -1068,7 +793,7 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
             }
 
         } else if (act.portConfigs.containsKey(this.selectedConfigItem)) {
-            PortConfig pc = act.portConfigs.get(this.selectedConfigItem);
+            SwitchOsSimulator.PortConfig pc = act.portConfigs.get(this.selectedConfigItem);
             int rowY = y + 65;
 
             g.drawString(this.font, "Port Status", contentX, rowY + 1, 0xFFFFFF, false);
@@ -1107,7 +832,6 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
             g.drawString(this.font, "Access", contentX + 6, rowY + 1, 0xFFFFFF, false);
             g.drawString(this.font, "v", contentX + 70, rowY + 1, 0xFFAAAAAA, false);
 
-            // Align baseline perfectly
             this.vlanBox.setPosition(rightColX + 38, rowY - 1);
             g.drawString(this.font, "VLAN", rightColX, rowY + 1, 0xFFFFFF, false);
 
@@ -1121,7 +845,6 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
 
             rowY += 25;
 
-            // Align baseline perfectly
             this.txRingLimitBox.setPosition(x + 180 + 80, rowY - 1);
             g.drawString(this.font, "Tx Ring Limit", contentX, rowY + 1, 0xFFFFFF, false);
         }
@@ -1145,7 +868,7 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
     }
 
     private void renderMacTableTab(GuiGraphics g, int x, int y) {
-        SwitchState act = switches[currentSwitchIndex];
+        SwitchOsSimulator act = switches[currentSwitchIndex];
         g.drawString(this.font, "Learned MAC Addresses", x + 20, y + 45, 0xFFFFFF, false);
 
         int headerY = y + 65;
@@ -1160,8 +883,8 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
 
         int ty = headerY + 20;
         for(Map.Entry<String, String> entry : act.macTable.entrySet()) {
-            String port = entry.getKey();
-            String mac = entry.getValue();
+            String mac = entry.getKey();
+            String port = entry.getValue();
             String vlan = "1";
             if (act.portConfigs.containsKey(port)) {
                 vlan = act.portConfigs.get(port).accessVlan;
@@ -1180,7 +903,7 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
     }
 
     private void renderCLITab(GuiGraphics g, int x, int y) {
-        SwitchState act = switches[currentSwitchIndex];
+        SwitchOsSimulator act = switches[currentSwitchIndex];
         g.fill(x, y + 31, x + this.imageWidth, y + this.imageHeight, 0xFF000000);
 
         int textY = y + 40;

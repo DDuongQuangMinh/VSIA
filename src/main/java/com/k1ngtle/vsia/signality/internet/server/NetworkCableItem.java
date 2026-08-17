@@ -25,7 +25,8 @@ public class NetworkCableItem extends Item {
     private boolean isNetworkDevice(BlockEntity be) {
         return be instanceof StorageServerBlockEntity ||
                 be instanceof ServerRackBlockEntity ||
-                be instanceof NetworkSwitchBlockEntity;
+                be instanceof NetworkSwitchBlockEntity ||
+                be instanceof FirewallBlockEntity;
     }
 
     @Override
@@ -59,6 +60,7 @@ public class NetworkCableItem extends Item {
             StorageServerBlockEntity storageServer = null;
             ServerRackBlockEntity serverRack = null;
             NetworkSwitchBlockEntity netSwitch = null;
+            FirewallBlockEntity firewall = null;
 
             if (targetEntity instanceof StorageServerBlockEntity && storedEntity instanceof ServerRackBlockEntity) {
                 storageServer = (StorageServerBlockEntity) targetEntity;
@@ -115,6 +117,55 @@ public class NetworkCableItem extends Item {
                 netSwitch.connectDevice(storedPos);
                 netSwitch2.connectDevice(pos);
                 isValidConnection = true;
+            } else if (targetEntity instanceof FirewallBlockEntity && storedEntity instanceof ServerRackBlockEntity) {
+                firewall = (FirewallBlockEntity) targetEntity;
+                serverRack = (ServerRackBlockEntity) storedEntity;
+                if (firewall.connectDevice(storedPos)) {
+                    serverRack.connectCable(pos);
+                    isValidConnection = true;
+                }
+            } else if (storedEntity instanceof FirewallBlockEntity && targetEntity instanceof ServerRackBlockEntity) {
+                firewall = (FirewallBlockEntity) storedEntity;
+                serverRack = (ServerRackBlockEntity) targetEntity;
+                if (firewall.connectDevice(pos)) {
+                    serverRack.connectCable(storedPos);
+                    isValidConnection = true;
+                }
+            } else if (targetEntity instanceof FirewallBlockEntity && storedEntity instanceof NetworkSwitchBlockEntity) {
+                firewall = (FirewallBlockEntity) targetEntity;
+                netSwitch = (NetworkSwitchBlockEntity) storedEntity;
+                if (firewall.connectDevice(storedPos)) {
+                    netSwitch.connectDevice(pos);
+                    isValidConnection = true;
+                }
+            } else if (storedEntity instanceof FirewallBlockEntity && targetEntity instanceof NetworkSwitchBlockEntity) {
+                firewall = (FirewallBlockEntity) storedEntity;
+                netSwitch = (NetworkSwitchBlockEntity) targetEntity;
+                if (firewall.connectDevice(pos)) {
+                    netSwitch.connectDevice(storedPos);
+                    isValidConnection = true;
+                }
+            } else if (targetEntity instanceof FirewallBlockEntity && storedEntity instanceof StorageServerBlockEntity) {
+                firewall = (FirewallBlockEntity) targetEntity;
+                storageServer = (StorageServerBlockEntity) storedEntity;
+                if (firewall.connectDevice(storedPos)) {
+                    storageServer.setConnectedRackPos(pos);
+                    isValidConnection = true;
+                }
+            } else if (storedEntity instanceof FirewallBlockEntity && targetEntity instanceof StorageServerBlockEntity) {
+                firewall = (FirewallBlockEntity) storedEntity;
+                storageServer = (StorageServerBlockEntity) targetEntity;
+                if (firewall.connectDevice(pos)) {
+                    storageServer.setConnectedRackPos(storedPos);
+                    isValidConnection = true;
+                }
+            } else if (targetEntity instanceof FirewallBlockEntity && storedEntity instanceof FirewallBlockEntity) {
+                firewall = (FirewallBlockEntity) targetEntity;
+                FirewallBlockEntity firewall2 = (FirewallBlockEntity) storedEntity;
+                if (firewall.connectDevice(storedPos)) {
+                    firewall2.connectDevice(pos);
+                    isValidConnection = true;
+                }
             }
 
             if (isValidConnection) {
@@ -123,9 +174,7 @@ public class NetworkCableItem extends Item {
                 // Storage Server DHCP Logic
                 if (storageServer != null && storageServer.isDhcpEnabled()) {
                     ServerRackBlockEntity rackToUse = serverRack;
-                    if (rackToUse == null && netSwitch != null) {
-                        rackToUse = netSwitch.findFirstRack(new java.util.HashSet<>());
-                    }
+                    if (rackToUse == null && netSwitch != null) rackToUse = netSwitch.findFirstRack(new java.util.HashSet<>());
 
                     if (rackToUse != null) {
                         String assignedIp = rackToUse.requestDynamicIp("vsia:storage_server_" + storageServer.getBlockPos().asLong(), false);
@@ -135,11 +184,26 @@ public class NetworkCableItem extends Item {
                             storageServer.setGateway(rackToUse.gatewayIp());
                         }
                         String assignedIpv6 = rackToUse.requestDynamicIp("vsia:storage_server_" + storageServer.getBlockPos().asLong(), true);
-                        if (assignedIpv6 != null) {
-                            storageServer.setIpv6Address(assignedIpv6);
-                        }
+                        if (assignedIpv6 != null) storageServer.setIpv6Address(assignedIpv6);
                         handledDhcp = true;
                         player.displayClientMessage(Component.literal("Network connection established! DHCP IP assigned: " + assignedIp).withStyle(ChatFormatting.GREEN), true);
+                    }
+                }
+                // Firewall DHCP Logic
+                else if (firewall != null && firewall.isDhcpEnabled()) {
+                    ServerRackBlockEntity rackToUse = serverRack;
+                    if (rackToUse == null && netSwitch != null) rackToUse = netSwitch.findFirstRack(new java.util.HashSet<>());
+
+                    if (rackToUse != null) {
+                        String assignedIp = rackToUse.requestDynamicIp("vsia:firewall_" + firewall.getBlockPos().asLong(), false);
+                        if (assignedIp != null) {
+                            firewall.setManagementIp(assignedIp);
+                            firewall.setSubnetMask(rackToUse.subnetMask());
+                        }
+                        String assignedIpv6 = rackToUse.requestDynamicIp("vsia:firewall_" + firewall.getBlockPos().asLong(), true);
+                        if (assignedIpv6 != null) firewall.setIpv6Address(assignedIpv6);
+                        handledDhcp = true;
+                        player.displayClientMessage(Component.literal("Network connection established! DHCP assigned to Firewall: " + (assignedIp != null ? assignedIp : assignedIpv6)).withStyle(ChatFormatting.GREEN), true);
                     }
                 }
 
@@ -153,8 +217,12 @@ public class NetworkCableItem extends Item {
                 } else if (!handledDhcp) {
                     if (storageServer != null) {
                         player.displayClientMessage(Component.literal("Network connection established! (Using static IP / No DHCP available)").withStyle(ChatFormatting.YELLOW), true);
+                    } else if (firewall != null) {
+                        player.displayClientMessage(Component.literal("Network connection established to Firewall!").withStyle(ChatFormatting.GREEN), true);
                     } else if (netSwitch != null) {
                         player.displayClientMessage(Component.literal("Network connection established to Switch!").withStyle(ChatFormatting.GREEN), true);
+                    } else if (serverRack != null) {
+                        player.displayClientMessage(Component.literal("Network connection established to Server Rack!").withStyle(ChatFormatting.GREEN), true);
                     }
                 }
 
