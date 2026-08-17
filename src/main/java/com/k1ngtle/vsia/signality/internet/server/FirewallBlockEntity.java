@@ -13,6 +13,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.server.level.ServerLevel;
 import org.jetbrains.annotations.Nullable;
 import software.bernie.geckolib.animatable.GeoBlockEntity;
 import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
@@ -29,8 +30,9 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
     // Core Network Logic
+    private int deviceId = -1;
     private String managementIp = "192.168.1.1";
-    private String deviceName = "pfSense Edge";
+    private String deviceName = "ciscoasa";
     private boolean strictMode = true;
 
     // Connections
@@ -48,6 +50,23 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
         }
     }
 
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (level instanceof ServerLevel serverLevel && deviceId == -1) {
+            assignAutomaticId(ServerRackIdSavedData.allocate(serverLevel));
+        }
+    }
+
+    public void assignAutomaticId(int id) {
+        if (this.deviceId != -1) return;
+        this.deviceId = id;
+        this.deviceName = "ASA" + id;
+        setChanged();
+    }
+
+    public int getDeviceId() { return deviceId; }
+
     public String getDeviceName() { return deviceName; }
     public void setDeviceName(String name) { this.deviceName = name; setChanged(); }
 
@@ -62,6 +81,7 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
     @Override
     protected void saveAdditional(CompoundTag tag) {
         super.saveAdditional(tag);
+        tag.putInt("DeviceId", deviceId);
         tag.putString("DeviceName", deviceName);
         tag.putString("ManagementIP", managementIp);
         tag.putBoolean("StrictMode", strictMode);
@@ -85,6 +105,7 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
     @Override
     public void load(CompoundTag tag) {
         super.load(tag);
+        if (tag.contains("DeviceId")) deviceId = tag.getInt("DeviceId");
         if (tag.contains("DeviceName")) deviceName = tag.getString("DeviceName");
         if (tag.contains("ManagementIP")) managementIp = tag.getString("ManagementIP");
         if (tag.contains("StrictMode")) strictMode = tag.getBoolean("StrictMode");
