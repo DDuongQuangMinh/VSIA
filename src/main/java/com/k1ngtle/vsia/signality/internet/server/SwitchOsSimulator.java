@@ -431,8 +431,13 @@ public class SwitchOsSimulator {
                 if (tokens.length > 1 && "terminal".startsWith(tokens[1])) {
                     if (echo) cliLines.add("Enter configuration commands, one per line.  End with CNTL/Z.");
                     cliMode = CliMode.CONFIG;
-                } else if (tokens.length == 1) cliLines.add("% Incomplete command.");
-                else if (echo) appendInvalidMarker(input, tokens[1]);
+                } else if (tokens.length == 1) {
+                    if (echo) {
+                        cliLines.add("Configuring from terminal, memory, or network [terminal]?");
+                        cliLines.add("Enter configuration commands, one per line.  End with CNTL/Z.");
+                    }
+                    cliMode = CliMode.CONFIG;
+                } else if (echo) appendInvalidMarker(input, tokens[1]);
             }
             else if (first.equals("disable") || first.equals("exit")) cliMode = CliMode.EXEC;
             else if (first.equals("write") || first.equals("copy")) {
@@ -458,12 +463,24 @@ public class SwitchOsSimulator {
         else if (executionMode == CliMode.CONFIG) {
             if (first.equals("interface")) {
                 if (tokens.length == 1) { cliLines.add("% Incomplete command."); return; }
-                String iface = cmd.substring(tokens[0].length()).trim();
-                if (iface.toLowerCase().startsWith("fa")) iface = "FastEthernet" + iface.substring(2);
-                if (iface.toLowerCase().startsWith("gi")) iface = "GigabitEthernet" + iface.substring(2);
+                String rawIface = cmd.substring(tokens[0].length()).trim().replaceAll("\\s+", "");
+                String lowerIface = rawIface.toLowerCase();
+                String iface = rawIface;
 
-                if (iface.toLowerCase().startsWith("vlan")) {
-                    cliMode = CliMode.CONFIG_IF; cliTarget = "VLAN" + iface.substring(4).trim();
+                if (lowerIface.startsWith("fa") || lowerIface.startsWith("fastethernet")) {
+                    String num = lowerIface.replace("fastethernet", "").replace("fa", "");
+                    if (num.startsWith("/")) num = "0" + num; // Handle "fa/1" -> "fa0/1"
+                    num = num.replaceAll("/0+", "/"); // Handle "fa0/01" -> "fa0/1"
+                    iface = "FastEthernet" + num;
+                } else if (lowerIface.startsWith("gi") || lowerIface.startsWith("gigabitethernet")) {
+                    String num = lowerIface.replace("gigabitethernet", "").replace("gi", "");
+                    if (num.startsWith("/")) num = "0" + num;
+                    num = num.replaceAll("/0+", "/");
+                    iface = "GigabitEthernet" + num;
+                }
+
+                if (lowerIface.startsWith("vlan")) {
+                    cliMode = CliMode.CONFIG_IF; cliTarget = "VLAN" + lowerIface.substring(4).trim();
                 } else if (portConfigs.containsKey(iface)) {
                     cliMode = CliMode.CONFIG_IF; cliTarget = iface;
                 } else if (echo) appendInvalidMarker(input, tokens[1]);
@@ -547,16 +564,33 @@ public class SwitchOsSimulator {
     }
 
     private String resolveAlias(String token, CliMode mode, String... context) {
-        String[] opts = getOptionsForPrefix(String.join(" ", context) + (context.length > 0 ? " " : "") + token, mode);
+        String fullPrefix = String.join(" ", context) + (context.length > 0 ? " " : "") + token;
+        String[] opts = getOptionsForPrefix(fullPrefix, mode);
         if (opts.length == 1) {
             String[] split = opts[0].split(" ");
-            return split[split.length - 1];
+            if (split.length > context.length) return split[context.length];
+            return token;
         }
         if (opts.length > 1) {
             for (String opt : opts) {
                 String[] split = opt.split(" ");
-                if (split[split.length - 1].equals(token)) return token;
+                if (split.length > context.length && split[context.length].equals(token)) return token;
             }
+            String commonWord = null;
+            boolean ambiguous = false;
+            for (String opt : opts) {
+                String[] split = opt.split(" ");
+                if (split.length > context.length) {
+                    if (commonWord == null) {
+                        commonWord = split[context.length];
+                    } else if (!commonWord.equals(split[context.length])) {
+                        ambiguous = true;
+                        break;
+                    }
+                }
+            }
+            if (!ambiguous && commonWord != null) return commonWord;
+
             return "AMBIGUOUS";
         }
         return null;
@@ -695,22 +729,24 @@ public class SwitchOsSimulator {
         cliLines.add("             Address     " + macAddress);
         cliLines.add("             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec");
         cliLines.add("");
-        cliLines.add("Interface           Role Sts Cost      Prio.Nbr Type");
-        cliLines.add("------------------- ---- --- --------- -------- --------------------------------");
+
+        cliLines.add("Interface\tRole\tSts\tCost\tPrio.Nbr\tType");
+        cliLines.add("---------\t----\t---\t----\t--------\t----");
         for (Map.Entry<String, PortConfig> entry : portConfigs.entrySet()) {
             if (entry.getValue().up) {
-                cliLines.add(String.format("%-19s %-4s %-3s %-9s %-8s %s", entry.getKey().replace("Ethernet", "Eth"), entry.getValue().stpRole, entry.getValue().stpState, entry.getValue().stpCost, "128.1", entry.getValue().portfast ? "Edge P2p" : "P2p"));
+                cliLines.add(entry.getKey().replace("FastEthernet", "Fa").replace("GigabitEthernet", "Gi") + "\t" + entry.getValue().stpRole + "\t" + entry.getValue().stpState + "\t" + entry.getValue().stpCost + "\t128.1\t" + (entry.getValue().portfast ? "Edge P2p" : "P2p"));
             }
         }
     }
 
     private void runShowIpIntBrief(boolean echo) {
         if (!echo) return;
-        cliLines.add("Interface              IP-Address      OK? Method Status                Protocol");
-        cliLines.add(String.format("%-22s %-15s YES manual %-21s %s", "Vlan1", managementIp, "up", "up"));
+        cliLines.add("Interface\tIP-Address\tOK? Method\tStatus\tProtocol");
+        cliLines.add("Vlan1\t" + managementIp + "\tYES manual\tup\tup");
         for (Map.Entry<String, PortConfig> entry : portConfigs.entrySet()) {
             PortConfig pc = entry.getValue();
-            cliLines.add(String.format("%-22s %-15s YES unset  %-21s %s", entry.getKey().replace("Ethernet", "Eth"), "unassigned", pc.up ? "up" : "administratively down", pc.up ? "up" : "down"));
+            String status = pc.up ? "up" : "admin down";
+            cliLines.add(entry.getKey().replace("FastEthernet", "Fa").replace("GigabitEthernet", "Gi") + "\tunassigned\tYES unset\t" + status + "\t" + (pc.up ? "up" : "down"));
         }
     }
 
@@ -718,28 +754,40 @@ public class SwitchOsSimulator {
         if (!echo) return;
         cliLines.add("          Mac Address Table");
         cliLines.add("-------------------------------------------");
-        cliLines.add("Vlan    Mac Address       Type        Ports");
-        cliLines.add("----    -----------       --------    -----");
+        cliLines.add("Vlan\tMac Address\tType\tPorts");
+        cliLines.add("----\t-----------\t--------\t-----");
         for (Map.Entry<String, String> entry : macTable.entrySet()) {
             String port = entry.getValue();
             String vlan = portConfigs.containsKey(port) ? portConfigs.get(port).accessVlan : "1";
-            cliLines.add(String.format("%-7s %-17s %-11s %s", vlan, entry.getKey(), "DYNAMIC", port.replace("Ethernet", "Eth")));
+            cliLines.add(vlan + "\t" + entry.getKey() + "\tDYNAMIC\t" + port.replace("FastEthernet", "Fa").replace("GigabitEthernet", "Gi"));
         }
     }
 
     private void runShowVlan(boolean echo) {
         if (!echo) return;
-        cliLines.add("VLAN Name                             Status    Ports");
-        cliLines.add("---- -------------------------------- --------- -------------------------------");
+        cliLines.add("VLAN\tName\tStatus\tPorts");
+        cliLines.add("----\t----\t------\t-----");
         for (Map.Entry<String, String> v : vlanDatabase.entrySet()) {
             StringBuilder ports = new StringBuilder();
             for (Map.Entry<String, PortConfig> p : portConfigs.entrySet()) {
                 if (p.getValue().accessVlan.equals(v.getKey()) && !p.getValue().mode.equals("trunk")) {
                     if (ports.length() > 0) ports.append(", ");
-                    ports.append(p.getKey().replace("Ethernet", "Eth"));
+                    ports.append(p.getKey().replace("FastEthernet", "Fa").replace("GigabitEthernet", "Gi"));
                 }
             }
-            cliLines.add(String.format("%-4s %-32s active    %s", v.getKey(), v.getValue(), ports.toString()));
+
+            String pStr = ports.toString();
+            if (pStr.length() > 50) {
+                cliLines.add(v.getKey() + "\t" + v.getValue() + "\tactive\t" + pStr.substring(0, 50));
+                pStr = pStr.substring(50);
+                while (pStr.length() > 50) {
+                    cliLines.add("\t\t\t" + pStr.substring(0, 50));
+                    pStr = pStr.substring(50);
+                }
+                if (!pStr.isEmpty()) cliLines.add("\t\t\t" + pStr);
+            } else {
+                cliLines.add(v.getKey() + "\t" + v.getValue() + "\tactive\t" + pStr);
+            }
         }
     }
 

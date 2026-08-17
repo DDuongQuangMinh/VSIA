@@ -71,17 +71,21 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
     }
 
     private void broadcastPacketOutwards(OSINetworkPacket packet) {
-        // Find correct egress port based on routing table
-        // This is a simplified interface hook for the OS simulator
         if (lanConnection != null) {
-            BlockEntity be = level.getBlockEntity(lanConnection);
-            if (be instanceof NetworkSwitchBlockEntity sw) sw.receiveWiredPacket(packet, this.worldPosition);
-            if (be instanceof ServerRackBlockEntity rack) rack.receiveWiredPacket(packet);
+            FirewallOsSimulator.PortConfig pc = osSimulators[0].portConfigs.get("GigabitEthernet1/1");
+            if (pc != null && pc.up) {
+                BlockEntity be = level.getBlockEntity(lanConnection);
+                if (be instanceof NetworkSwitchBlockEntity sw) sw.receiveWiredPacket(packet, this.worldPosition);
+                if (be instanceof ServerRackBlockEntity rack) rack.receiveWiredPacket(packet);
+            }
         }
         if (wanConnection != null) {
-            BlockEntity be = level.getBlockEntity(wanConnection);
-            if (be instanceof NetworkSwitchBlockEntity sw) sw.receiveWiredPacket(packet, this.worldPosition);
-            if (be instanceof ServerRackBlockEntity rack) rack.receiveWiredPacket(packet);
+            FirewallOsSimulator.PortConfig pc = osSimulators[0].portConfigs.get("GigabitEthernet1/2");
+            if (pc != null && pc.up) {
+                BlockEntity be = level.getBlockEntity(wanConnection);
+                if (be instanceof NetworkSwitchBlockEntity sw) sw.receiveWiredPacket(packet, this.worldPosition);
+                if (be instanceof ServerRackBlockEntity rack) rack.receiveWiredPacket(packet);
+            }
         }
     }
 
@@ -124,9 +128,6 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
     public String getDeviceName() { return deviceName; }
     public void setDeviceName(String name) {
         this.deviceName = name;
-        for (int i = 0; i < 7; i++) {
-            this.osSimulators[i].hostname = name + "_" + (i + 1);
-        }
         setChanged();
     }
 

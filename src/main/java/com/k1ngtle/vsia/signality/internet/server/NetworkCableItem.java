@@ -29,6 +29,15 @@ public class NetworkCableItem extends Item {
                 be instanceof FirewallBlockEntity;
     }
 
+    private boolean isSwitchPortUp(NetworkSwitchBlockEntity netSwitch, BlockPos connectedPos) {
+        List<BlockPos> devices = netSwitch.getConnectedDevices();
+        int index = devices.indexOf(connectedPos);
+        if (index == -1) return false;
+        String portName = index < 24 ? "FastEthernet0/" + (index + 1) : "GigabitEthernet0/" + (index - 23);
+        SwitchOsSimulator.PortConfig pc = netSwitch.osSimulators[0].portConfigs.get(portName);
+        return pc != null && pc.up;
+    }
+
     @Override
     public InteractionResult useOn(UseOnContext context) {
         Level level = context.getLevel();
@@ -173,47 +182,73 @@ public class NetworkCableItem extends Item {
 
                 // Storage Server DHCP Logic
                 if (storageServer != null && storageServer.isDhcpEnabled()) {
-                    ServerRackBlockEntity rackToUse = serverRack;
-                    if (rackToUse == null && netSwitch != null) rackToUse = netSwitch.findFirstRack(new java.util.HashSet<>());
+                    boolean portUp = true;
+                    if (netSwitch != null) portUp = isSwitchPortUp(netSwitch, storageServer.getBlockPos());
 
-                    if (rackToUse != null) {
-                        String assignedIp = rackToUse.requestDynamicIp("vsia:storage_server_" + storageServer.getBlockPos().asLong(), false);
-                        if (assignedIp != null) {
-                            storageServer.setIpAddress(assignedIp);
-                            storageServer.setSubnetMask(rackToUse.subnetMask());
-                            storageServer.setGateway(rackToUse.gatewayIp());
+                    if (portUp) {
+                        ServerRackBlockEntity rackToUse = serverRack;
+                        if (rackToUse == null && netSwitch != null) rackToUse = netSwitch.findFirstRack(new java.util.HashSet<>());
+
+                        if (rackToUse != null) {
+                            String assignedIp = rackToUse.requestDynamicIp("vsia:storage_server_" + storageServer.getBlockPos().asLong(), false);
+                            if (assignedIp != null) {
+                                storageServer.setIpAddress(assignedIp);
+                                storageServer.setSubnetMask(rackToUse.subnetMask());
+                                storageServer.setGateway(rackToUse.gatewayIp());
+                            }
+                            String assignedIpv6 = rackToUse.requestDynamicIp("vsia:storage_server_" + storageServer.getBlockPos().asLong(), true);
+                            if (assignedIpv6 != null) storageServer.setIpv6Address(assignedIpv6);
+                            handledDhcp = true;
+                            player.displayClientMessage(Component.literal("Network connection established! DHCP IP assigned: " + assignedIp).withStyle(ChatFormatting.GREEN), true);
                         }
-                        String assignedIpv6 = rackToUse.requestDynamicIp("vsia:storage_server_" + storageServer.getBlockPos().asLong(), true);
-                        if (assignedIpv6 != null) storageServer.setIpv6Address(assignedIpv6);
+                    } else {
                         handledDhcp = true;
-                        player.displayClientMessage(Component.literal("Network connection established! DHCP IP assigned: " + assignedIp).withStyle(ChatFormatting.GREEN), true);
+                        player.displayClientMessage(Component.literal("Network connection established! (Switch port is administratively down)").withStyle(ChatFormatting.YELLOW), true);
                     }
                 }
                 // Firewall DHCP Logic
                 else if (firewall != null && firewall.isDhcpEnabled()) {
-                    ServerRackBlockEntity rackToUse = serverRack;
-                    if (rackToUse == null && netSwitch != null) rackToUse = netSwitch.findFirstRack(new java.util.HashSet<>());
+                    boolean portUp = true;
+                    if (netSwitch != null) portUp = isSwitchPortUp(netSwitch, firewall.getBlockPos());
 
-                    if (rackToUse != null) {
-                        String assignedIp = rackToUse.requestDynamicIp("vsia:firewall_" + firewall.getBlockPos().asLong(), false);
-                        if (assignedIp != null) {
-                            firewall.setManagementIp(assignedIp);
-                            firewall.setSubnetMask(rackToUse.subnetMask());
+                    if (portUp) {
+                        ServerRackBlockEntity rackToUse = serverRack;
+                        if (rackToUse == null && netSwitch != null) rackToUse = netSwitch.findFirstRack(new java.util.HashSet<>());
+
+                        if (rackToUse != null) {
+                            String assignedIp = rackToUse.requestDynamicIp("vsia:firewall_" + firewall.getBlockPos().asLong(), false);
+                            if (assignedIp != null) {
+                                firewall.setManagementIp(assignedIp);
+                                firewall.setSubnetMask(rackToUse.subnetMask());
+                            }
+                            String assignedIpv6 = rackToUse.requestDynamicIp("vsia:firewall_" + firewall.getBlockPos().asLong(), true);
+                            if (assignedIpv6 != null) firewall.setIpv6Address(assignedIpv6);
+                            handledDhcp = true;
+                            player.displayClientMessage(Component.literal("Network connection established! DHCP assigned to Firewall: " + (assignedIp != null ? assignedIp : assignedIpv6)).withStyle(ChatFormatting.GREEN), true);
                         }
-                        String assignedIpv6 = rackToUse.requestDynamicIp("vsia:firewall_" + firewall.getBlockPos().asLong(), true);
-                        if (assignedIpv6 != null) firewall.setIpv6Address(assignedIpv6);
+                    } else {
                         handledDhcp = true;
-                        player.displayClientMessage(Component.literal("Network connection established! DHCP assigned to Firewall: " + (assignedIp != null ? assignedIp : assignedIpv6)).withStyle(ChatFormatting.GREEN), true);
+                        player.displayClientMessage(Component.literal("Network connection established! (Switch port is administratively down)").withStyle(ChatFormatting.YELLOW), true);
                     }
                 }
 
                 // Switch and Rack propagation logic
                 if (serverRack != null && netSwitch != null) {
-                    netSwitch.refreshNetworkDhcp(new java.util.HashSet<>());
-                    player.displayClientMessage(Component.literal("Uplink established. Transmitting DHCP to downstream devices...").withStyle(ChatFormatting.GREEN), true);
+                    if (isSwitchPortUp(netSwitch, serverRack.getBlockPos())) {
+                        netSwitch.refreshNetworkDhcp(new java.util.HashSet<>());
+                        player.displayClientMessage(Component.literal("Uplink established. Transmitting DHCP to downstream devices...").withStyle(ChatFormatting.GREEN), true);
+                    } else {
+                        player.displayClientMessage(Component.literal("Uplink established. (Switch port is administratively down)").withStyle(ChatFormatting.YELLOW), true);
+                    }
                 } else if (targetEntity instanceof NetworkSwitchBlockEntity && storedEntity instanceof NetworkSwitchBlockEntity) {
-                    ((NetworkSwitchBlockEntity) targetEntity).refreshNetworkDhcp(new java.util.HashSet<>());
-                    player.displayClientMessage(Component.literal("Switch to Switch connection established. Refreshing DHCP...").withStyle(ChatFormatting.GREEN), true);
+                    NetworkSwitchBlockEntity tSwitch = (NetworkSwitchBlockEntity) targetEntity;
+                    NetworkSwitchBlockEntity sSwitch = (NetworkSwitchBlockEntity) storedEntity;
+                    if (isSwitchPortUp(tSwitch, storedPos) && isSwitchPortUp(sSwitch, pos)) {
+                        tSwitch.refreshNetworkDhcp(new java.util.HashSet<>());
+                        player.displayClientMessage(Component.literal("Switch to Switch connection established. Refreshing DHCP...").withStyle(ChatFormatting.GREEN), true);
+                    } else {
+                        player.displayClientMessage(Component.literal("Switch to Switch connection established. (Link is administratively down)").withStyle(ChatFormatting.YELLOW), true);
+                    }
                 } else if (!handledDhcp) {
                     if (storageServer != null) {
                         player.displayClientMessage(Component.literal("Network connection established! (Using static IP / No DHCP available)").withStyle(ChatFormatting.YELLOW), true);

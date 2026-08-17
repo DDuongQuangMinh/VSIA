@@ -589,7 +589,14 @@ public class FirewallOsSimulator {
 
             if (first.equals("configure")) {
                 if (cliMode == CliMode.PRIVILEGED && tokens.length > 1 && "terminal".startsWith(tokens[1])) cliMode = CliMode.CONFIG;
-                else if (echo) appendInvalidMarker(input, tokens[1]);
+                else if (cliMode == CliMode.PRIVILEGED && tokens.length == 1) {
+                    if (echo) {
+                        cliLines.add("Configuring from terminal, memory, or network [terminal]?");
+                        cliLines.add("Enter configuration commands, one per line.  End with CNTL/Z.");
+                    }
+                    cliMode = CliMode.CONFIG;
+                }
+                else if (echo) appendInvalidMarker(input, tokens.length > 1 ? tokens[1] : tokens[0]);
             }
             else if (first.equals("clear") && tokens.length > 2 && "configure".startsWith(tokens[1]) && "all".startsWith(tokens[2])) {
                 parsedAcls.clear(); accessGroups.clear(); routes.clear(); networkObjects.clear();
@@ -625,9 +632,18 @@ public class FirewallOsSimulator {
             else if (cliMode == CliMode.CONFIG) {
                 if (first.equals("interface")) {
                     if (tokens.length == 1) { cliLines.add("% Incomplete command."); return; }
-                    String iface = cmd.substring(tokens[0].length()).trim();
-                    if (iface.toLowerCase().startsWith("gi")) iface = "GigabitEthernet1/" + iface.substring(iface.indexOf("1/") + 2);
-                    else if (iface.toLowerCase().startsWith("ma")) iface = "Management1/1";
+                    String rawIface = cmd.substring(tokens[0].length()).trim().replaceAll("\\s+", "");
+                    String lowerIface = rawIface.toLowerCase();
+                    String iface = rawIface;
+
+                    if (lowerIface.startsWith("gi") || lowerIface.startsWith("gigabitethernet")) {
+                        String num = lowerIface.replace("gigabitethernet", "").replace("gi", "");
+                        if (num.startsWith("/")) num = "1" + num; // Handle "gi/1" -> "gi1/1"
+                        num = num.replaceAll("/0+", "/"); // Handle "gi1/01" -> "gi1/1"
+                        iface = "GigabitEthernet" + num;
+                    } else if (lowerIface.startsWith("ma") || lowerIface.startsWith("management")) {
+                        iface = "Management1/1";
+                    }
 
                     if (portConfigs.containsKey(iface)) { cliMode = CliMode.CONFIG_IF; cliTarget = iface; }
                     else if (echo) appendInvalidMarker(input, tokens[1]);
@@ -751,16 +767,33 @@ public class FirewallOsSimulator {
     }
 
     private String resolveAlias(String token, CliMode mode, String... context) {
-        String[] opts = getOptionsForPrefix(String.join(" ", context) + (context.length > 0 ? " " : "") + token, mode);
+        String fullPrefix = String.join(" ", context) + (context.length > 0 ? " " : "") + token;
+        String[] opts = getOptionsForPrefix(fullPrefix, mode);
         if (opts.length == 1) {
             String[] split = opts[0].split(" ");
-            return split[split.length - 1];
+            if (split.length > context.length) return split[context.length];
+            return token;
         }
         if (opts.length > 1) {
             for (String opt : opts) {
                 String[] split = opt.split(" ");
-                if (split[split.length - 1].equals(token)) return token;
+                if (split.length > context.length && split[context.length].equals(token)) return token;
             }
+            String commonWord = null;
+            boolean ambiguous = false;
+            for (String opt : opts) {
+                String[] split = opt.split(" ");
+                if (split.length > context.length) {
+                    if (commonWord == null) {
+                        commonWord = split[context.length];
+                    } else if (!commonWord.equals(split[context.length])) {
+                        ambiguous = true;
+                        break;
+                    }
+                }
+            }
+            if (!ambiguous && commonWord != null) return commonWord;
+
             return "AMBIGUOUS";
         }
         return null;
@@ -940,19 +973,18 @@ public class FirewallOsSimulator {
 
         for (RouteEntry re : rib) {
             String code = re.protocol.equals("CONNECTED") ? "C" : re.protocol.equals("STATIC") ? "S" : re.protocol.equals("OSPF") ? "O" : "B";
-            String via = re.nextHopIp != null && !re.nextHopIp.isEmpty() ? "via " + re.nextHopIp : "is directly connected";
-            cliLines.add(code + "    " + longToIp(re.network) + " " + longToIp(re.mask) + " " + via + ", " + re.egressInterface);
+            String via = re.nextHopIp != null && !re.nextHopIp.isEmpty() ? "via " + re.nextHopIp : "directly connected";
+            cliLines.add(code + "\t" + longToIp(re.network) + " " + longToIp(re.mask) + "\t\t" + via + ", " + re.egressInterface.replace("GigabitEthernet", "Gi").replace("Management", "Mgmt"));
         }
     }
 
     private void runShowIpIntBrief(boolean echo) {
         if (!echo) return;
-        cliLines.add("Interface                  IP-Address      OK? Method Status                Protocol");
+        cliLines.add("Interface\tIP-Address\tOK? Method\tStatus\tProtocol");
         for (Map.Entry<String, PortConfig> entry : portConfigs.entrySet()) {
             PortConfig pc = entry.getValue();
-            String ip = pc.ipAddress.equals("unassigned") ? "unassigned     " : String.format("%-15s", pc.ipAddress);
-            String status = pc.up ? "up                    " : "administratively down ";
-            cliLines.add(String.format("%-26s %s YES unset  %s %s", entry.getKey(), ip, status, pc.up ? "up" : "down"));
+            String status = pc.up ? "up" : "admin down";
+            cliLines.add(entry.getKey().replace("GigabitEthernet", "Gi").replace("Management", "Mgmt") + "\t" + pc.ipAddress + "\tYES unset\t" + status + "\t" + (pc.up ? "up" : "down"));
         }
     }
 
@@ -966,8 +998,9 @@ public class FirewallOsSimulator {
         if (!echo) return;
         maintainConnectionTable();
         cliLines.add(connectionTable.size() + " in use, " + connectionTable.size() + " most used");
+        cliLines.add("Protocol\tOutside\tInside\tState");
         for (ConnectionState c : connectionTable) {
-            cliLines.add(c.protocol.toUpperCase() + " outside  " + longToIp(c.dstIp) + ":" + c.dstPort + " inside  " + longToIp(c.srcIp) + ":" + c.srcPort + ", idle 0:00:00, bytes 324, flags UIO");
+            cliLines.add(c.protocol.toUpperCase() + "\t" + longToIp(c.dstIp) + ":" + c.dstPort + "\t" + longToIp(c.srcIp) + ":" + c.srcPort + "\tUP");
         }
     }
 

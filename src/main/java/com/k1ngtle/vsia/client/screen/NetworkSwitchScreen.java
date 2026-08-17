@@ -8,6 +8,8 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.client.gui.screens.Screen;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -114,6 +116,11 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         this.nameBox.setMaxLength(32);
         this.nameBox.setBordered(false);
         this.nameBox.setTextColor(0xAAAAAA);
+        this.nameBox.setResponder(val -> {
+            if (!isUpdatingVisibility) {
+                if (currentSwitchIndex == 0 && this.menu.blockEntity != null) this.menu.blockEntity.setSwitchName(val);
+            }
+        });
         this.addRenderableWidget(this.nameBox);
 
         this.hostnameBox = new EditBox(this.font, contentX + 85, y + 79, 300, 12, Component.literal("Hostname"));
@@ -123,7 +130,6 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         this.hostnameBox.setResponder(val -> {
             if (!isUpdatingVisibility) {
                 switches[currentSwitchIndex].switchHostname = val;
-                if (currentSwitchIndex == 0 && this.menu.blockEntity != null) this.menu.blockEntity.setSwitchName(val);
                 switches[currentSwitchIndex].appendGuiCommand("hostname " + val, selectedConfigItem);
             }
         });
@@ -222,11 +228,39 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         this.isUpdatingVisibility = false;
     }
 
+    private void syncCommand(String... commands) {
+        if (this.menu.blockEntity != null) {
+            com.k1ngtle.vsia.network.VsiaNetwork.sendToServer(new com.k1ngtle.vsia.network.DeviceCommandPacket(
+                    this.menu.blockEntity.getBlockPos(),
+                    this.currentSwitchIndex,
+                    commands
+            ));
+        }
+    }
+
     @Override
     public boolean keyPressed(int pKeyCode, int pScanCode, int pModifiers) {
         SwitchOsSimulator act = switches[currentSwitchIndex];
 
         if (this.currentTab == Tab.CLI) {
+            if (Screen.hasControlDown()) {
+                if (pKeyCode == GLFW.GLFW_KEY_Z) {
+                    if (act.cliMode == SwitchOsSimulator.CliMode.CONFIG || act.cliMode == SwitchOsSimulator.CliMode.CONFIG_IF || act.cliMode == SwitchOsSimulator.CliMode.CONFIG_VLAN) {
+                        act.cliLines.add(act.getPrompt() + act.cliInput + "^Z");
+                        act.executeCliCore("end", false);
+                        syncCommand("end");
+                        act.cliInput = "";
+                        act.cliCursorPos = 0;
+                    }
+                    return true;
+                } else if (pKeyCode == GLFW.GLFW_KEY_C) {
+                    act.cliLines.add(act.getPrompt() + act.cliInput + "^C");
+                    act.cliInput = "";
+                    act.cliCursorPos = 0;
+                    return true;
+                }
+            }
+
             if (pKeyCode == 258) { // TAB autocomplete
                 act.handleAutocomplete();
                 return true;
@@ -237,7 +271,9 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
                 }
                 return true;
             } else if (pKeyCode == 257 || pKeyCode == 335) { // ENTER
-                act.executeCliCore(act.cliInput, true);
+                String cmd = act.cliInput;
+                act.executeCliCore(cmd, true);
+                syncCommand(cmd);
                 act.cliInput = "";
                 act.cliCursorPos = 0;
                 return true;
@@ -412,35 +448,44 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
                 int rightColX = x + 380;
 
                 if (mouseY >= y + 65 && mouseY <= y + 77 && mouseX >= rightColX + 110 && mouseX <= rightColX + 125) {
-                    pc.up = !pc.up;
-                    act.appendGuiCommand(pc.up ? "no shutdown" : "shutdown", this.selectedConfigItem);
+                    boolean targetUp = !pc.up;
+                    syncCommand("end", "enable", "configure terminal", "interface " + this.selectedConfigItem, targetUp ? "no shutdown" : "shutdown", "end");
+                    pc.up = targetUp;
+                    act.appendGuiCommand(targetUp ? "no shutdown" : "shutdown", this.selectedConfigItem);
                     return true;
                 }
 
                 if (mouseY >= y + 90 && mouseY <= y + 102) {
                     boolean isGigabit = this.selectedConfigItem.startsWith("Gigabit");
                     if (isGigabit && mouseX >= rightColX - 80 && mouseX < rightColX - 10) {
+                        syncCommand("end", "enable", "configure terminal", "interface " + this.selectedConfigItem, "speed 1000", "end");
                         pc.speed = "1000"; act.appendGuiCommand("speed 1000", this.selectedConfigItem); return true;
                     }
                     if (mouseX >= rightColX && mouseX < rightColX + 65) {
+                        syncCommand("end", "enable", "configure terminal", "interface " + this.selectedConfigItem, "speed 100", "end");
                         pc.speed = "100"; act.appendGuiCommand("speed 100", this.selectedConfigItem); return true;
                     }
                     if (mouseX >= rightColX + 70 && mouseX < rightColX + 130) {
+                        syncCommand("end", "enable", "configure terminal", "interface " + this.selectedConfigItem, "speed 10", "end");
                         pc.speed = "10"; act.appendGuiCommand("speed 10", this.selectedConfigItem); return true;
                     }
                     if (mouseX >= rightColX + 140 && mouseX < rightColX + 190) {
+                        syncCommand("end", "enable", "configure terminal", "interface " + this.selectedConfigItem, "speed auto", "end");
                         pc.speed = "auto"; act.appendGuiCommand("speed auto", this.selectedConfigItem); return true;
                     }
                 }
 
                 if (mouseY >= y + 115 && mouseY <= y + 127) {
                     if (mouseX >= rightColX && mouseX < rightColX + 75) {
+                        syncCommand("end", "enable", "configure terminal", "interface " + this.selectedConfigItem, "duplex half", "end");
                         pc.duplex = "half"; act.appendGuiCommand("duplex half", this.selectedConfigItem); return true;
                     }
                     if (mouseX >= rightColX + 80 && mouseX < rightColX + 150) {
+                        syncCommand("end", "enable", "configure terminal", "interface " + this.selectedConfigItem, "duplex full", "end");
                         pc.duplex = "full"; act.appendGuiCommand("duplex full", this.selectedConfigItem); return true;
                     }
                     if (mouseX >= rightColX + 160 && mouseX < rightColX + 210) {
+                        syncCommand("end", "enable", "configure terminal", "interface " + this.selectedConfigItem, "duplex auto", "end");
                         pc.duplex = "auto"; act.appendGuiCommand("duplex auto", this.selectedConfigItem); return true;
                     }
                 }
@@ -925,8 +970,22 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         int maxLines = (this.imageHeight - 50) / 12;
         int startLogIdx = Math.max(0, act.cliLines.size() - maxLines - act.cliScrollOffset + 1);
 
+        int[] COL_X = {0, 115, 230, 310, 420, 500, 580};
+
         for (int i = startLogIdx; i < act.cliLines.size() - act.cliScrollOffset; i++) {
-            g.drawString(this.font, act.cliLines.get(i), x + 10, textY, 0xFFCCCCCC, false);
+            String line = act.cliLines.get(i);
+
+            if (line.contains("\t")) {
+                String[] parts = line.split("\t", -1);
+                for (int p = 0; p < parts.length; p++) {
+                    if (!parts[p].isEmpty()) {
+                        int drawX = x + 10 + (p < COL_X.length ? COL_X[p] : COL_X[COL_X.length-1] + (p - COL_X.length + 1) * 80);
+                        g.drawString(this.font, parts[p], drawX, textY, 0xFFCCCCCC, false);
+                    }
+                }
+            } else {
+                g.drawString(this.font, line, x + 10, textY, 0xFFCCCCCC, false);
+            }
             textY += 12;
         }
 

@@ -35,6 +35,12 @@ public class VsiaNetwork {
                 .encoder(DeleteFilePacket::toBytes)
                 .consumerMainThread(DeleteFilePacket::handle)
                 .add();
+
+        net.messageBuilder(DeviceCommandPacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
+                .decoder(DeviceCommandPacket::new)
+                .encoder(DeviceCommandPacket::toBytes)
+                .consumerMainThread(DeviceCommandPacket::handle)
+                .add();
     }
 
     public static <MSG> void sendToServer(MSG message) {

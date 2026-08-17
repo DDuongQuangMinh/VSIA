@@ -100,9 +100,6 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
 
     public void setSwitchName(String name) {
         this.switchName = name;
-        for (int i = 0; i < 7; i++) {
-            this.osSimulators[i].switchHostname = name + "_" + (i + 1);
-        }
         setChanged();
     }
 
@@ -194,8 +191,18 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
         if (level == null || level.isClientSide) return;
         visited.add(this.getBlockPos());
 
-        for (BlockPos p : connectedDevices) {
+        for (int i = 0; i < connectedDevices.size(); i++) {
+            BlockPos p = connectedDevices.get(i);
             if (visited.contains(p)) continue;
+
+            String portName = getInterfaceNameForPos(p);
+            if (portName != null) {
+                SwitchOsSimulator.PortConfig pc = osSimulators[0].portConfigs.get(portName);
+                if (pc != null && (!pc.up || pc.stpState.equals("BLK"))) {
+                    continue; // Accurately skip propagation if port is shut down or blocked by STP!
+                }
+            }
+
             BlockEntity be = level.getBlockEntity(p);
 
             if (be instanceof StorageServerBlockEntity storage) {
