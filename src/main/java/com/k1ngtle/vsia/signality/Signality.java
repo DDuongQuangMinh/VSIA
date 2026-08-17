@@ -28,75 +28,138 @@ import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.slf4j.Logger;
 
 public final class Signality {
-   public static final String MODID = Vsia.MOD_ID;
-   public static final Logger LOGGER = LogUtils.getLogger();
+   public static final String MODID =
+           Vsia.MOD_ID;
 
-   private Signality(FMLJavaModLoadingContext context) {
-      IEventBus modBus = context.getModEventBus();
+   public static final Logger LOGGER =
+           LogUtils.getLogger();
 
-      SignalityBlocks.register(modBus);
+   private Signality(
+           FMLJavaModLoadingContext context
+   ) {
+      IEventBus modBus =
+              context.getModEventBus();
 
-      modBus.addListener(this::commonSetup);
-
-      ModLoadingContext.get().registerConfig(
-              Type.COMMON,
-              SignalityConfig.SPEC,
-              "signality-common.toml"
+      SignalityBlocks.register(
+              modBus
       );
 
-      MinecraftForge.EVENT_BUS.register(this);
+      modBus.addListener(
+              this::commonSetup
+      );
+
+      ModLoadingContext
+              .get()
+              .registerConfig(
+                      Type.COMMON,
+                      SignalityConfig.SPEC,
+                      "signality-common.toml"
+              );
+
+      MinecraftForge.EVENT_BUS.register(
+              this
+      );
    }
 
-   public static void initialize(FMLJavaModLoadingContext context) {
+   public static void initialize(
+           FMLJavaModLoadingContext context
+   ) {
       new Signality(context);
    }
 
-   private void commonSetup(FMLCommonSetupEvent event) {
+   private void commonSetup(
+           FMLCommonSetupEvent event
+   ) {
       event.enqueueWork(() -> {
-         RadarRegistry.addTargetSource(RadarBeaconBlockEntity::beaconsIn);
+         RadarRegistry.addTargetSource(
+                 RadarBeaconBlockEntity::beaconsIn
+         );
 
          if (VsCompat.isLoaded()
-                 && (Boolean) SignalityConfig.ENABLE_VS_INTEGRATION.get()) {
-            RadarRegistry.addTargetSource(VsCompat.hook()::shipTargetsIn);
-            LOGGER.info("Registered VS target source with RadarRegistry.");
+                 && (Boolean) SignalityConfig
+                 .ENABLE_VS_INTEGRATION
+                 .get()) {
+            RadarRegistry.addTargetSource(
+                    VsCompat.hook()::shipTargetsIn
+            );
+
+            LOGGER.info(
+                    "Registered VS target source with RadarRegistry."
+            );
          }
 
          if (DhCompat.isLoaded()
-                 && (Boolean) SignalityConfig.ENABLE_DH_OCCLUSION.get()) {
-            RadarRegistry.addOcclusionProvider(DhCompat.provider());
-            LOGGER.info("Registered DH height-occlusion provider with RadarRegistry.");
+                 && (Boolean) SignalityConfig
+                 .ENABLE_DH_OCCLUSION
+                 .get()) {
+            RadarRegistry.addOcclusionProvider(
+                    DhCompat.provider()
+            );
+
+            LOGGER.info(
+                    "Registered DH height-occlusion provider with RadarRegistry."
+            );
          }
       });
    }
 
    @SubscribeEvent
-   public void onAddReloadListeners(AddReloadListenerEvent event) {
-      event.addListener(new NetworkProfileReloadListener());
+   public void onAddReloadListeners(
+           AddReloadListenerEvent event
+   ) {
+      event.addListener(
+              new NetworkProfileReloadListener()
+      );
    }
 
    @SubscribeEvent
-   public void onServerStarting(ServerStartingEvent event) {
-      RadarRegistry.addOcclusionProvider(WorldOcclusionProvider.INSTANCE);
-      RadarScanScheduler.start((Integer) SignalityConfig.WORKER_COUNT.get());
+   public void onServerStarting(
+           ServerStartingEvent event
+   ) {
+      RadarRegistry.addOcclusionProvider(
+              WorldOcclusionProvider.INSTANCE
+      );
+
+      RadarScanScheduler.start(
+              (Integer) SignalityConfig
+                      .WORKER_COUNT
+                      .get()
+      );
    }
 
    @SubscribeEvent
-   public void onServerStopped(ServerStoppedEvent event) {
+   public void onServerStopped(
+           ServerStoppedEvent event
+   ) {
       RadarScanScheduler.stop();
    }
 
    @SubscribeEvent
-   public void onRegisterCommands(RegisterCommandsEvent event) {
-      SignalityCommand.register(event.getDispatcher());
+   public void onRegisterCommands(
+           RegisterCommandsEvent event
+   ) {
+      SignalityCommand.register(
+              event.getDispatcher()
+      );
    }
 
    @SubscribeEvent
-   public void onServerTick(ServerTickEvent event) {
+   public void onServerTick(
+           ServerTickEvent event
+   ) {
       if (event.phase == Phase.END) {
-         for (ServerLevel level : event.getServer().getAllLevels()) {
+         for (ServerLevel level
+                 : event
+                 .getServer()
+                 .getAllLevels()) {
             try {
-               RadarScanScheduler.onServerTick(level);
-               DebugVisualization.onServerTick(level);
+               RadarScanScheduler.onServerTick(
+                       level
+               );
+
+               DebugVisualization.onServerTick(
+                       level
+               );
             } catch (Throwable throwable) {
                LOGGER.warn(
                        "RadarScanScheduler tick failed on level {}",

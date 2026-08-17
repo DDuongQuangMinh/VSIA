@@ -5,6 +5,9 @@ import com.k1ngtle.vsia.signality.api.signal.ISignalTransmitter;
 import com.k1ngtle.vsia.signality.api.signal.SignalBand;
 import com.k1ngtle.vsia.signality.api.signal.SignalPacket;
 import com.k1ngtle.vsia.signality.core.signal.SignalBus;
+import com.k1ngtle.vsia.signality.engineering.EngineeringPhyEngine;
+import com.k1ngtle.vsia.signality.engineering.phy.PhyProfile;
+import com.k1ngtle.vsia.signality.engineering.phy.PhyResult;
 import com.k1ngtle.vsia.signality.internet.network.NetworkProfile;
 import com.k1ngtle.vsia.signality.internet.network.NetworkProfileRegistry;
 import net.minecraft.core.BlockPos;
@@ -27,7 +30,8 @@ public abstract class NetworkDeviceBlockEntity
         extends BlockEntity
         implements ISignalReceiver, ISignalTransmitter {
 
-    private UUID signalId = UUID.randomUUID();
+    private UUID signalId =
+            UUID.randomUUID();
 
     protected String macAddress;
     protected String ipAddress = "0.0.0.0";
@@ -37,7 +41,11 @@ public abstract class NetworkDeviceBlockEntity
             NetworkProfileRegistry.DEFAULT_PROFILE_ID;
 
     private double activeFrequencyHz =
-            NetworkProfileRegistry.defaultProfile().defaultFrequencyHz();
+            NetworkProfileRegistry
+                    .defaultProfile()
+                    .defaultFrequencyHz();
+
+    private PhyResult lastPhyResult;
 
     public NetworkDeviceBlockEntity(
             BlockEntityType<?> type,
@@ -46,17 +54,19 @@ public abstract class NetworkDeviceBlockEntity
     ) {
         super(type, pos, state);
 
-        this.macAddress = UUID.randomUUID()
-                .toString()
-                .replace("-", "")
-                .substring(0, 12);
+        this.macAddress =
+                UUID.randomUUID()
+                        .toString()
+                        .replace("-", "")
+                        .substring(0, 12);
     }
 
     @Override
     public void onLoad() {
         super.onLoad();
 
-        if (this.level != null && !this.level.isClientSide) {
+        if (this.level != null
+                && !this.level.isClientSide) {
             normalizeNetworkProfile();
             SignalBus.registerReceiver(this);
             SignalBus.registerTransmitter(this);
@@ -82,7 +92,9 @@ public abstract class NetworkDeviceBlockEntity
 
     @Override
     public Vec3 positionWorld() {
-        return Vec3.atCenterOf(this.worldPosition).add(0.0, 0.5, 0.0);
+        return Vec3
+                .atCenterOf(this.worldPosition)
+                .add(0.0, 0.5, 0.0);
     }
 
     public ResourceLocation networkProfileId() {
@@ -90,57 +102,108 @@ public abstract class NetworkDeviceBlockEntity
     }
 
     public NetworkProfile networkProfile() {
-        return NetworkProfileRegistry.getOrDefault(this.networkProfileId);
+        return NetworkProfileRegistry
+                .getOrDefault(this.networkProfileId);
     }
 
     public double activeFrequencyHz() {
         return this.activeFrequencyHz;
     }
 
-    public boolean setNetworkProfile(ResourceLocation profileId) {
-        NetworkProfile profile = NetworkProfileRegistry.get(profileId).orElse(null);
+    public PhyResult lastPhyResult() {
+        return this.lastPhyResult;
+    }
+
+    public PhyProfile currentPhyProfile() {
+        NetworkProfile profile =
+                networkProfile();
+
+        return profile
+                .phy()
+                .toRuntimeProfile(
+                        this.activeFrequencyHz,
+                        profile.bandwidthHz(),
+                        profile.transmitPowerWatts(),
+                        profile.antennaGain()
+                );
+    }
+
+    public boolean setNetworkProfile(
+            ResourceLocation profileId
+    ) {
+        NetworkProfile profile =
+                NetworkProfileRegistry
+                        .get(profileId)
+                        .orElse(null);
 
         if (profile == null) {
             return false;
         }
 
-        this.networkProfileId = profile.id();
-        this.activeFrequencyHz = profile.defaultFrequencyHz();
+        this.networkProfileId =
+                profile.id();
+
+        this.activeFrequencyHz =
+                profile.defaultFrequencyHz();
+
+        this.lastPhyResult = null;
+
         setChanged();
         return true;
     }
 
-    public boolean setActiveFrequencyHz(double frequencyHz) {
-        NetworkProfile profile = networkProfile();
+    public boolean setActiveFrequencyHz(
+            double frequencyHz
+    ) {
+        NetworkProfile profile =
+                networkProfile();
 
-        if (!profile.supportsFrequency(frequencyHz)) {
+        if (!profile.supportsFrequency(
+                frequencyHz
+        )) {
             return false;
         }
 
-        this.activeFrequencyHz = frequencyHz;
+        this.activeFrequencyHz =
+                frequencyHz;
+
+        this.lastPhyResult = null;
+
         setChanged();
         return true;
     }
 
     private void normalizeNetworkProfile() {
-        NetworkProfile profile = NetworkProfileRegistry.get(this.networkProfileId)
-                .orElseGet(NetworkProfileRegistry::defaultProfile);
+        NetworkProfile profile =
+                NetworkProfileRegistry
+                        .get(this.networkProfileId)
+                        .orElseGet(
+                                NetworkProfileRegistry::defaultProfile
+                        );
 
-        this.networkProfileId = profile.id();
+        this.networkProfileId =
+                profile.id();
 
-        if (!profile.supportsFrequency(this.activeFrequencyHz)) {
-            this.activeFrequencyHz = profile.defaultFrequencyHz();
+        if (!profile.supportsFrequency(
+                this.activeFrequencyHz
+        )) {
+            this.activeFrequencyHz =
+                    profile.defaultFrequencyHz();
         }
     }
 
     @Override
     public SignalBand band() {
-        return SignalBand.forFrequency(this.activeFrequencyHz);
+        return SignalBand.forFrequency(
+                this.activeFrequencyHz
+        );
     }
 
     @Override
     public double[] tunedFrequenciesHz() {
-        return new double[]{this.activeFrequencyHz};
+        return new double[]{
+                this.activeFrequencyHz
+        };
     }
 
     @Override
@@ -164,66 +227,140 @@ public abstract class NetworkDeviceBlockEntity
     }
 
     @Override
-    public void onReceive(SignalPacket signal, double receivedPowerWatts) {
-        CompoundTag payloadData = null;
+    public void onReceive(
+            SignalPacket signal,
+            double receivedPowerWatts
+    ) {
+        CompoundTag payloadData =
+                readSignalPayload(signal);
 
-        try {
-            ByteArrayInputStream byteInput =
-                    new ByteArrayInputStream(signal.payload());
-
-            DataInputStream dataInput =
-                    new DataInputStream(byteInput);
-
-            payloadData = NbtIo.read(dataInput);
-        } catch (Exception ignored) {
-        }
-
-        if (payloadData == null || !payloadData.contains("osi_packet")) {
+        if (payloadData == null
+                || !payloadData.contains("osi_packet")) {
             return;
         }
 
-        if (payloadData.contains("signality_medium")) {
-            String incomingMedium = payloadData.getString("signality_medium");
-            String requiredMedium = networkProfile().compatibilityGroup();
-
-            if (!requiredMedium.equals(incomingMedium)) {
-                return;
-            }
+        if (!isCompatibleMedium(payloadData)) {
+            return;
         }
 
         OSINetworkPacket osiPacket =
                 OSINetworkPacket.deserializeNBT(
-                        payloadData.getCompound("osi_packet")
+                        payloadData.getCompound(
+                                "osi_packet"
+                        )
                 );
+
+        long frameBits =
+                Math.max(
+                        1L,
+                        (long) signal
+                                .payload()
+                                .length
+                                * 8L
+                );
+
+        this.lastPhyResult =
+                EngineeringPhyEngine
+                        .evaluateReceivedFrame(
+                                currentPhyProfile(),
+                                receivedPowerWatts,
+                                frameBits
+                        );
+
+        if (!EngineeringPhyEngine
+                .shouldDeliverFrame(
+                        this.lastPhyResult
+                )) {
+            return;
+        }
 
         processLayer2(osiPacket);
     }
 
-    protected void processLayer2(OSINetworkPacket packet) {
+    private CompoundTag readSignalPayload(
+            SignalPacket signal
+    ) {
+        try {
+            ByteArrayInputStream byteInput =
+                    new ByteArrayInputStream(
+                            signal.payload()
+                    );
+
+            DataInputStream dataInput =
+                    new DataInputStream(
+                            byteInput
+                    );
+
+            return NbtIo.read(dataInput);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private boolean isCompatibleMedium(
+            CompoundTag payloadData
+    ) {
+        if (!payloadData.contains(
+                "signality_medium"
+        )) {
+            return true;
+        }
+
+        String incomingMedium =
+                payloadData.getString(
+                        "signality_medium"
+                );
+
+        String receiverMedium =
+                networkProfile()
+                        .compatibilityGroup();
+
+        return receiverMedium.equals(
+                incomingMedium
+        );
+    }
+
+    protected void processLayer2(
+            OSINetworkPacket packet
+    ) {
         boolean addressedToThisDevice =
-                packet.targetMac.equals(this.macAddress);
+                packet.targetMac.equals(
+                        this.macAddress
+                );
 
         boolean broadcast =
-                packet.targetMac.equals("FF:FF:FF:FF:FF:FF");
+                packet.targetMac.equals(
+                        "FF:FF:FF:FF:FF:FF"
+                );
 
-        if (addressedToThisDevice || broadcast) {
+        if (addressedToThisDevice
+                || broadcast) {
             processLayer3(packet);
         }
     }
 
-    protected void processLayer3(OSINetworkPacket packet) {
+    protected void processLayer3(
+            OSINetworkPacket packet
+    ) {
         boolean addressedToThisDevice =
-                packet.targetIp.equals(this.ipAddress);
+                packet.targetIp.equals(
+                        this.ipAddress
+                );
 
         boolean broadcast =
-                packet.targetIp.equals("255.255.255.255");
+                packet.targetIp.equals(
+                        "255.255.255.255"
+                );
 
-        if (addressedToThisDevice || broadcast) {
+        if (addressedToThisDevice
+                || broadcast) {
             processLayer4(packet);
         }
     }
 
-    protected void processLayer4(OSINetworkPacket packet) {
+    protected void processLayer4(
+            OSINetworkPacket packet
+    ) {
         if (packet.targetPort == 80) {
             handleWebRequest(packet);
         } else if (packet.targetPort == 53) {
@@ -254,16 +391,23 @@ public abstract class NetworkDeviceBlockEntity
     protected void handleIncomingData(OSINetworkPacket packet) {
     }
 
-    protected void handleDhcpResponse(OSINetworkPacket packet) {
+    protected void handleDhcpResponse(
+            OSINetworkPacket packet
+    ) {
         boolean isDhcp =
-                packet.applicationProtocol.equals("DHCP");
+                packet.applicationProtocol
+                        .equals("DHCP");
 
         boolean isAcknowledgement =
-                packet.payload.getString("type").equals("ACK");
+                packet.payload
+                        .getString("type")
+                        .equals("ACK");
 
-        if (isDhcp && isAcknowledgement) {
+        if (isDhcp
+                && isAcknowledgement) {
             this.ipAddress =
-                    packet.payload.getString("assigned_ip");
+                    packet.payload
+                            .getString("assigned_ip");
 
             this.defaultGatewayMac =
                     packet.sourceMac;
@@ -288,11 +432,8 @@ public abstract class NetworkDeviceBlockEntity
         dhcpRequest.targetIp =
                 "255.255.255.255";
 
-        dhcpRequest.sourcePort =
-                68;
-
-        dhcpRequest.targetPort =
-                67;
+        dhcpRequest.sourcePort = 68;
+        dhcpRequest.targetPort = 67;
 
         dhcpRequest.applicationProtocol =
                 "DHCP";
@@ -305,8 +446,11 @@ public abstract class NetworkDeviceBlockEntity
         transmitPacket(dhcpRequest);
     }
 
-    protected void transmitPacket(OSINetworkPacket osiPacket) {
-        NetworkProfile profile = networkProfile();
+    protected void transmitPacket(
+            OSINetworkPacket osiPacket
+    ) {
+        NetworkProfile profile =
+                networkProfile();
 
         CompoundTag rawPayload =
                 new CompoundTag();
@@ -336,6 +480,31 @@ public abstract class NetworkDeviceBlockEntity
                 profile.security()
         );
 
+        rawPayload.putString(
+                "signality_modulation",
+                profile.phy()
+                        .modulation()
+                        .name()
+        );
+
+        rawPayload.putString(
+                "signality_coding",
+                profile.phy()
+                        .codingId()
+        );
+
+        rawPayload.putDouble(
+                "signality_coding_rate",
+                profile.phy()
+                        .codingRate()
+        );
+
+        rawPayload.putInt(
+                "signality_spatial_streams",
+                profile.phy()
+                        .spatialStreams()
+        );
+
         byte[] payloadBytes;
 
         try {
@@ -343,9 +512,14 @@ public abstract class NetworkDeviceBlockEntity
                     new ByteArrayOutputStream();
 
             DataOutputStream dataOutput =
-                    new DataOutputStream(byteOutput);
+                    new DataOutputStream(
+                            byteOutput
+                    );
 
-            NbtIo.write(rawPayload, dataOutput);
+            NbtIo.write(
+                    rawPayload,
+                    dataOutput
+            );
 
             payloadBytes =
                     byteOutput.toByteArray();
@@ -367,13 +541,19 @@ public abstract class NetworkDeviceBlockEntity
                         null
                 );
 
-        if (this.level instanceof ServerLevel serverLevel) {
-            SignalBus.broadcast(outgoing, serverLevel);
+        if (this.level
+                instanceof ServerLevel serverLevel) {
+            SignalBus.broadcast(
+                    outgoing,
+                    serverLevel
+            );
         }
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag) {
+    protected void saveAdditional(
+            CompoundTag tag
+    ) {
         super.saveAdditional(tag);
 
         tag.putUUID(
@@ -408,7 +588,9 @@ public abstract class NetworkDeviceBlockEntity
     }
 
     @Override
-    public void load(CompoundTag tag) {
+    public void load(
+            CompoundTag tag
+    ) {
         super.load(tag);
 
         if (tag.hasUUID("SignalId")) {
@@ -428,25 +610,35 @@ public abstract class NetworkDeviceBlockEntity
 
         if (tag.contains("DefaultGatewayMac")) {
             this.defaultGatewayMac =
-                    tag.getString("DefaultGatewayMac");
+                    tag.getString(
+                            "DefaultGatewayMac"
+                    );
         }
 
         if (tag.contains("NetworkProfile")) {
             ResourceLocation parsed =
                     ResourceLocation.tryParse(
-                            tag.getString("NetworkProfile")
+                            tag.getString(
+                                    "NetworkProfile"
+                            )
                     );
 
             if (parsed != null) {
-                this.networkProfileId = parsed;
+                this.networkProfileId =
+                        parsed;
             }
         }
 
-        if (tag.contains("ActiveFrequencyHz")) {
+        if (tag.contains(
+                "ActiveFrequencyHz"
+        )) {
             this.activeFrequencyHz =
-                    tag.getDouble("ActiveFrequencyHz");
+                    tag.getDouble(
+                            "ActiveFrequencyHz"
+                    );
         }
 
         normalizeNetworkProfile();
+        this.lastPhyResult = null;
     }
 }
