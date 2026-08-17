@@ -72,11 +72,22 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
             updateVisibility();
         };
 
-        firewalls[0] = new FirewallOsSimulator(baseId, 1, baseName, stateCallback);
-
-        for (int i = 1; i < 7; i++) {
-            firewalls[i] = new FirewallOsSimulator(baseId, i + 1, "ASA" + baseId + "_" + (i + 1), stateCallback);
+        if (menu.blockEntity != null) {
+            for (int i = 0; i < 7; i++) {
+                firewalls[i] = menu.blockEntity.osSimulators[i];
+                firewalls[i].guiCallback = stateCallback;
+            }
+        } else {
+            for (int i = 0; i < 7; i++) {
+                firewalls[i] = new FirewallOsSimulator(baseId, i + 1, "ASA" + baseId + "_" + (i + 1), stateCallback);
+            }
         }
+    }
+
+    @Override
+    public void onClose() {
+        if (firewalls[0] != null) firewalls[0].guiCallback = null;
+        super.onClose();
     }
 
     @Override

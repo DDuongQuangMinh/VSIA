@@ -1,6 +1,7 @@
 package com.k1ngtle.vsia.signality.internet.server;
 
 import com.k1ngtle.vsia.signality.SignalityBlocks;
+import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -31,7 +32,7 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
 
     // Core Network Logic
     private int deviceId = -1;
-    private String managementIp = "192.168.1.1";
+    private String managementIp = "unassigned";
     private String deviceName = "ciscoasa";
     private boolean strictMode = true;
 
@@ -47,11 +48,54 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
     // Rules
     private final List<FirewallRule> activeRules = new ArrayList<>();
 
+    public final FirewallOsSimulator[] osSimulators = new FirewallOsSimulator[7];
+
     public FirewallBlockEntity(BlockPos pos, BlockState state) {
         super(SignalityBlocks.FIREWALL_BE.get(), pos, state);
+        for (int i = 0; i < 7; i++) {
+            this.osSimulators[i] = new FirewallOsSimulator(0, i + 1, "ciscoasa", this::setChanged);
+        }
         if (activeRules.isEmpty()) {
             activeRules.add(new FirewallRule("Block Suspicious Traffic", "DROP", "ANY", "WAN", true));
             activeRules.add(new FirewallRule("Allow LAN Outbound", "ALLOW", "LAN", "WAN", true));
+        }
+    }
+
+    public void tick() {
+        if (level != null && !level.isClientSide) {
+            // Forward ticking into our advanced OSPF/IPsec simulators for all 7 instances
+            for (FirewallOsSimulator sim : osSimulators) {
+                sim.tick(this::broadcastPacketOutwards);
+            }
+        }
+    }
+
+    private void broadcastPacketOutwards(OSINetworkPacket packet) {
+        // Find correct egress port based on routing table
+        // This is a simplified interface hook for the OS simulator
+        if (lanConnection != null) {
+            BlockEntity be = level.getBlockEntity(lanConnection);
+            if (be instanceof NetworkSwitchBlockEntity sw) sw.receiveWiredPacket(packet, this.worldPosition);
+            if (be instanceof ServerRackBlockEntity rack) rack.receiveWiredPacket(packet);
+        }
+        if (wanConnection != null) {
+            BlockEntity be = level.getBlockEntity(wanConnection);
+            if (be instanceof NetworkSwitchBlockEntity sw) sw.receiveWiredPacket(packet, this.worldPosition);
+            if (be instanceof ServerRackBlockEntity rack) rack.receiveWiredPacket(packet);
+        }
+    }
+
+    public void receiveWiredPacket(OSINetworkPacket packet, BlockPos ingressPos) {
+        if (level == null || level.isClientSide) return;
+
+        String ingressPort = ingressPos.equals(lanConnection) ? "GigabitEthernet1/1" :
+                ingressPos.equals(wanConnection) ? "GigabitEthernet1/2" : null;
+        if (ingressPort == null) return;
+
+        // Apply Stateful Packet Inspection & VPN decryption/encryption via primary blade
+        OSINetworkPacket filtered = osSimulators[0].filterAndRoutePacket(packet, ingressPort);
+        if (filtered != null) {
+            broadcastPacketOutwards(filtered);
         }
     }
 
@@ -66,23 +110,49 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
     public void assignAutomaticId(int id) {
         if (this.deviceId != -1) return;
         this.deviceId = id;
-        this.deviceName = "ASA" + id;
+        this.deviceName = "ASA" + id + "_1";
+        for (int i = 0; i < 7; i++) {
+            this.osSimulators[i].hostname = "ASA" + id + "_" + (i + 1);
+            this.osSimulators[i].displayName = "ASA" + id + "_" + (i + 1);
+            this.osSimulators[i].macAddress = String.format("0002.4A0B.%02X%02X", id, i + 1);
+        }
         setChanged();
     }
 
     public int getDeviceId() { return deviceId; }
 
     public String getDeviceName() { return deviceName; }
-    public void setDeviceName(String name) { this.deviceName = name; setChanged(); }
+    public void setDeviceName(String name) {
+        this.deviceName = name;
+        for (int i = 0; i < 7; i++) {
+            this.osSimulators[i].hostname = name + "_" + (i + 1);
+        }
+        setChanged();
+    }
 
     public String getManagementIp() { return managementIp; }
-    public void setManagementIp(String ip) { this.managementIp = ip; setChanged(); }
+    public void setManagementIp(String ip) {
+        this.managementIp = ip;
+        FirewallOsSimulator.PortConfig pc = osSimulators[0].portConfigs.get("Management1/1");
+        if (pc != null) pc.ipAddress = ip;
+        setChanged();
+    }
 
     public String getSubnetMask() { return subnetMask; }
-    public void setSubnetMask(String subnetMask) { this.subnetMask = subnetMask; setChanged(); }
+    public void setSubnetMask(String mask) {
+        this.subnetMask = mask;
+        FirewallOsSimulator.PortConfig pc = osSimulators[0].portConfigs.get("Management1/1");
+        if (pc != null) pc.subnetMask = mask;
+        setChanged();
+    }
 
     public String getIpv6Address() { return ipv6Address; }
-    public void setIpv6Address(String ipv6Address) { this.ipv6Address = ipv6Address; setChanged(); }
+    public void setIpv6Address(String ipv6Address) {
+        this.ipv6Address = ipv6Address;
+        FirewallOsSimulator.PortConfig pc = osSimulators[0].portConfigs.get("Management1/1");
+        if (pc != null) pc.ipv6Address = ipv6Address;
+        setChanged();
+    }
 
     public boolean isDhcpEnabled() { return dhcpEnabled; }
     public void setDhcpEnabled(boolean dhcpEnabled) { this.dhcpEnabled = dhcpEnabled; setChanged(); }
@@ -158,6 +228,12 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
             rulesList.add(rt);
         }
         tag.put("Rules", rulesList);
+
+        ListTag osList = new ListTag();
+        for (int i = 0; i < 7; i++) {
+            osList.add(osSimulators[i].saveToNBT());
+        }
+        tag.put("OsStates", osList);
     }
 
     @Override
@@ -184,6 +260,16 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
                         rt.getString("Source"), rt.getString("Dest"), rt.getBoolean("Enabled")
                 ));
             }
+        }
+
+        if (tag.contains("OsStates", Tag.TAG_LIST)) {
+            ListTag osList = tag.getList("OsStates", Tag.TAG_COMPOUND);
+            for (int i = 0; i < 7 && i < osList.size(); i++) {
+                osSimulators[i].loadFromNBT(osList.getCompound(i));
+            }
+        } else if (tag.contains("OsState")) {
+            // Fallback for previous saves
+            osSimulators[0].loadFromNBT(tag.getCompound("OsState"));
         }
     }
 

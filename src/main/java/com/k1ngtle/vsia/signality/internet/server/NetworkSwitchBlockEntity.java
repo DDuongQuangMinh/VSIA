@@ -36,13 +36,34 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
     private int switchId = -1;
 
     // Internal L2 Switching Engine
-    public final SwitchOsSimulator osSimulator;
+    public final SwitchOsSimulator[] osSimulators = new SwitchOsSimulator[7];
 
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
     public NetworkSwitchBlockEntity(BlockPos pos, BlockState state) {
         super(SignalityBlocks.NETWORK_SWITCH_BE.get(), pos, state);
-        this.osSimulator = new SwitchOsSimulator(0, this.switchName, this::setChanged);
+        for (int i = 0; i < 7; i++) {
+            this.osSimulators[i] = new SwitchOsSimulator(0, this.switchName + "_" + (i + 1), this::setChanged);
+        }
+    }
+
+    public void tick() {
+        if (level != null && !level.isClientSide) {
+            // Forward ticking into our advanced STP/L2 simulation engines
+            for (SwitchOsSimulator sim : osSimulators) {
+                sim.tick(this::broadcastPacketOutwards);
+            }
+        }
+    }
+
+    private void broadcastPacketOutwards(OSINetworkPacket packet) {
+        // Internal helper for the SwitchOsSimulator to emit dynamic BPDUs to cables
+        for (BlockPos p : connectedDevices) {
+            BlockEntity be = level.getBlockEntity(p);
+            if (be instanceof NetworkSwitchBlockEntity sw) {
+                sw.receiveWiredPacket(packet, this.worldPosition);
+            }
+        }
     }
 
     public List<BlockPos> getConnectedDevices() {
@@ -61,9 +82,11 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
         if (this.switchId != -1) return;
         this.switchId = id;
         this.switchName = "Switch" + id;
-        this.osSimulator.id = id;
-        this.osSimulator.switchHostname = this.switchName;
-        this.osSimulator.macAddress = String.format("00:1A:2B:3C:4D:%02X", 0x5E + id);
+        for (int i = 0; i < 7; i++) {
+            this.osSimulators[i].id = id * 10 + i;
+            this.osSimulators[i].switchHostname = this.switchName + "_" + (i + 1);
+            this.osSimulators[i].macAddress = String.format("00:1A:2B:3C:%02X:%02X", id, i + 1);
+        }
         setChanged();
     }
 
@@ -77,7 +100,9 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
 
     public void setSwitchName(String name) {
         this.switchName = name;
-        this.osSimulator.switchHostname = name;
+        for (int i = 0; i < 7; i++) {
+            this.osSimulators[i].switchHostname = name + "_" + (i + 1);
+        }
         setChanged();
     }
 
@@ -138,8 +163,8 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
         String ingressPort = getInterfaceNameForPos(ingressPos);
         if (ingressPort == null) return;
 
-        // Process through the Switch OS Simulator (VLANs, MAC learning, Forwarding)
-        List<String> egressPorts = osSimulator.processAndForwardPacket(packet, ingressPort);
+        // Process through the Primary Switch OS Simulator (VLANs, MAC learning, Forwarding, STP)
+        List<String> egressPorts = osSimulators[0].processAndForwardPacket(packet, ingressPort);
 
         for (String egressPort : egressPorts) {
             BlockPos targetPos = getPosForInterfaceName(egressPort);
@@ -155,7 +180,7 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
                 } else if (be instanceof NetworkSwitchBlockEntity sw) {
                     sw.receiveWiredPacket(forwardedPacket, this.worldPosition);
                 } else if (be instanceof FirewallBlockEntity fw) {
-                    // Placeholder: Target firewall routing in future.
+                    fw.receiveWiredPacket(forwardedPacket, this.worldPosition);
                 }
             }
         }
@@ -247,7 +272,11 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
         }
         tag.put("Connections", links);
 
-        tag.put("OsState", osSimulator.saveToNBT());
+        ListTag osList = new ListTag();
+        for (int i = 0; i < 7; i++) {
+            osList.add(osSimulators[i].saveToNBT());
+        }
+        tag.put("OsStates", osList);
     }
 
     @Override
@@ -255,12 +284,14 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
         super.load(tag);
         if (tag.contains("SwitchName")) {
             switchName = tag.getString("SwitchName");
-            osSimulator.switchHostname = switchName;
+            for (int i = 0; i < 7; i++) osSimulators[i].switchHostname = switchName + "_" + (i + 1);
         }
         if (tag.contains("SwitchId")) {
             switchId = tag.getInt("SwitchId");
-            osSimulator.id = switchId;
-            osSimulator.macAddress = String.format("00:1A:2B:3C:4D:%02X", 0x5E + switchId);
+            for (int i = 0; i < 7; i++) {
+                osSimulators[i].id = switchId * 10 + i;
+                osSimulators[i].macAddress = String.format("00:1A:2B:3C:%02X:%02X", switchId, i + 1);
+            }
         }
 
         connectedDevices.clear();
@@ -271,8 +302,13 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
             }
         }
 
-        if (tag.contains("OsState")) {
-            osSimulator.loadFromNBT(tag.getCompound("OsState"));
+        if (tag.contains("OsStates", Tag.TAG_LIST)) {
+            ListTag osList = tag.getList("OsStates", Tag.TAG_COMPOUND);
+            for (int i = 0; i < 7 && i < osList.size(); i++) {
+                osSimulators[i].loadFromNBT(osList.getCompound(i));
+            }
+        } else if (tag.contains("OsState")) {
+            osSimulators[0].loadFromNBT(tag.getCompound("OsState"));
         }
     }
 

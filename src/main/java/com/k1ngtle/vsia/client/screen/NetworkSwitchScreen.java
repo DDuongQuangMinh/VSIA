@@ -34,7 +34,6 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
     private String selectedConfigItem = "Settings";
     private boolean isUpdatingVisibility = false;
 
-    // GUI Elements
     private EditBox nameBox;
     private EditBox hostnameBox;
     private EditBox managementIpBox;
@@ -56,14 +55,17 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
         this.imageWidth = 720;
         this.imageHeight = 460;
 
-        if (menu.blockEntity != null) {
-            switches[0] = menu.blockEntity.osSimulator;
-        } else {
-            switches[0] = new SwitchOsSimulator(0, "Switch", () -> updateVisibility());
-        }
+        Runnable guiUpdate = () -> updateVisibility();
 
-        for (int i = 1; i < 7; i++) {
-            switches[i] = new SwitchOsSimulator(i, "Switch" + (i + 1), () -> updateVisibility());
+        if (menu.blockEntity != null) {
+            for (int i = 0; i < 7; i++) {
+                switches[i] = menu.blockEntity.osSimulators[i];
+                switches[i].guiCallback = guiUpdate;
+            }
+        } else {
+            for (int i = 0; i < 7; i++) {
+                switches[i] = new SwitchOsSimulator(i, "Switch" + (i + 1), guiUpdate);
+            }
         }
 
         if (menu.blockEntity != null && switches[0].macTable.isEmpty()) {
@@ -75,6 +77,12 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
                 switches[0].macTable.put(fallbackMac, "FastEthernet0/" + (i + 1));
             }
         }
+    }
+
+    @Override
+    public void onClose() {
+        if (switches[0] != null) switches[0].guiCallback = null;
+        super.onClose();
     }
 
     @Override
@@ -278,6 +286,13 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
             if (pCodePoint >= 32 && pCodePoint <= 126) {
                 act.cliInput = act.cliInput.substring(0, act.cliCursorPos) + pCodePoint + act.cliInput.substring(act.cliCursorPos);
                 act.cliCursorPos++;
+
+                // Real-time helper check for exactly typing '?' without pressing enter
+                if (pCodePoint == '?') {
+                    act.executeCliCore(act.cliInput, true);
+                    act.cliInput = act.cliInput.substring(0, act.cliInput.length() - 1);
+                    act.cliCursorPos--;
+                }
                 return true;
             }
         }
@@ -414,19 +429,19 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
                         pc.speed = "10"; act.appendGuiCommand("speed 10", this.selectedConfigItem); return true;
                     }
                     if (mouseX >= rightColX + 140 && mouseX < rightColX + 190) {
-                        pc.speed = "Auto"; act.appendGuiCommand("speed auto", this.selectedConfigItem); return true;
+                        pc.speed = "auto"; act.appendGuiCommand("speed auto", this.selectedConfigItem); return true;
                     }
                 }
 
                 if (mouseY >= y + 115 && mouseY <= y + 127) {
                     if (mouseX >= rightColX && mouseX < rightColX + 75) {
-                        pc.duplex = "Half"; act.appendGuiCommand("duplex half", this.selectedConfigItem); return true;
+                        pc.duplex = "half"; act.appendGuiCommand("duplex half", this.selectedConfigItem); return true;
                     }
                     if (mouseX >= rightColX + 80 && mouseX < rightColX + 150) {
-                        pc.duplex = "Full"; act.appendGuiCommand("duplex full", this.selectedConfigItem); return true;
+                        pc.duplex = "full"; act.appendGuiCommand("duplex full", this.selectedConfigItem); return true;
                     }
                     if (mouseX >= rightColX + 160 && mouseX < rightColX + 210) {
-                        pc.duplex = "Auto"; act.appendGuiCommand("duplex auto", this.selectedConfigItem); return true;
+                        pc.duplex = "auto"; act.appendGuiCommand("duplex auto", this.selectedConfigItem); return true;
                     }
                 }
             }
@@ -811,16 +826,16 @@ public class NetworkSwitchScreen extends AbstractContainerScreen<NetworkSwitchMe
             g.drawString(this.font, "100 Mbps", rightColX + 12, rowY + 1, 0xAAAAAA, false);
             drawRadioButton(g, rightColX + 70, rowY, pc.speed.equals("10"));
             g.drawString(this.font, "10 Mbps", rightColX + 82, rowY + 1, 0xAAAAAA, false);
-            drawCheckbox(g, rightColX + 140, rowY, pc.speed.equals("Auto"));
+            drawCheckbox(g, rightColX + 140, rowY, pc.speed.equals("auto"));
             g.drawString(this.font, "Auto", rightColX + 152, rowY + 1, 0xFFFFFF, false);
             rowY += 25;
 
             g.drawString(this.font, "Duplex", contentX, rowY + 1, 0xFFFFFF, false);
-            drawRadioButton(g, rightColX, rowY, pc.duplex.equals("Half"));
+            drawRadioButton(g, rightColX, rowY, pc.duplex.equals("half"));
             g.drawString(this.font, "Half Duplex", rightColX + 12, rowY + 1, 0xAAAAAA, false);
-            drawRadioButton(g, rightColX + 80, rowY, pc.duplex.equals("Full"));
+            drawRadioButton(g, rightColX + 80, rowY, pc.duplex.equals("full"));
             g.drawString(this.font, "Full Duplex", rightColX + 92, rowY + 1, 0xAAAAAA, false);
-            drawCheckbox(g, rightColX + 160, rowY, pc.duplex.equals("Auto"));
+            drawCheckbox(g, rightColX + 160, rowY, pc.duplex.equals("auto"));
             g.drawString(this.font, "Auto", rightColX + 172, rowY + 1, 0xFFFFFF, false);
             rowY += 25;
 
