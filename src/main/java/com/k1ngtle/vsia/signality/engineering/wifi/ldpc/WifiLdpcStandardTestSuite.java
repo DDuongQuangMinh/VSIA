@@ -28,6 +28,14 @@ public final class WifiLdpcStandardTestSuite {
                 "w13d"
         );
 
+        runFamily(
+                results,
+                WifiLdpcStandardProfiles.n1944Family(),
+                WifiLdpcCodewordLength.N_1944,
+                81,
+                "w13e"
+        );
+
         return List.copyOf(
                 results
         );
