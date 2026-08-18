@@ -8,6 +8,7 @@ import com.k1ngtle.vsia.signality.debug.DebugVisualization;
 import com.k1ngtle.vsia.signality.debug.RadarBeaconBlockEntity;
 import com.k1ngtle.vsia.signality.debug.SignalityCommand;
 import com.k1ngtle.vsia.signality.debug.SignalityTestCommand;
+import com.k1ngtle.vsia.signality.debug.SignalityLabCommand;
 import com.k1ngtle.vsia.signality.engineering.vm.ProtocolProgramReloadListener;
 import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmScheduler;
 import com.k1ngtle.vsia.signality.integration.dh.DhCompat;
@@ -156,6 +157,10 @@ public final class Signality {
       );
 
       SignalityTestCommand.register(
+              event.getDispatcher()
+      );
+
+      SignalityLabCommand.register(
               event.getDispatcher()
       );
    }
