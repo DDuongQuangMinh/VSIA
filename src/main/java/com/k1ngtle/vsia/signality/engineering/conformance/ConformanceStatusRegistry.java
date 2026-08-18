@@ -13,6 +13,12 @@ public final class ConformanceStatusRegistry {
                             "Deterministic equation tests exist; not a protocol conformance claim."
                     ),
                     new ComponentConformanceStatus(
+                            "RF microsecond reality layer",
+                            ImplementationLevel.CONFORMANCE_PREP,
+                            "internal-engineering",
+                            "Sub-tick airtime, microsecond temporal overlap, propagation delay and capture behavior are deterministic; actual Minecraft callback execution remains server-tick driven."
+                    ),
+                    new ComponentConformanceStatus(
                             "Wi-Fi MAC wire format",
                             ImplementationLevel.CONFORMANCE_PREP,
                             "ieee-802.11-2024",
@@ -22,7 +28,7 @@ public final class ConformanceStatusRegistry {
                             "Wi-Fi MAC channel access",
                             ImplementationLevel.CONFORMANCE_PREP,
                             "ieee-802.11-2024",
-                            "AIFS/backoff/NAV/RTS/CTS concepts now run on a virtual microsecond clock, but RF delivery remains quantized to Minecraft server ticks."
+                            "AIFS/backoff/NAV/RTS/CTS concepts use a virtual microsecond clock; Phase 10D adds microsecond RF airtime/collision correction while Java callbacks are still dispatched on server ticks."
                     ),
                     new ComponentConformanceStatus(
                             "Wi-Fi OFDM PHY numerology/rate model",

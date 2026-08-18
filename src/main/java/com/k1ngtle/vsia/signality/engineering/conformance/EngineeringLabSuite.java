@@ -1,20 +1,22 @@
 package com.k1ngtle.vsia.signality.engineering.conformance;
 
-import com.k1ngtle.vsia.signality.engineering.math.RfMath;
-import com.k1ngtle.vsia.signality.engineering.channel.DopplerModel;
-import com.k1ngtle.vsia.signality.engineering.channel.SpectralOverlap;
-import com.k1ngtle.vsia.signality.engineering.channel.TemporalOverlap;
 import com.k1ngtle.vsia.signality.engineering.channel.AntennaPatternModel;
+import com.k1ngtle.vsia.signality.engineering.channel.DopplerModel;
 import com.k1ngtle.vsia.signality.engineering.channel.OfdmDopplerModel;
 import com.k1ngtle.vsia.signality.engineering.channel.PolarizationLossModel;
 import com.k1ngtle.vsia.signality.engineering.channel.RfAntennaPattern;
 import com.k1ngtle.vsia.signality.engineering.channel.RfAntennaState;
 import com.k1ngtle.vsia.signality.engineering.channel.RfPolarization;
-import net.minecraft.world.phys.Vec3;
+import com.k1ngtle.vsia.signality.engineering.channel.SpectralOverlap;
+import com.k1ngtle.vsia.signality.engineering.channel.TemporalOverlap;
+import com.k1ngtle.vsia.signality.engineering.math.RfMath;
+import com.k1ngtle.vsia.signality.engineering.reality.RealityTestResult;
+import com.k1ngtle.vsia.signality.engineering.reality.RealityTestSuite;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiMacWireTestResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiMacWireTestSuite;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyTestResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyTestSuite;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -158,7 +160,7 @@ public final class EngineeringLabSuite {
                                 14L
                         ) - 1.0
                 ) < 1.0E-12,
-                "Identical airtime windows must overlap by 100%"
+                "Identical coarse airtime windows must overlap by 100%"
         );
 
         add(
@@ -172,7 +174,7 @@ public final class EngineeringLabSuite {
                                 20L
                         ) - 0.2
                 ) < 1.0E-12,
-                "One overlapping tick out of five desired ticks must equal 20%"
+                "One overlapping unit out of five desired units must equal 20%"
         );
 
         RfAntennaState directional =
@@ -233,7 +235,7 @@ public final class EngineeringLabSuite {
                                 RfPolarization.RHCP
                         ) - 3.0
                 ) < 1.0E-12,
-                "Idealized linear/circular polarization mismatch is 3 dB"
+                "Idealized linear/circular mismatch is 3 dB"
         );
 
         add(
@@ -256,7 +258,7 @@ public final class EngineeringLabSuite {
                         6.0E9,
                         100.0
                 ) > 0.0,
-                "Positive radial approach velocity must produce positive frequency shift"
+                "Positive radial approach velocity must produce positive shift"
         );
 
         add(
@@ -286,6 +288,16 @@ public final class EngineeringLabSuite {
                     wifiPhy.id(),
                     wifiPhy.passed(),
                     wifiPhy.detail()
+            );
+        }
+
+        for (RealityTestResult reality
+                : RealityTestSuite.runAll()) {
+            add(
+                    results,
+                    reality.id(),
+                    reality.passed(),
+                    reality.detail()
             );
         }
 

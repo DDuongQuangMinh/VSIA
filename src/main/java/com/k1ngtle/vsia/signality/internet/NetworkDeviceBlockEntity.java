@@ -58,6 +58,13 @@ import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyLinkModel;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyAirtimeModel;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPpduEstimate;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPuncturingPattern;
+import com.k1ngtle.vsia.signality.engineering.reality.GeneralRfAirtimeModel;
+import com.k1ngtle.vsia.signality.engineering.reality.NetworkRealityAssessment;
+import com.k1ngtle.vsia.signality.engineering.reality.NetworkRealityEngine;
+import com.k1ngtle.vsia.signality.engineering.reality.NetworkTimebase;
+import com.k1ngtle.vsia.signality.engineering.reality.RfMicroTiming;
+import com.k1ngtle.vsia.signality.engineering.reality.RfMicroTimingRegistry;
+import com.k1ngtle.vsia.signality.engineering.channel.RfTransmissionRegistry;
 import com.k1ngtle.vsia.signality.internet.network.NetworkKind;
 import com.k1ngtle.vsia.signality.internet.network.NetworkProfile;
 import com.k1ngtle.vsia.signality.internet.network.NetworkProfileRegistry;
@@ -101,6 +108,8 @@ public abstract class NetworkDeviceBlockEntity
 
     private RfChannelAssessment lastRfChannelAssessment;
 
+    private NetworkRealityAssessment lastNetworkRealityAssessment;
+
     private RfAntennaState rfAntennaState =
             RfAntennaState.isotropic();
 
@@ -109,6 +118,9 @@ public abstract class NetworkDeviceBlockEntity
 
     private final WifiPhyController wifiPhy =
             new WifiPhyController();
+
+    private long activeWifiResponseReferenceMicros =
+            -1L;
 
     private final CellularRanController cellularRan =
             new CellularRanController();
@@ -255,6 +267,10 @@ public abstract class NetworkDeviceBlockEntity
 
     public RfChannelAssessment lastRfChannelAssessment() {
         return lastRfChannelAssessment;
+    }
+
+    public NetworkRealityAssessment lastNetworkRealityAssessment() {
+        return lastNetworkRealityAssessment;
     }
 
     public RfAntennaState rfAntennaState() {
@@ -1028,6 +1044,7 @@ public abstract class NetworkDeviceBlockEntity
 
         lastPhyResult = null;
         lastRfChannelAssessment = null;
+        lastNetworkRealityAssessment = null;
 
         if (profile.kind() != NetworkKind.WIFI) {
             wifiMac.useLegacyDirectMode();
@@ -1053,6 +1070,7 @@ public abstract class NetworkDeviceBlockEntity
         activeFrequencyHz = frequencyHz;
         lastPhyResult = null;
         lastRfChannelAssessment = null;
+        lastNetworkRealityAssessment = null;
         setChanged();
         return true;
     }
@@ -1233,6 +1251,9 @@ public abstract class NetworkDeviceBlockEntity
         lastRfChannelAssessment =
                 null;
 
+        lastNetworkRealityAssessment =
+                null;
+
         if (envelope.hasUUID(
                 "rf_tx_id"
         )
@@ -1254,6 +1275,57 @@ public abstract class NetworkDeviceBlockEntity
                             worldRfAntennaState(),
                             rfVelocityMetersPerSecond()
                     );
+
+            UUID desiredRfId =
+                    envelope.getUUID(
+                            "rf_tx_id"
+                    );
+
+            RfMicroTiming desiredTiming =
+                    RfMicroTimingRegistry.get(
+                            desiredRfId
+                    );
+
+            if (desiredTiming != null) {
+                ActiveRfTransmission desiredMetadata =
+                        RfTransmissionRegistry.get(
+                                desiredRfId,
+                                serverLevel.getGameTime()
+                        );
+
+                double propagationDistanceMeters =
+                        desiredMetadata == null
+                                ? 0.0
+                                : desiredMetadata
+                                .transmitterPosition()
+                                .distanceTo(
+                                        positionWorld()
+                                );
+
+                NetworkRealityEngine.Result realityResult =
+                        NetworkRealityEngine.apply(
+                                lastRfChannelAssessment,
+                                desiredTiming,
+                                RfMicroTimingRegistry.inDimension(
+                                        serverLevel.dimension()
+                                                .location()
+                                                .toString(),
+                                        desiredTiming.startMicros()
+                                ),
+                                propagationDistanceMeters
+                        );
+
+                lastRfChannelAssessment =
+                        realityResult.channel();
+
+                lastNetworkRealityAssessment =
+                        realityResult.reality();
+
+                if (!lastNetworkRealityAssessment
+                        .receiverCapturedDesiredFrame()) {
+                    return;
+                }
+            }
 
             phyEvaluationPowerWatts =
                     RfChannelEnvironment
@@ -1461,14 +1533,37 @@ public abstract class NetworkDeviceBlockEntity
             return;
         }
 
-        CompoundTag data =
-                wifiMac.receive(
-                        macAddress,
-                        frame,
-                        networkProfile().id().toString(),
-                        activeFrequencyHz,
-                        wifiSender()
-                );
+        RfMicroTiming incomingTiming =
+                envelope.hasUUID(
+                        "rf_tx_id"
+                )
+                        ? RfMicroTimingRegistry.get(
+                        envelope.getUUID(
+                                "rf_tx_id"
+                        )
+                )
+                        : null;
+
+        activeWifiResponseReferenceMicros =
+                incomingTiming == null
+                        ? -1L
+                        : incomingTiming.endMicros();
+
+        CompoundTag data;
+
+        try {
+            data =
+                    wifiMac.receive(
+                            macAddress,
+                            frame,
+                            networkProfile().id().toString(),
+                            activeFrequencyHz,
+                            wifiSender()
+                    );
+        } finally {
+            activeWifiResponseReferenceMicros =
+                    -1L;
+        }
 
         if (data != null
                 && data.contains(
@@ -2058,10 +2153,74 @@ public abstract class NetworkDeviceBlockEntity
             );
         }
 
+        byte[] wifiWire =
+                frame.encode();
+
         payload.putByteArray(
                 "wifi_mac_frame",
-                frame.encode()
+                wifiWire
         );
+
+        double snrForAirtime =
+                wifiMac.lastObservedSnrDb();
+
+        if (!Double.isFinite(
+                snrForAirtime
+        )) {
+            snrForAirtime =
+                    0.0;
+        }
+
+        WifiPpduEstimate ppdu =
+                WifiPhyAirtimeModel.estimate(
+                        wifiPhy.configuration(),
+                        mcs,
+                        Math.max(
+                                1L,
+                                (long) wifiWire.length
+                                        * 8L
+                        ),
+                        wifiPhy.puncturing(),
+                        snrForAirtime
+                );
+
+        payload.putLong(
+                "rf_airtime_us",
+                Math.max(
+                        1L,
+                        (long) Math.ceil(
+                                ppdu.totalTimeUs()
+                        )
+                )
+        );
+
+        if (activeWifiResponseReferenceMicros >= 0L
+                && (
+                frame.isAck()
+                        || frame.isCts()
+                        || frame.type()
+                        == com.k1ngtle.vsia.signality.engineering.wifi.WifiFrameType.DATA
+        )) {
+            payload.putLong(
+                    "rf_absolute_start_us",
+                    activeWifiResponseReferenceMicros
+                            + Math.max(
+                            0,
+                            wifiMac.timingProfile()
+                                    .sifsUs()
+                    )
+            );
+        } else if (frame.isAck()
+                || frame.isCts()) {
+            payload.putLong(
+                    "rf_start_delay_us",
+                    Math.max(
+                            0,
+                            wifiMac.timingProfile()
+                                    .sifsUs()
+                    )
+            );
+        }
 
         broadcastPayload(payload);
     }
@@ -2196,12 +2355,76 @@ public abstract class NetworkDeviceBlockEntity
                                     * 8L
                     );
 
-            long airtimeTicks =
-                    RfChannelEnvironment
-                            .estimateAirtimeTicks(
+            long airtimeMicros =
+                    rawPayload.contains(
+                            "rf_airtime_us"
+                    )
+                            ? Math.max(
+                            1L,
+                            rawPayload.getLong(
+                                    "rf_airtime_us"
+                            )
+                    )
+                            : GeneralRfAirtimeModel
+                            .estimateMicros(
                                     payloadBits,
                                     profile.bandwidthHz()
                             );
+
+            long startDelayMicros =
+                    rawPayload.contains(
+                            "rf_start_delay_us"
+                    )
+                            ? Math.max(
+                            0L,
+                            rawPayload.getLong(
+                                    "rf_start_delay_us"
+                            )
+                    )
+                            : 0L;
+
+            long microStart =
+                    rawPayload.contains(
+                            "rf_absolute_start_us"
+                    )
+                            ? Math.max(
+                            0L,
+                            rawPayload.getLong(
+                                    "rf_absolute_start_us"
+                            )
+                    )
+                            : NetworkTimebase.nowMicros(
+                            serverLevel
+                    )
+                            + startDelayMicros;
+
+            long microEnd =
+                    microStart
+                            + airtimeMicros
+                            - 1L;
+
+            RfMicroTimingRegistry.register(
+                    new RfMicroTiming(
+                            rfTransmissionId,
+                            serverLevel.dimension()
+                                    .location()
+                                    .toString(),
+                            transmitFrequencyHz,
+                            profile.bandwidthHz(),
+                            microStart,
+                            microEnd
+                    )
+            );
+
+            long airtimeTicks =
+                    Math.max(
+                            1L,
+                            (long) Math.ceil(
+                                    airtimeMicros
+                                            / (double) NetworkTimebase
+                                            .MICROS_PER_SERVER_TICK
+                            )
+                    );
 
             long startTick =
                     currentTick
