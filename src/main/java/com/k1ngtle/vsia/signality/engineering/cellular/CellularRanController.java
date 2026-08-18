@@ -1,9 +1,16 @@
 package com.k1ngtle.vsia.signality.engineering.cellular;
 
+import com.k1ngtle.vsia.signality.engineering.cellular.core.FiveGCore;
+import com.k1ngtle.vsia.signality.engineering.cellular.core.PduSession;
+import com.k1ngtle.vsia.signality.engineering.cellular.nas.FiveGAkaEngine;
+import com.k1ngtle.vsia.signality.engineering.cellular.nas.NasMessageType;
+import com.k1ngtle.vsia.signality.engineering.cellular.nas.NasState;
+import com.k1ngtle.vsia.signality.engineering.cellular.pdcp.PdcpSecurityContext;
 import net.minecraft.nbt.CompoundTag;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -22,17 +29,35 @@ public final class CellularRanController {
     private final Map<UUID, UeContext> connectedUes =
             new LinkedHashMap<>();
 
+    private final Map<UUID, CellularBearerContext> ueBearers =
+            new HashMap<>();
+
+    private final Map<UUID, byte[]> pendingChallenges =
+            new HashMap<>();
+
+    private final Map<UUID, String> pendingSupi =
+            new HashMap<>();
+
     private final ProportionalFairScheduler scheduler =
             new ProportionalFairScheduler();
 
     private final HandoverEngine handoverEngine =
             new HandoverEngine(3.0);
 
+    private final CellularProtocolStack protocolStack =
+            new CellularProtocolStack();
+
+    private final FiveGCore core =
+            new FiveGCore();
+
     private CellularMode mode =
             CellularMode.LEGACY_DIRECT;
 
     private UeRanState ueState =
             UeRanState.DETACHED;
+
+    private NasState nasState =
+            NasState.DEREGISTERED;
 
     private int physicalCellId;
     private long cellIdentity;
@@ -47,12 +72,25 @@ public final class CellularRanController {
     private double servingSnrDb =
             Double.NEGATIVE_INFINITY;
 
+    private String ueSupi = "";
+    private byte[] ueSubscriberKey =
+            new byte[0];
+
+    private final CellularBearerContext ueBearer =
+            new CellularBearerContext();
+
+    private PduSession uePduSession;
+
     public CellularMode mode() {
         return mode;
     }
 
     public UeRanState ueState() {
         return ueState;
+    }
+
+    public NasState nasState() {
+        return nasState;
     }
 
     public UUID servingCellId() {
@@ -71,6 +109,10 @@ public final class CellularRanController {
         return servingSnrDb;
     }
 
+    public PduSession pduSession() {
+        return uePduSession;
+    }
+
     public Collection<CellRecord> discoveredCells() {
         return Collections.unmodifiableCollection(
                 discoveredCells.values()
@@ -84,13 +126,41 @@ public final class CellularRanController {
     }
 
     public void useLegacyDirectMode() {
-        mode = CellularMode.LEGACY_DIRECT;
+        mode =
+                CellularMode.LEGACY_DIRECT;
+
         resetUe();
+
         connectedUes.clear();
+        ueBearers.clear();
+        pendingChallenges.clear();
+        pendingSupi.clear();
     }
 
     public void configureUe() {
-        mode = CellularMode.UE;
+        configureUe(
+                "",
+                new byte[0]
+        );
+    }
+
+    public void configureUe(
+            String supi,
+            byte[] subscriberKey
+    ) {
+        mode =
+                CellularMode.UE;
+
+        ueSupi =
+                supi == null
+                        ? ""
+                        : supi;
+
+        ueSubscriberKey =
+                subscriberKey == null
+                        ? new byte[0]
+                        : subscriberKey.clone();
+
         resetUe();
     }
 
@@ -99,29 +169,64 @@ public final class CellularRanController {
             long cellIdentity,
             String plmn
     ) {
-        if (physicalCellId < 0 || physicalCellId > 1007) {
+        if (physicalCellId < 0
+                || physicalCellId > 1007) {
             throw new IllegalArgumentException(
                     "physicalCellId must be in [0,1007]"
             );
         }
 
-        if (plmn == null || plmn.isBlank()) {
-            throw new IllegalArgumentException("plmn");
+        if (plmn == null
+                || plmn.isBlank()) {
+            throw new IllegalArgumentException(
+                    "plmn"
+            );
         }
 
-        mode = CellularMode.BASE_STATION;
-        this.physicalCellId = physicalCellId;
-        this.cellIdentity = cellIdentity;
-        this.plmn = plmn;
+        mode =
+                CellularMode.BASE_STATION;
+
+        this.physicalCellId =
+                physicalCellId;
+
+        this.cellIdentity =
+                cellIdentity;
+
+        this.plmn =
+                plmn;
 
         resetUe();
+
         connectedUes.clear();
+        ueBearers.clear();
+        pendingChallenges.clear();
+        pendingSupi.clear();
+    }
+
+    public void provisionSubscriber(
+            String supi,
+            byte[] subscriberKey
+    ) {
+        if (mode
+                != CellularMode.BASE_STATION) {
+            throw new IllegalStateException(
+                    "Only a base station/core can provision subscribers"
+            );
+        }
+
+        core.provisionSubscriber(
+                supi,
+                subscriberKey
+        );
     }
 
     public void startCellSearch() {
         requireUe();
+
         discoveredCells.clear();
-        ueState = UeRanState.CELL_SEARCH;
+
+        ueState =
+                UeRanState.CELL_SEARCH;
     }
 
     public boolean selectStrongestCell(
@@ -131,25 +236,41 @@ public final class CellularRanController {
         requireUe();
 
         CellRecord best =
-                discoveredCells.values()
+                discoveredCells
+                        .values()
                         .stream()
-                        .max((a, b) ->
-                                Double.compare(
-                                        a.rsrpDbm(),
-                                        b.rsrpDbm()
-                                ))
-                        .orElse(null);
+                        .max(
+                                (a, b) ->
+                                        Double.compare(
+                                                a.rsrpDbm(),
+                                                b.rsrpDbm()
+                                        )
+                        )
+                        .orElse(
+                                null
+                        );
 
         if (best == null) {
             return false;
         }
 
-        servingCellId = best.baseStationId();
-        servingRsrpDbm = best.rsrpDbm();
-        servingSnrDb = best.snrDb();
-        ueState = UeRanState.CAMPED;
+        servingCellId =
+                best.baseStationId();
 
-        beginRandomAccess(ueId, sender);
+        servingRsrpDbm =
+                best.rsrpDbm();
+
+        servingSnrDb =
+                best.snrDb();
+
+        ueState =
+                UeRanState.CAMPED;
+
+        beginRandomAccess(
+                ueId,
+                sender
+        );
+
         return true;
     }
 
@@ -159,39 +280,49 @@ public final class CellularRanController {
             String profileId,
             Sender sender
     ) {
-        if (mode != CellularMode.BASE_STATION) {
+        if (mode
+                != CellularMode.BASE_STATION) {
             return;
         }
 
         CompoundTag message =
-                baseMessage(CellularMessageType.SSB);
+                baseMessage(
+                        CellularMessageType.SSB
+                );
 
         message.putUUID(
                 "base_station_id",
                 baseStationId
         );
+
         message.putInt(
                 "physical_cell_id",
                 physicalCellId
         );
+
         message.putLong(
                 "cell_identity",
                 cellIdentity
         );
+
         message.putString(
                 "plmn",
                 plmn
         );
+
         message.putDouble(
                 "frequency_hz",
                 frequencyHz
         );
+
         message.putString(
                 "network_profile",
                 profileId
         );
 
-        sender.send(message);
+        sender.send(
+                message
+        );
     }
 
     public CompoundTag receive(
@@ -201,35 +332,51 @@ public final class CellularRanController {
             double snrDb,
             Sender sender
     ) {
-        if (!message.contains("cellular_message_type")) {
+        if (!message.contains(
+                "cellular_message_type"
+        )) {
             return null;
         }
 
-        if (message.contains("target_id")
-                && !message.getUUID("target_id").equals(ownId)) {
+        if (message.contains(
+                "target_id"
+        )
+                && !message
+                .getUUID(
+                        "target_id"
+                )
+                .equals(
+                        ownId
+                )) {
             return null;
         }
 
         CellularMessageType type;
 
         try {
-            type = CellularMessageType.valueOf(
-                    message.getString("cellular_message_type")
-            );
+            type =
+                    CellularMessageType.valueOf(
+                            message.getString(
+                                    "cellular_message_type"
+                            )
+                    );
         } catch (Exception ignored) {
             return null;
         }
 
-        if (type == CellularMessageType.SSB) {
+        if (type
+                == CellularMessageType.SSB) {
             handleSsb(
                     message,
                     receivedPowerDbm,
                     snrDb
             );
+
             return null;
         }
 
-        if (mode == CellularMode.BASE_STATION) {
+        if (mode
+                == CellularMode.BASE_STATION) {
             return receiveAsBaseStation(
                     ownId,
                     type,
@@ -238,7 +385,8 @@ public final class CellularRanController {
             );
         }
 
-        if (mode == CellularMode.UE) {
+        if (mode
+                == CellularMode.UE) {
             return receiveAsUe(
                     ownId,
                     type,
@@ -250,13 +398,60 @@ public final class CellularRanController {
         return null;
     }
 
+    public boolean requestPduSession(
+            UUID ueId,
+            String dnn,
+            int fiveQi,
+            Sender sender
+    ) {
+        if (mode
+                != CellularMode.UE
+                || nasState
+                != NasState.REGISTERED
+                || servingCellId == null) {
+            return false;
+        }
+
+        CompoundTag nas =
+                nasMessage(
+                        NasMessageType.PDU_SESSION_ESTABLISHMENT_REQUEST
+                );
+
+        nas.putString(
+                "dnn",
+                dnn == null
+                        || dnn.isBlank()
+                        ? "internet"
+                        : dnn
+        );
+
+        nas.putInt(
+                "five_qi",
+                Math.max(
+                        1,
+                        fiveQi
+                )
+        );
+
+        sendNas(
+                servingCellId,
+                ueId,
+                nas,
+                sender
+        );
+
+        return true;
+    }
+
     public void sendMeasurementReport(
             UUID ueId,
             Sender sender
     ) {
-        if (mode != CellularMode.UE
+        if (mode
+                != CellularMode.UE
                 || servingCellId == null
-                || ueState != UeRanState.REGISTERED) {
+                || ueState
+                != UeRanState.REGISTERED) {
             return;
         }
 
@@ -276,18 +471,22 @@ public final class CellularRanController {
                 "target_id",
                 servingCellId
         );
+
         message.putUUID(
                 "ue_id",
                 ueId
         );
+
         message.putDouble(
                 "serving_rsrp_dbm",
                 servingRsrpDbm
         );
+
         message.putDouble(
                 "serving_snr_db",
                 servingSnrDb
         );
+
         message.putInt(
                 "cqi",
                 CellularCqiModel.fromSnrDb(
@@ -300,27 +499,37 @@ public final class CellularRanController {
                     "handover_candidate",
                     true
             );
+
             message.putUUID(
                     "candidate_id",
-                    decision.target().baseStationId()
+                    decision
+                            .target()
+                            .baseStationId()
             );
+
             message.putDouble(
                     "candidate_rsrp_dbm",
-                    decision.target().rsrpDbm()
+                    decision
+                            .target()
+                            .rsrpDbm()
             );
+
             message.putDouble(
                     "handover_margin_db",
                     decision.marginDb()
             );
         }
 
-        sender.send(message);
+        sender.send(
+                message
+        );
     }
 
     public Collection<ResourceBlockAllocation> schedule(
             int totalResourceBlocks
     ) {
-        if (mode != CellularMode.BASE_STATION) {
+        if (mode
+                != CellularMode.BASE_STATION) {
             return Collections.emptyList();
         }
 
@@ -336,70 +545,29 @@ public final class CellularRanController {
             long payloadBits,
             Sender sender
     ) {
-        if (mode != CellularMode.UE
-                || ueState != UeRanState.REGISTERED
-                || servingCellId == null) {
+        if (mode
+                != CellularMode.UE
+                || ueState
+                != UeRanState.REGISTERED
+                || nasState
+                != NasState.PDU_SESSION_ACTIVE
+                || servingCellId == null
+                || !ueBearer.secured()) {
             return false;
         }
 
-        CompoundTag message =
-                baseMessage(CellularMessageType.DATA);
-
-        message.putUUID(
-                "target_id",
-                servingCellId
+        return protocolStack.transmit(
+                ueBearer,
+                payload,
+                transport ->
+                        sendUserPlane(
+                                servingCellId,
+                                ueId,
+                                transport,
+                                payloadBits,
+                                sender
+                        )
         );
-        message.putUUID(
-                "ue_id",
-                ueId
-        );
-        message.putLong(
-                "payload_bits",
-                Math.max(1L, payloadBits)
-        );
-        message.put(
-                "payload",
-                payload
-        );
-
-        sender.send(message);
-        return true;
-    }
-
-    public boolean sendDataFromBaseStation(
-            UUID baseStationId,
-            UUID ueId,
-            CompoundTag payload,
-            long payloadBits,
-            Sender sender
-    ) {
-        if (mode != CellularMode.BASE_STATION
-                || !connectedUes.containsKey(ueId)) {
-            return false;
-        }
-
-        CompoundTag message =
-                baseMessage(CellularMessageType.DATA);
-
-        message.putUUID(
-                "target_id",
-                ueId
-        );
-        message.putUUID(
-                "base_station_id",
-                baseStationId
-        );
-        message.putLong(
-                "payload_bits",
-                Math.max(1L, payloadBits)
-        );
-        message.put(
-                "payload",
-                payload
-        );
-
-        sender.send(message);
-        return true;
     }
 
     private CompoundTag receiveAsBaseStation(
@@ -423,8 +591,8 @@ public final class CellularRanController {
                             sender
                     );
 
-            case REGISTRATION_REQUEST ->
-                    handleRegistrationRequest(
+            case NAS ->
+                    handleNasAtBaseStation(
                             ownId,
                             message,
                             sender
@@ -439,33 +607,95 @@ public final class CellularRanController {
 
             case HANDOVER_COMPLETE -> {
                 UUID ueId =
-                        message.getUUID("ue_id");
+                        message.getUUID(
+                                "ue_id"
+                        );
 
                 connectedUes.computeIfAbsent(
                         ueId,
-                        ignored -> new UeContext(
-                                ueId,
-                                allocateRnti()
-                        )
+                        ignored ->
+                                new UeContext(
+                                        ueId,
+                                        allocateRnti()
+                                )
                 );
             }
 
-            case DATA -> {
+            case USER_PLANE ->
+            {
                 UUID ueId =
-                        message.getUUID("ue_id");
+                        message.getUUID(
+                                "ue_id"
+                        );
 
-                UeContext context =
-                        connectedUes.get(ueId);
+                CellularBearerContext bearer =
+                        ueBearers.get(
+                                ueId
+                        );
 
-                if (context == null) {
+                if (bearer == null) {
                     return null;
                 }
 
-                context.recordDelivery(
-                        message.getLong("payload_bits")
+                CompoundTag transport =
+                        message.getCompound(
+                                "transport"
+                        );
+
+                CompoundTag clear =
+                        protocolStack.receive(
+                                bearer,
+                                transport
+                        );
+
+                sendHarqFeedback(
+                        ueId,
+                        ueId,
+                        message.getInt(
+                                "harq_process_id"
+                        ),
+                        true,
+                        sender
                 );
 
-                return message.getCompound("payload");
+                UeContext context =
+                        connectedUes.get(
+                                ueId
+                        );
+
+                if (context != null) {
+                    context.recordDelivery(
+                            message.getLong(
+                                    "payload_bits"
+                            )
+                    );
+                }
+
+                return clear;
+            }
+
+            case HARQ_FEEDBACK -> {
+                UUID ueId =
+                        message.getUUID(
+                                "ue_id"
+                        );
+
+                CellularBearerContext bearer =
+                        ueBearers.get(
+                                ueId
+                        );
+
+                if (bearer != null) {
+                    protocolStack.acknowledge(
+                            bearer,
+                            message.getInt(
+                                    "harq_process_id"
+                            ),
+                            message.getBoolean(
+                                    "ack"
+                            )
+                    );
+                }
             }
 
             default -> {
@@ -484,7 +714,9 @@ public final class CellularRanController {
         switch (type) {
             case RANDOM_ACCESS_RESPONSE -> {
                 servingRnti =
-                        message.getInt("temporary_rnti");
+                        message.getInt(
+                                "temporary_rnti"
+                        );
 
                 ueState =
                         UeRanState.RRC_CONNECTING;
@@ -498,33 +730,43 @@ public final class CellularRanController {
                         "target_id",
                         servingCellId
                 );
+
                 request.putUUID(
                         "ue_id",
                         ownId
                 );
+
                 request.putInt(
                         "temporary_rnti",
                         servingRnti
                 );
 
-                sender.send(request);
+                sender.send(
+                        request
+                );
             }
 
             case RRC_SETUP -> {
                 servingRnti =
-                        message.getInt("rnti");
+                        message.getInt(
+                                "rnti"
+                        );
 
                 ueState =
                         UeRanState.RRC_CONNECTED;
 
-                beginRegistration(
+                beginNasRegistration(
                         ownId,
                         sender
                 );
             }
 
-            case REGISTRATION_ACCEPT ->
-                    ueState = UeRanState.REGISTERED;
+            case NAS ->
+                    handleNasAtUe(
+                            ownId,
+                            message,
+                            sender
+                    );
 
             case HANDOVER_COMMAND -> {
                 UUID target =
@@ -533,16 +775,23 @@ public final class CellularRanController {
                         );
 
                 CellRecord targetCell =
-                        discoveredCells.get(target);
+                        discoveredCells.get(
+                                target
+                        );
 
                 if (targetCell == null) {
                     return null;
                 }
 
-                ueState = UeRanState.HANDOVER;
-                servingCellId = target;
+                ueState =
+                        UeRanState.HANDOVER;
+
+                servingCellId =
+                        target;
+
                 servingRsrpDbm =
                         targetCell.rsrpDbm();
+
                 servingSnrDb =
                         targetCell.snrDb();
 
@@ -555,18 +804,52 @@ public final class CellularRanController {
                         "target_id",
                         target
                 );
+
                 complete.putUUID(
                         "ue_id",
                         ownId
                 );
 
-                sender.send(complete);
-                ueState = UeRanState.REGISTERED;
+                sender.send(
+                        complete
+                );
+
+                ueState =
+                        UeRanState.REGISTERED;
             }
 
-            case DATA -> {
-                return message.getCompound("payload");
+            case USER_PLANE -> {
+                CompoundTag clear =
+                        protocolStack.receive(
+                                ueBearer,
+                                message.getCompound(
+                                        "transport"
+                                )
+                        );
+
+                sendHarqFeedback(
+                        servingCellId,
+                        ownId,
+                        message.getInt(
+                                "harq_process_id"
+                        ),
+                        true,
+                        sender
+                );
+
+                return clear;
             }
+
+            case HARQ_FEEDBACK ->
+                    protocolStack.acknowledge(
+                            ueBearer,
+                            message.getInt(
+                                    "harq_process_id"
+                            ),
+                            message.getBoolean(
+                                    "ack"
+                            )
+                    );
 
             default -> {
             }
@@ -575,17 +858,416 @@ public final class CellularRanController {
         return null;
     }
 
+    private void beginNasRegistration(
+            UUID ueId,
+            Sender sender
+    ) {
+        ueState =
+                UeRanState.REGISTERING;
+
+        nasState =
+                NasState.REGISTERING;
+
+        CompoundTag nas =
+                nasMessage(
+                        NasMessageType.REGISTRATION_REQUEST
+                );
+
+        nas.putString(
+                "supi",
+                ueSupi
+        );
+
+        sendNas(
+                servingCellId,
+                ueId,
+                nas,
+                sender
+        );
+    }
+
+    private void handleNasAtBaseStation(
+            UUID ownId,
+            CompoundTag message,
+            Sender sender
+    ) {
+        UUID ueId =
+                message.getUUID(
+                        "ue_id"
+                );
+
+        CompoundTag nas =
+                message.getCompound(
+                        "nas"
+                );
+
+        NasMessageType type =
+                parseNasType(
+                        nas
+                );
+
+        if (type == null) {
+            return;
+        }
+
+        switch (type) {
+            case REGISTRATION_REQUEST -> {
+                String supi =
+                        nas.getString(
+                                "supi"
+                        );
+
+                if (!core.hasSubscriber(
+                        supi
+                )) {
+                    return;
+                }
+
+                byte[] challenge =
+                        FiveGAkaEngine.randomChallenge();
+
+                pendingChallenges.put(
+                        ueId,
+                        challenge
+                );
+
+                pendingSupi.put(
+                        ueId,
+                        supi
+                );
+
+                CompoundTag response =
+                        nasMessage(
+                                NasMessageType.AUTHENTICATION_REQUEST
+                        );
+
+                response.putByteArray(
+                        "challenge",
+                        challenge
+                );
+
+                sendNas(
+                        ueId,
+                        ueId,
+                        response,
+                        sender
+                );
+            }
+
+            case AUTHENTICATION_RESPONSE -> {
+                String supi =
+                        pendingSupi.get(
+                                ueId
+                        );
+
+                byte[] challenge =
+                        pendingChallenges.get(
+                                ueId
+                        );
+
+                if (supi == null
+                        || challenge == null
+                        || !core.authenticate(
+                        supi,
+                        challenge,
+                        nas.getByteArray(
+                                "response"
+                        )
+                )) {
+                    return;
+                }
+
+                byte[] subscriberKey =
+                        core.subscriberKey(
+                                supi
+                        );
+
+                byte[] anchorKey =
+                        FiveGAkaEngine.deriveAnchorKey(
+                                subscriberKey,
+                                supi,
+                                challenge
+                        );
+
+                CellularBearerContext bearer =
+                        ueBearers.computeIfAbsent(
+                                ueId,
+                                ignored ->
+                                        new CellularBearerContext()
+                        );
+
+                bearer.setSecurity(
+                        new PdcpSecurityContext(
+                                FiveGAkaEngine.deriveKey(
+                                        anchorKey,
+                                        "UP-CIPHER"
+                                ),
+                                FiveGAkaEngine.deriveKey(
+                                        anchorKey,
+                                        "UP-INTEGRITY"
+                                )
+                        )
+                );
+
+                CompoundTag command =
+                        nasMessage(
+                                NasMessageType.SECURITY_MODE_COMMAND
+                        );
+
+                command.putString(
+                        "cipher_algorithm",
+                        "AES_GCM_SIM"
+                );
+
+                command.putString(
+                        "integrity_algorithm",
+                        "HMAC_SHA256_SIM"
+                );
+
+                sendNas(
+                        ueId,
+                        ueId,
+                        command,
+                        sender
+                );
+            }
+
+            case SECURITY_MODE_COMPLETE -> {
+                String supi =
+                        pendingSupi.get(
+                                ueId
+                        );
+
+                if (supi == null) {
+                    return;
+                }
+
+                core.register(
+                        ueId,
+                        supi
+                );
+
+                CompoundTag accept =
+                        nasMessage(
+                                NasMessageType.REGISTRATION_ACCEPT
+                        );
+
+                accept.putString(
+                        "plmn",
+                        plmn
+                );
+
+                sendNas(
+                        ueId,
+                        ueId,
+                        accept,
+                        sender
+                );
+
+                pendingChallenges.remove(
+                        ueId
+                );
+
+                pendingSupi.remove(
+                        ueId
+                );
+            }
+
+            case PDU_SESSION_ESTABLISHMENT_REQUEST -> {
+                PduSession session =
+                        core.establishSession(
+                                ueId,
+                                nas.getString(
+                                        "dnn"
+                                ),
+                                nas.getInt(
+                                        "five_qi"
+                                )
+                        );
+
+                if (session == null) {
+                    return;
+                }
+
+                CompoundTag accept =
+                        nasMessage(
+                                NasMessageType.PDU_SESSION_ESTABLISHMENT_ACCEPT
+                        );
+
+                accept.putInt(
+                        "session_id",
+                        session.sessionId()
+                );
+
+                accept.putString(
+                        "dnn",
+                        session.dnn()
+                );
+
+                accept.putString(
+                        "ip_address",
+                        session.ipAddress()
+                );
+
+                accept.putInt(
+                        "five_qi",
+                        session.fiveQi()
+                );
+
+                sendNas(
+                        ueId,
+                        ueId,
+                        accept,
+                        sender
+                );
+            }
+
+            default -> {
+            }
+        }
+    }
+
+    private void handleNasAtUe(
+            UUID ownId,
+            CompoundTag message,
+            Sender sender
+    ) {
+        CompoundTag nas =
+                message.getCompound(
+                        "nas"
+                );
+
+        NasMessageType type =
+                parseNasType(
+                        nas
+                );
+
+        if (type == null) {
+            return;
+        }
+
+        switch (type) {
+            case AUTHENTICATION_REQUEST -> {
+                nasState =
+                        NasState.AUTHENTICATING;
+
+                byte[] challenge =
+                        nas.getByteArray(
+                                "challenge"
+                        );
+
+                byte[] response =
+                        FiveGAkaEngine.calculateResponse(
+                                ueSubscriberKey,
+                                ueSupi,
+                                challenge
+                        );
+
+                byte[] anchorKey =
+                        FiveGAkaEngine.deriveAnchorKey(
+                                ueSubscriberKey,
+                                ueSupi,
+                                challenge
+                        );
+
+                ueBearer.setSecurity(
+                        new PdcpSecurityContext(
+                                FiveGAkaEngine.deriveKey(
+                                        anchorKey,
+                                        "UP-CIPHER"
+                                ),
+                                FiveGAkaEngine.deriveKey(
+                                        anchorKey,
+                                        "UP-INTEGRITY"
+                                )
+                        )
+                );
+
+                CompoundTag reply =
+                        nasMessage(
+                                NasMessageType.AUTHENTICATION_RESPONSE
+                        );
+
+                reply.putByteArray(
+                        "response",
+                        response
+                );
+
+                sendNas(
+                        servingCellId,
+                        ownId,
+                        reply,
+                        sender
+                );
+            }
+
+            case SECURITY_MODE_COMMAND -> {
+                nasState =
+                        NasState.SECURITY_MODE;
+
+                CompoundTag complete =
+                        nasMessage(
+                                NasMessageType.SECURITY_MODE_COMPLETE
+                        );
+
+                sendNas(
+                        servingCellId,
+                        ownId,
+                        complete,
+                        sender
+                );
+            }
+
+            case REGISTRATION_ACCEPT -> {
+                nasState =
+                        NasState.REGISTERED;
+
+                ueState =
+                        UeRanState.REGISTERED;
+            }
+
+            case PDU_SESSION_ESTABLISHMENT_ACCEPT -> {
+                uePduSession =
+                        new PduSession(
+                                nas.getInt(
+                                        "session_id"
+                                ),
+                                ownId,
+                                nas.getString(
+                                        "dnn"
+                                ),
+                                nas.getString(
+                                        "ip_address"
+                                ),
+                                nas.getInt(
+                                        "five_qi"
+                                ),
+                                true
+                        );
+
+                nasState =
+                        NasState.PDU_SESSION_ACTIVE;
+            }
+
+            default -> {
+            }
+        }
+    }
+
     private void handleSsb(
             CompoundTag message,
             double receivedPowerDbm,
             double snrDb
     ) {
-        if (mode != CellularMode.UE) {
+        if (mode
+                != CellularMode.UE) {
             return;
         }
 
         UUID baseStationId =
-                message.getUUID("base_station_id");
+                message.getUUID(
+                        "base_station_id"
+                );
 
         CellRecord record =
                 new CellRecord(
@@ -612,9 +1294,12 @@ public final class CellularRanController {
                 record
         );
 
-        if (baseStationId.equals(servingCellId)) {
+        if (baseStationId.equals(
+                servingCellId
+        )) {
             servingRsrpDbm =
                     receivedPowerDbm;
+
             servingSnrDb =
                     snrDb;
         }
@@ -636,17 +1321,24 @@ public final class CellularRanController {
                 "target_id",
                 servingCellId
         );
+
         message.putUUID(
                 "ue_id",
                 ueId
         );
+
         message.putInt(
                 "preamble_index",
-                ThreadLocalRandom.current()
-                        .nextInt(64)
+                ThreadLocalRandom
+                        .current()
+                        .nextInt(
+                                64
+                        )
         );
 
-        sender.send(message);
+        sender.send(
+                message
+        );
     }
 
     private void handleRachPreamble(
@@ -655,7 +1347,9 @@ public final class CellularRanController {
             Sender sender
     ) {
         UUID ueId =
-                message.getUUID("ue_id");
+                message.getUUID(
+                        "ue_id"
+                );
 
         int temporaryRnti =
                 allocateRnti();
@@ -669,24 +1363,30 @@ public final class CellularRanController {
                 "target_id",
                 ueId
         );
+
         response.putUUID(
                 "base_station_id",
                 ownId
         );
+
         response.putInt(
                 "temporary_rnti",
                 temporaryRnti
         );
+
         response.putInt(
                 "timing_advance",
                 0
         );
+
         response.putInt(
                 "uplink_grant_resource_blocks",
                 4
         );
 
-        sender.send(response);
+        sender.send(
+                response
+        );
     }
 
     private void handleRrcSetupRequest(
@@ -695,10 +1395,14 @@ public final class CellularRanController {
             Sender sender
     ) {
         UUID ueId =
-                message.getUUID("ue_id");
+                message.getUUID(
+                        "ue_id"
+                );
 
         int rnti =
-                message.getInt("temporary_rnti");
+                message.getInt(
+                        "temporary_rnti"
+                );
 
         connectedUes.put(
                 ueId,
@@ -717,80 +1421,20 @@ public final class CellularRanController {
                 "target_id",
                 ueId
         );
+
         response.putUUID(
                 "base_station_id",
                 ownId
         );
+
         response.putInt(
                 "rnti",
                 rnti
         );
 
-        sender.send(response);
-    }
-
-    private void beginRegistration(
-            UUID ueId,
-            Sender sender
-    ) {
-        ueState =
-                UeRanState.REGISTERING;
-
-        CompoundTag request =
-                baseMessage(
-                        CellularMessageType.REGISTRATION_REQUEST
-                );
-
-        request.putUUID(
-                "target_id",
-                servingCellId
+        sender.send(
+                response
         );
-        request.putUUID(
-                "ue_id",
-                ueId
-        );
-
-        sender.send(request);
-    }
-
-    private void handleRegistrationRequest(
-            UUID ownId,
-            CompoundTag message,
-            Sender sender
-    ) {
-        UUID ueId =
-                message.getUUID("ue_id");
-
-        if (!connectedUes.containsKey(ueId)) {
-            return;
-        }
-
-        CompoundTag response =
-                baseMessage(
-                        CellularMessageType.REGISTRATION_ACCEPT
-                );
-
-        response.putUUID(
-                "target_id",
-                ueId
-        );
-        response.putUUID(
-                "base_station_id",
-                ownId
-        );
-        response.putString(
-                "plmn",
-                plmn
-        );
-        response.putLong(
-                "temporary_subscriber_id",
-                Math.abs(
-                        ThreadLocalRandom.current()
-                                .nextLong()
-                )
-        );
-
-        sender.send(response);
     }
 
     private void handleMeasurementReport(
@@ -799,17 +1443,23 @@ public final class CellularRanController {
             Sender sender
     ) {
         UUID ueId =
-                message.getUUID("ue_id");
+                message.getUUID(
+                        "ue_id"
+                );
 
         UeContext context =
-                connectedUes.get(ueId);
+                connectedUes.get(
+                        ueId
+                );
 
         if (context == null) {
             return;
         }
 
         context.setCqi(
-                message.getInt("cqi")
+                message.getInt(
+                        "cqi"
+                )
         );
 
         if (!message.getBoolean(
@@ -817,9 +1467,6 @@ public final class CellularRanController {
         )) {
             return;
         }
-
-        UUID target =
-                message.getUUID("candidate_id");
 
         CompoundTag command =
                 baseMessage(
@@ -830,19 +1477,172 @@ public final class CellularRanController {
                 "target_id",
                 ueId
         );
+
         command.putUUID(
                 "source_cell_id",
                 ownId
         );
+
         command.putUUID(
                 "new_serving_cell_id",
+                message.getUUID(
+                        "candidate_id"
+                )
+        );
+
+        sender.send(
+                command
+        );
+    }
+
+    private void sendNas(
+            UUID target,
+            UUID ueId,
+            CompoundTag nas,
+            Sender sender
+    ) {
+        CompoundTag message =
+                baseMessage(
+                        CellularMessageType.NAS
+                );
+
+        message.putUUID(
+                "target_id",
                 target
         );
 
-        sender.send(command);
+        message.putUUID(
+                "ue_id",
+                ueId
+        );
+
+        message.put(
+                "nas",
+                nas
+        );
+
+        sender.send(
+                message
+        );
     }
 
-    private CompoundTag baseMessage(
+    private void sendUserPlane(
+            UUID target,
+            UUID ueId,
+            CompoundTag transport,
+            long payloadBits,
+            Sender sender
+    ) {
+        CompoundTag message =
+                baseMessage(
+                        CellularMessageType.USER_PLANE
+                );
+
+        message.putUUID(
+                "target_id",
+                target
+        );
+
+        message.putUUID(
+                "ue_id",
+                ueId
+        );
+
+        message.putLong(
+                "payload_bits",
+                Math.max(
+                        1L,
+                        payloadBits
+                )
+        );
+
+        message.putInt(
+                "harq_process_id",
+                transport.getInt(
+                        "harq_process_id"
+                )
+        );
+
+        message.put(
+                "transport",
+                transport
+        );
+
+        sender.send(
+                message
+        );
+    }
+
+    private void sendHarqFeedback(
+            UUID target,
+            UUID ueId,
+            int processId,
+            boolean ack,
+            Sender sender
+    ) {
+        if (target == null) {
+            return;
+        }
+
+        CompoundTag message =
+                baseMessage(
+                        CellularMessageType.HARQ_FEEDBACK
+                );
+
+        message.putUUID(
+                "target_id",
+                target
+        );
+
+        message.putUUID(
+                "ue_id",
+                ueId
+        );
+
+        message.putInt(
+                "harq_process_id",
+                processId
+        );
+
+        message.putBoolean(
+                "ack",
+                ack
+        );
+
+        sender.send(
+                message
+        );
+    }
+
+    private static CompoundTag nasMessage(
+            NasMessageType type
+    ) {
+        CompoundTag nas =
+                new CompoundTag();
+
+        nas.putString(
+                "nas_message_type",
+                type.name()
+        );
+
+        return nas;
+    }
+
+    private static NasMessageType parseNasType(
+            CompoundTag nas
+    ) {
+        try {
+            return NasMessageType.valueOf(
+                    nas.getString(
+                            "nas_message_type"
+                    )
+            );
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static CompoundTag baseMessage(
             CellularMessageType type
     ) {
         CompoundTag message =
@@ -857,7 +1657,8 @@ public final class CellularRanController {
     }
 
     private int allocateRnti() {
-        return ThreadLocalRandom.current()
+        return ThreadLocalRandom
+                .current()
                 .nextInt(
                         1,
                         65536
@@ -865,16 +1666,42 @@ public final class CellularRanController {
     }
 
     private void requireUe() {
-        if (mode != CellularMode.UE) {
+        if (mode
+                != CellularMode.UE) {
             throw new IllegalStateException(
                     "Cellular interface is not in UE mode"
             );
         }
     }
 
+    private void resetUe() {
+        ueState =
+                UeRanState.DETACHED;
+
+        nasState =
+                NasState.DEREGISTERED;
+
+        servingCellId =
+                null;
+
+        servingRnti =
+                0;
+
+        servingRsrpDbm =
+                Double.NEGATIVE_INFINITY;
+
+        servingSnrDb =
+                Double.NEGATIVE_INFINITY;
+
+        uePduSession =
+                null;
+
+        discoveredCells.clear();
+    }
 
     public CompoundTag save() {
-        CompoundTag tag = new CompoundTag();
+        CompoundTag tag =
+                new CompoundTag();
 
         tag.putString(
                 "Mode",
@@ -884,6 +1711,11 @@ public final class CellularRanController {
         tag.putString(
                 "UeState",
                 ueState.name()
+        );
+
+        tag.putString(
+                "NasState",
+                nasState.name()
         );
 
         tag.putInt(
@@ -899,6 +1731,11 @@ public final class CellularRanController {
         tag.putString(
                 "Plmn",
                 plmn
+        );
+
+        tag.putString(
+                "UeSupi",
+                ueSupi
         );
 
         if (servingCellId != null) {
@@ -922,6 +1759,36 @@ public final class CellularRanController {
                 "ServingSnrDb",
                 servingSnrDb
         );
+
+        if (uePduSession != null) {
+            CompoundTag session =
+                    new CompoundTag();
+
+            session.putInt(
+                    "SessionId",
+                    uePduSession.sessionId()
+            );
+
+            session.putString(
+                    "Dnn",
+                    uePduSession.dnn()
+            );
+
+            session.putString(
+                    "IpAddress",
+                    uePduSession.ipAddress()
+            );
+
+            session.putInt(
+                    "FiveQi",
+                    uePduSession.fiveQi()
+            );
+
+            tag.put(
+                    "PduSession",
+                    session
+            );
+        }
 
         return tag;
     }
@@ -953,6 +1820,18 @@ public final class CellularRanController {
                     UeRanState.DETACHED;
         }
 
+        try {
+            nasState =
+                    NasState.valueOf(
+                            tag.getString(
+                                    "NasState"
+                            )
+                    );
+        } catch (Exception ignored) {
+            nasState =
+                    NasState.DEREGISTERED;
+        }
+
         physicalCellId =
                 tag.getInt(
                         "PhysicalCellId"
@@ -972,6 +1851,11 @@ public final class CellularRanController {
             plmn =
                     loadedPlmn;
         }
+
+        ueSupi =
+                tag.getString(
+                        "UeSupi"
+                );
 
         servingCellId =
                 tag.hasUUID(
@@ -999,11 +1883,23 @@ public final class CellularRanController {
 
         discoveredCells.clear();
         connectedUes.clear();
+        ueBearers.clear();
+        pendingChallenges.clear();
+        pendingSupi.clear();
 
-        if (mode == CellularMode.UE
-                && ueState == UeRanState.REGISTERED) {
+        ueSubscriberKey =
+                new byte[0];
+
+        uePduSession =
+                null;
+
+        if (mode
+                == CellularMode.UE) {
             ueState =
                     UeRanState.DETACHED;
+
+            nasState =
+                    NasState.DEREGISTERED;
 
             servingCellId =
                     null;
@@ -1011,16 +1907,5 @@ public final class CellularRanController {
             servingRnti =
                     0;
         }
-    }
-
-    private void resetUe() {
-        ueState = UeRanState.DETACHED;
-        servingCellId = null;
-        servingRnti = 0;
-        servingRsrpDbm =
-                Double.NEGATIVE_INFINITY;
-        servingSnrDb =
-                Double.NEGATIVE_INFINITY;
-        discoveredCells.clear();
     }
 }
