@@ -1,9 +1,14 @@
 package com.k1ngtle.vsia.network;
 
 import com.k1ngtle.vsia.Vsia;
+import com.k1ngtle.vsia.network.wifi.WifiEngineeringModePacket;
+import com.k1ngtle.vsia.network.wifi.WifiEngineeringSnapshotPacket;
+import com.k1ngtle.vsia.network.wifi.WifiEngineeringSnapshotRequestPacket;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkDirection;
 import net.minecraftforge.network.NetworkRegistry;
+import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public class VsiaNetwork {
@@ -41,9 +46,51 @@ public class VsiaNetwork {
                 .encoder(DeviceCommandPacket::toBytes)
                 .consumerMainThread(DeviceCommandPacket::handle)
                 .add();
+
+        net.messageBuilder(
+                        WifiEngineeringSnapshotRequestPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
+                .decoder(WifiEngineeringSnapshotRequestPacket::new)
+                .encoder(WifiEngineeringSnapshotRequestPacket::toBytes)
+                .consumerMainThread(WifiEngineeringSnapshotRequestPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        WifiEngineeringModePacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
+                .decoder(WifiEngineeringModePacket::new)
+                .encoder(WifiEngineeringModePacket::toBytes)
+                .consumerMainThread(WifiEngineeringModePacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        WifiEngineeringSnapshotPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_CLIENT
+                )
+                .decoder(WifiEngineeringSnapshotPacket::new)
+                .encoder(WifiEngineeringSnapshotPacket::toBytes)
+                .consumerMainThread(WifiEngineeringSnapshotPacket::handle)
+                .add();
     }
 
     public static <MSG> void sendToServer(MSG message) {
         INSTANCE.sendToServer(message);
+    }
+
+    public static <MSG> void sendToPlayer(
+            ServerPlayer player,
+            MSG message
+    ) {
+        INSTANCE.send(
+                PacketDistributor.PLAYER.with(
+                        () -> player
+                ),
+                message
+        );
     }
 }
