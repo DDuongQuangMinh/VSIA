@@ -39,6 +39,35 @@ public final class WifiEngineeringScreen
     private static final int HISTORY_CAPACITY =
             60;
 
+    private static final int OUTER_MARGIN =
+            12;
+
+    private static final int PANEL_GAP =
+            10;
+
+    private static final int CONTROL_ROW_HEIGHT =
+            20;
+
+    private static final int CONTROL_ROW_GAP =
+            4;
+
+    private static final int CONTROL_ROWS =
+            3;
+
+    private static final int CONTROL_AREA_PADDING =
+            8;
+
+    private static final int CONTROL_AREA_HEIGHT =
+            CONTROL_ROWS * CONTROL_ROW_HEIGHT
+                    + (CONTROL_ROWS - 1) * CONTROL_ROW_GAP
+                    + CONTROL_AREA_PADDING * 2;
+
+    private static final int CONTENT_TOP_PADDING =
+            8;
+
+    private static final int CONTENT_BOTTOM_PADDING =
+            8;
+
     private final BlockPos targetPos;
 
     private final WifiEngineeringHistory history =
@@ -72,6 +101,14 @@ public final class WifiEngineeringScreen
     private String ipStatus =
             "Use DHCP or configure an IPv4 address, then ARP / Ping / UDP / HTTP";
 
+    private int leftScroll;
+
+    private int leftContentHeight;
+
+    private int leftViewportTop;
+
+    private int leftViewportBottom;
+
     public WifiEngineeringScreen(
             BlockPos targetPos,
             WifiEngineeringSnapshot snapshot
@@ -95,14 +132,46 @@ public final class WifiEngineeringScreen
 
     @Override
     protected void init() {
-        int buttonY =
-                height - 30;
+        clearWidgets();
 
-        int workflowY =
-                height - 54;
+        int controlsTop =
+                height
+                        - OUTER_MARGIN
+                        - CONTROL_AREA_HEIGHT;
 
         int ipY =
-                height - 78;
+                controlsTop
+                        + CONTROL_AREA_PADDING;
+
+        int workflowY =
+                ipY
+                        + CONTROL_ROW_HEIGHT
+                        + CONTROL_ROW_GAP;
+
+        int utilityY =
+                workflowY
+                        + CONTROL_ROW_HEIGHT
+                        + CONTROL_ROW_GAP;
+
+        int usableWidth =
+                Math.max(
+                        1,
+                        width
+                                - OUTER_MARGIN * 2
+                );
+
+        int utilityGap =
+                6;
+
+        int utilityWidth =
+                Math.max(
+                        58,
+                        (
+                                usableWidth
+                                        - utilityGap * 5
+                        )
+                                / 6
+                );
 
         modeButton =
                 addRenderableWidget(
@@ -112,10 +181,10 @@ public final class WifiEngineeringScreen
                                                 toggleMode()
                                 )
                                 .bounds(
-                                        12,
-                                        buttonY,
-                                        150,
-                                        20
+                                        OUTER_MARGIN,
+                                        utilityY,
+                                        utilityWidth,
+                                        CONTROL_ROW_HEIGHT
                                 )
                                 .build()
                 );
@@ -129,10 +198,14 @@ public final class WifiEngineeringScreen
                                         requestSnapshot()
                         )
                         .bounds(
-                                168,
-                                buttonY,
-                                80,
-                                20
+                                OUTER_MARGIN
+                                        + (
+                                        utilityWidth
+                                                + utilityGap
+                                ),
+                                utilityY,
+                                utilityWidth,
+                                CONTROL_ROW_HEIGHT
                         )
                         .build()
         );
@@ -146,10 +219,15 @@ public final class WifiEngineeringScreen
                                         history.clear()
                         )
                         .bounds(
-                                254,
-                                buttonY,
-                                100,
-                                20
+                                OUTER_MARGIN
+                                        + 2
+                                        * (
+                                        utilityWidth
+                                                + utilityGap
+                                ),
+                                utilityY,
+                                utilityWidth,
+                                CONTROL_ROW_HEIGHT
                         )
                         .build()
         );
@@ -163,10 +241,15 @@ public final class WifiEngineeringScreen
                                         runTestLink()
                         )
                         .bounds(
-                                360,
-                                buttonY,
-                                110,
-                                20
+                                OUTER_MARGIN
+                                        + 3
+                                        * (
+                                        utilityWidth
+                                                + utilityGap
+                                ),
+                                utilityY,
+                                utilityWidth,
+                                CONTROL_ROW_HEIGHT
                         )
                         .build()
         );
@@ -179,10 +262,15 @@ public final class WifiEngineeringScreen
                                                 toggleAnalyzerView()
                                 )
                                 .bounds(
-                                        476,
-                                        buttonY,
-                                        120,
-                                        20
+                                        OUTER_MARGIN
+                                                + 4
+                                                * (
+                                                utilityWidth
+                                                        + utilityGap
+                                        ),
+                                        utilityY,
+                                        utilityWidth,
+                                        CONTROL_ROW_HEIGHT
                                 )
                                 .build()
                 );
@@ -196,117 +284,203 @@ public final class WifiEngineeringScreen
                                         clearPacketTrace()
                         )
                         .bounds(
-                                602,
-                                buttonY,
-                                110,
-                                20
+                                OUTER_MARGIN
+                                        + 5
+                                        * (
+                                        utilityWidth
+                                                + utilityGap
+                                ),
+                                utilityY,
+                                utilityWidth,
+                                CONTROL_ROW_HEIGHT
                         )
                         .build()
         );
 
+        int ipGap =
+                6;
+
+        int ipWidth =
+                Math.max(
+                        54,
+                        (
+                                usableWidth
+                                        - ipGap * 5
+                        )
+                                / 6
+                );
+
         addIpButton(
                 "DHCP",
-                12,
+                OUTER_MARGIN,
                 ipY,
-                68,
+                ipWidth,
                 WifiIpAction.DHCP_DISCOVER
         );
 
         addIpButton(
                 "ARP",
-                86,
+                OUTER_MARGIN
+                        + (
+                        ipWidth
+                                + ipGap
+                ),
                 ipY,
-                60,
+                ipWidth,
                 WifiIpAction.ARP_RESOLVE
         );
 
         addIpButton(
                 "Ping",
-                152,
+                OUTER_MARGIN
+                        + 2
+                        * (
+                        ipWidth
+                                + ipGap
+                ),
                 ipY,
-                60,
+                ipWidth,
                 WifiIpAction.ICMP_ECHO
         );
 
         addIpButton(
                 "UDP Echo",
-                218,
+                OUTER_MARGIN
+                        + 3
+                        * (
+                        ipWidth
+                                + ipGap
+                ),
                 ipY,
-                82,
+                ipWidth,
                 WifiIpAction.UDP_ECHO
         );
 
         addIpButton(
                 "HTTP GET",
-                306,
+                OUTER_MARGIN
+                        + 4
+                        * (
+                        ipWidth
+                                + ipGap
+                ),
                 ipY,
-                82,
+                ipWidth,
                 WifiIpAction.HTTP_GET
         );
 
         addIpButton(
                 "Clear IP",
-                394,
+                OUTER_MARGIN
+                        + 5
+                        * (
+                        ipWidth
+                                + ipGap
+                ),
                 ipY,
-                76,
+                ipWidth,
                 WifiIpAction.CLEAR_METRICS
         );
 
+        int workflowGap =
+                6;
+
+        int workflowWidth =
+                Math.max(
+                        52,
+                        (
+                                usableWidth
+                                        - workflowGap * 6
+                        )
+                                / 7
+                );
+
         addWorkflowButton(
                 "Make AP",
-                12,
+                OUTER_MARGIN,
                 workflowY,
-                78,
+                workflowWidth,
                 WifiEngineeringWorkflowAction.CONFIGURE_AP
         );
 
         addWorkflowButton(
                 "Station",
-                96,
+                OUTER_MARGIN
+                        + (
+                        workflowWidth
+                                + workflowGap
+                ),
                 workflowY,
-                78,
+                workflowWidth,
                 WifiEngineeringWorkflowAction.CONFIGURE_STATION
         );
 
         addWorkflowButton(
                 "Beacon",
-                180,
+                OUTER_MARGIN
+                        + 2
+                        * (
+                        workflowWidth
+                                + workflowGap
+                ),
                 workflowY,
-                72,
+                workflowWidth,
                 WifiEngineeringWorkflowAction.SEND_BEACON
         );
 
         addWorkflowButton(
                 "Scan",
-                258,
+                OUTER_MARGIN
+                        + 3
+                        * (
+                        workflowWidth
+                                + workflowGap
+                ),
                 workflowY,
-                64,
+                workflowWidth,
                 WifiEngineeringWorkflowAction.SCAN
         );
 
         addWorkflowButton(
                 "Connect",
-                328,
+                OUTER_MARGIN
+                        + 4
+                        * (
+                        workflowWidth
+                                + workflowGap
+                ),
                 workflowY,
-                78,
+                workflowWidth,
                 WifiEngineeringWorkflowAction.CONNECT_FIRST
         );
 
         addWorkflowButton(
                 "Send DATA",
-                412,
+                OUTER_MARGIN
+                        + 5
+                        * (
+                        workflowWidth
+                                + workflowGap
+                ),
                 workflowY,
-                90,
+                workflowWidth,
                 WifiEngineeringWorkflowAction.SEND_DATA
         );
 
         addWorkflowButton(
                 "Legacy",
-                508,
+                OUTER_MARGIN
+                        + 6
+                        * (
+                        workflowWidth
+                                + workflowGap
+                ),
                 workflowY,
-                72,
+                workflowWidth,
                 WifiEngineeringWorkflowAction.LEGACY_DIRECT
         );
+
+        clampLeftScroll();
     }
 
     @Override
@@ -374,8 +548,8 @@ public final class WifiEngineeringScreen
                 events == null
                         ? List.of()
                         : List.copyOf(
-                                events
-                        );
+                        events
+                );
     }
 
     public void acceptWorkflowSnapshot(
@@ -419,24 +593,78 @@ public final class WifiEngineeringScreen
                 graphics
         );
 
+        int controlsTop =
+                height
+                        - OUTER_MARGIN
+                        - CONTROL_AREA_HEIGHT;
+
+        int contentBottom =
+                controlsTop
+                        - PANEL_GAP;
+
         int left =
-                12;
+                OUTER_MARGIN;
 
         int top =
-                12;
+                OUTER_MARGIN;
 
-        int panelWidth =
+        int availableWidth =
+                Math.max(
+                        360,
+                        width
+                                - OUTER_MARGIN * 2
+                );
+
+        int leftPanelWidth =
                 Math.max(
                         330,
-                        width / 2 - 18
+                        Math.min(
+                                440,
+                                availableWidth
+                                        * 47
+                                        / 100
+                        )
                 );
+
+        int rightLeft =
+                left
+                        + leftPanelWidth
+                        + PANEL_GAP;
+
+        int right =
+                width
+                        - OUTER_MARGIN;
 
         graphics.fill(
                 left - 4,
                 top - 4,
-                left + panelWidth,
-                height - 90,
+                left + leftPanelWidth,
+                contentBottom,
                 0xCC101820
+        );
+
+        graphics.fill(
+                rightLeft,
+                top - 4,
+                right,
+                contentBottom,
+                0xCC0A1016
+        );
+
+        graphics.fill(
+                OUTER_MARGIN - 4,
+                controlsTop - 4,
+                width - OUTER_MARGIN + 4,
+                height - OUTER_MARGIN + 4,
+                0xE00A1016
+        );
+
+        graphics.fill(
+                OUTER_MARGIN - 4,
+                controlsTop - 5,
+                width - OUTER_MARGIN + 4,
+                controlsTop - 4,
+                0xFF35505E
         );
 
         graphics.drawString(
@@ -460,8 +688,32 @@ public final class WifiEngineeringScreen
                 false
         );
 
+        leftViewportTop =
+                top
+                        + 30;
+
+        leftViewportBottom =
+                contentBottom
+                        - CONTENT_BOTTOM_PADDING;
+
+        int viewportHeight =
+                Math.max(
+                        1,
+                        leftViewportBottom
+                                - leftViewportTop
+                );
+
         int y =
-                top + 34;
+                leftViewportTop
+                        + CONTENT_TOP_PADDING
+                        - leftScroll;
+
+        graphics.enableScissor(
+                left - 1,
+                leftViewportTop,
+                left + leftPanelWidth - 5,
+                leftViewportBottom
+        );
 
         y =
                 drawSection(
@@ -587,7 +839,7 @@ public final class WifiEngineeringScreen
                                         + snapshot.liveDecoderIterations(),
                                 truncate(
                                         snapshot.liveDetail(),
-                                        52
+                                        56
                                 )
                         )
                 );
@@ -601,7 +853,7 @@ public final class WifiEngineeringScreen
                         List.of(
                                 truncate(
                                         testLinkStatus,
-                                        64
+                                        68
                                 )
                         )
                 );
@@ -615,33 +867,45 @@ public final class WifiEngineeringScreen
                         workflowLines()
                 );
 
-        drawSection(
+        y =
+                drawSection(
+                        graphics,
+                        left,
+                        y,
+                        "IP / APPLICATION",
+                        ipLines()
+                );
+
+        graphics.disableScissor();
+
+        leftContentHeight =
+                Math.max(
+                        viewportHeight,
+                        y
+                                + leftScroll
+                                - (
+                                leftViewportTop
+                                        + CONTENT_TOP_PADDING
+                        )
+                );
+
+        clampLeftScroll();
+
+        drawLeftScrollbar(
                 graphics,
-                left,
-                y,
-                "IP / APPLICATION",
-                ipLines()
+                left + leftPanelWidth - 8,
+                leftViewportTop,
+                leftViewportBottom,
+                viewportHeight
         );
 
-        int chartLeft =
-                left + panelWidth + 10;
-
-        int chartRight =
-                width - 12;
-
-        if (chartRight - chartLeft >= 180) {
-            int chartTop =
-                    top;
-
-            int chartBottom =
-                    height - 92;
-
+        if (right - rightLeft >= 180) {
             drawAnalyzer(
                     graphics,
-                    chartLeft,
-                    chartTop,
-                    chartRight,
-                    chartBottom
+                    rightLeft,
+                    top,
+                    right,
+                    contentBottom
             );
         }
 
@@ -687,6 +951,188 @@ public final class WifiEngineeringScreen
         }
 
         return y + 5;
+    }
+
+    private void drawLeftScrollbar(
+            GuiGraphics graphics,
+            int x,
+            int top,
+            int bottom,
+            int viewportHeight
+    ) {
+        int maxScroll =
+                maxLeftScroll(
+                        viewportHeight
+                );
+
+        if (maxScroll <= 0) {
+            return;
+        }
+
+        int trackHeight =
+                Math.max(
+                        1,
+                        bottom - top
+                );
+
+        int thumbHeight =
+                Math.max(
+                        18,
+                        trackHeight
+                                * viewportHeight
+                                / Math.max(
+                                viewportHeight,
+                                leftContentHeight
+                        )
+                );
+
+        int travel =
+                Math.max(
+                        1,
+                        trackHeight
+                                - thumbHeight
+                );
+
+        int thumbTop =
+                top
+                        + (
+                        int
+                        ) Math.round(
+                        travel
+                                * (
+                                leftScroll
+                                        / (
+                                        double
+                                        ) maxScroll
+                        )
+                );
+
+        graphics.fill(
+                x,
+                top,
+                x + 2,
+                bottom,
+                0x553A4A54
+        );
+
+        graphics.fill(
+                x,
+                thumbTop,
+                x + 2,
+                Math.min(
+                        bottom,
+                        thumbTop
+                                + thumbHeight
+                ),
+                0xFF6FD7FF
+        );
+    }
+
+    private int maxLeftScroll(
+            int viewportHeight
+    ) {
+        return Math.max(
+                0,
+                leftContentHeight
+                        - viewportHeight
+        );
+    }
+
+    private void clampLeftScroll() {
+        int viewportHeight =
+                Math.max(
+                        1,
+                        leftViewportBottom
+                                - leftViewportTop
+                );
+
+        leftScroll =
+                Math.max(
+                        0,
+                        Math.min(
+                                leftScroll,
+                                maxLeftScroll(
+                                        viewportHeight
+                                )
+                        )
+                );
+    }
+
+    @Override
+    public boolean mouseScrolled(
+            double mouseX,
+            double mouseY,
+            double delta
+    ) {
+        int controlsTop =
+                height
+                        - OUTER_MARGIN
+                        - CONTROL_AREA_HEIGHT;
+
+        int availableWidth =
+                Math.max(
+                        360,
+                        width
+                                - OUTER_MARGIN * 2
+                );
+
+        int leftPanelWidth =
+                Math.max(
+                        330,
+                        Math.min(
+                                440,
+                                availableWidth
+                                        * 47
+                                        / 100
+                        )
+                );
+
+        boolean overLeftPanel =
+                mouseX >= OUTER_MARGIN - 4
+                        && mouseX <= OUTER_MARGIN + leftPanelWidth
+                        && mouseY >= OUTER_MARGIN - 4
+                        && mouseY < controlsTop - PANEL_GAP;
+
+        if (overLeftPanel) {
+            int viewportHeight =
+                    Math.max(
+                            1,
+                            leftViewportBottom
+                                    - leftViewportTop
+                    );
+
+            int maxScroll =
+                    maxLeftScroll(
+                            viewportHeight
+                    );
+
+            if (maxScroll > 0) {
+                leftScroll -=
+                        (
+                                int
+                                ) Math.round(
+                                delta
+                                        * 22.0
+                        );
+
+                leftScroll =
+                        Math.max(
+                                0,
+                                Math.min(
+                                        leftScroll,
+                                        maxScroll
+                                )
+                        );
+
+                return true;
+            }
+        }
+
+        return super.mouseScrolled(
+                mouseX,
+                mouseY,
+                delta
+        );
     }
 
     private void drawAnalyzer(
@@ -864,9 +1310,9 @@ public final class WifiEngineeringScreen
                         case QUEUED ->
                                 0xFF59D6FF;
                         case CAPTURE_DROP,
-                                ANALYTICAL_PHY_DROP,
-                                DETAILED_PHY_DROP,
-                                DECODE_DROP ->
+                             ANALYTICAL_PHY_DROP,
+                             DETAILED_PHY_DROP,
+                             DECODE_DROP ->
                                 0xFFFF6B6B;
                     };
 
@@ -1151,7 +1597,7 @@ public final class WifiEngineeringScreen
         return bottom
                 - (
                 int
-        ) Math.round(
+                ) Math.round(
                 (
                         clamped + 10.0
                 )
@@ -1188,7 +1634,7 @@ public final class WifiEngineeringScreen
         return bottom
                 - (
                 int
-        ) Math.round(
+                ) Math.round(
                 (
                         log + 8.0
                 )
@@ -1413,13 +1859,13 @@ public final class WifiEngineeringScreen
                         .isEmpty()
                         ? "none"
                         : String.join(
-                                ", ",
-                                workflowSnapshot
-                                        .discoveredSsids()
-                                        .stream()
-                                        .limit(3)
-                                        .toList()
-                        );
+                        ", ",
+                        workflowSnapshot
+                                .discoveredSsids()
+                                .stream()
+                                .limit(3)
+                                .toList()
+                );
 
         String associated =
                 workflowSnapshot
@@ -1427,13 +1873,13 @@ public final class WifiEngineeringScreen
                         .isEmpty()
                         ? "none"
                         : String.join(
-                                ", ",
-                                workflowSnapshot
-                                        .associatedStations()
-                                        .stream()
-                                        .limit(2)
-                                        .toList()
-                        );
+                        ", ",
+                        workflowSnapshot
+                                .associatedStations()
+                                .stream()
+                                .limit(2)
+                                .toList()
+                );
 
         return List.of(
                 "MAC "
