@@ -3,9 +3,12 @@ package com.k1ngtle.vsia.client.screen;
 import com.k1ngtle.vsia.network.VsiaNetwork;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringModePacket;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringSnapshotRequestPacket;
+import com.k1ngtle.vsia.network.wifi.WifiEngineeringTestLinkPacket;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringHistory;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringSample;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringSnapshot;
+import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringTestLinkResult;
+import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringTestLinkService;
 import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyMode;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -36,6 +39,9 @@ public final class WifiEngineeringScreen
     private int pollTicker;
 
     private Button modeButton;
+
+    private String testLinkStatus =
+            "No test frame requested";
 
     public WifiEngineeringScreen(
             BlockPos targetPos,
@@ -112,6 +118,23 @@ public final class WifiEngineeringScreen
                         )
                         .build()
         );
+
+        addRenderableWidget(
+                Button.builder(
+                                Component.literal(
+                                        "Run link test"
+                                ),
+                                button ->
+                                        runTestLink()
+                        )
+                        .bounds(
+                                360,
+                                buttonY,
+                                110,
+                                20
+                        )
+                        .build()
+        );
     }
 
     @Override
@@ -145,6 +168,31 @@ public final class WifiEngineeringScreen
                     modeText()
             );
         }
+    }
+
+    public void acceptTestLinkResult(
+            WifiEngineeringTestLinkResult result
+    ) {
+        if (result.success()) {
+            testLinkStatus =
+                    "Peer "
+                            + result.peerPos()
+                            .toShortString()
+                            + " | "
+                            + number(
+                            result.distanceBlocks(),
+                            2
+                    )
+                            + " blocks | "
+                            + result.frameBytes()
+                            + " B queued";
+        } else {
+            testLinkStatus =
+                    "FAILED: "
+                            + result.detail();
+        }
+
+        requestSnapshot();
     }
 
     @Override
@@ -301,31 +349,45 @@ public final class WifiEngineeringScreen
                         )
                 );
 
+        y =
+                drawSection(
+                        graphics,
+                        left,
+                        y,
+                        "DETAILED PHY",
+                        List.of(
+                                "Mode "
+                                        + snapshot.liveMode()
+                                        + " | Path "
+                                        + snapshot.livePath(),
+                                "Evaluated "
+                                        + yesNo(
+                                        snapshot.liveEvaluated()
+                                )
+                                        + " | Delivered "
+                                        + yesNo(
+                                        snapshot.liveDelivered()
+                                ),
+                                "Codewords "
+                                        + snapshot.liveCodewords()
+                                        + " | Decoder iterations "
+                                        + snapshot.liveDecoderIterations(),
+                                truncate(
+                                        snapshot.liveDetail(),
+                                        52
+                                )
+                        )
+                );
+
         drawSection(
                 graphics,
                 left,
                 y,
-                "DETAILED PHY",
+                "TEST LINK",
                 List.of(
-                        "Mode "
-                                + snapshot.liveMode()
-                                + " | Path "
-                                + snapshot.livePath(),
-                        "Evaluated "
-                                + yesNo(
-                                snapshot.liveEvaluated()
-                        )
-                                + " | Delivered "
-                                + yesNo(
-                                snapshot.liveDelivered()
-                        ),
-                        "Codewords "
-                                + snapshot.liveCodewords()
-                                + " | Decoder iterations "
-                                + snapshot.liveDecoderIterations(),
                         truncate(
-                                snapshot.liveDetail(),
-                                52
+                                testLinkStatus,
+                                64
                         )
                 )
         );
@@ -785,6 +847,19 @@ public final class WifiEngineeringScreen
                 bottom - top
         )
                 / 70;
+    }
+
+    private void runTestLink() {
+        testLinkStatus =
+                "Requesting peer and queuing test frame...";
+
+        VsiaNetwork.sendToServer(
+                new WifiEngineeringTestLinkPacket(
+                        targetPos,
+                        WifiEngineeringTestLinkService
+                                .DEFAULT_TEST_FRAME_BYTES
+                )
+        );
     }
 
     private void toggleMode() {

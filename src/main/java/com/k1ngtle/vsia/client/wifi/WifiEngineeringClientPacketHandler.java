@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.client.wifi;
 
 import com.k1ngtle.vsia.client.screen.WifiEngineeringScreen;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringSnapshot;
+import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringTestLinkResult;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 
@@ -39,4 +40,23 @@ public final class WifiEngineeringClientPacketHandler {
             );
         }
     }
+    public static void handleTestLinkResult(
+            BlockPos pos,
+            WifiEngineeringTestLinkResult result
+    ) {
+        Minecraft minecraft =
+                Minecraft.getInstance();
+
+        if (minecraft.screen
+                instanceof WifiEngineeringScreen screen
+                && screen.targetPos()
+                .equals(
+                        pos
+                )) {
+            screen.acceptTestLinkResult(
+                    result
+            );
+        }
+    }
+
 }

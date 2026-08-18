@@ -39,6 +39,10 @@ public final class SignalBus {
       RX.remove(id);
    }
 
+   public static List<ISignalReceiver> receiversInLevel(ServerLevel level) {
+      return List.copyOf(receiversIn(level));
+   }
+
    public static void broadcast(SignalPacket packet, ServerLevel level) {
       Objects.requireNonNull(packet, "packet");
       Objects.requireNonNull(level, "level");

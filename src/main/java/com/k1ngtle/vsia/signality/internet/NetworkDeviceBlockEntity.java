@@ -135,6 +135,8 @@ public abstract class NetworkDeviceBlockEntity
     private long activeWifiResponseReferenceMicros =
             -1L;
 
+    private int wifiEngineeringTestSequence;
+
     private final CellularRanController cellularRan =
             new CellularRanController();
 
@@ -458,6 +460,135 @@ public abstract class NetworkDeviceBlockEntity
                 );
 
         setChanged();
+    }
+
+    public boolean sendWifiEngineeringTestFrame(
+            int requestedFrameBytes
+    ) {
+        if (!isWifiProfile()
+                || !(level instanceof ServerLevel)) {
+            return false;
+        }
+
+        int frameBytes =
+                Math.max(
+                        64,
+                        Math.min(
+                                4096,
+                                requestedFrameBytes
+                        )
+                );
+
+        byte[] body =
+                new byte[
+                        frameBytes
+                ];
+
+        byte[] signature =
+                "VSIA-W1.6.4-LINK-TEST"
+                        .getBytes(
+                                java.nio.charset.StandardCharsets.UTF_8
+                        );
+
+        System.arraycopy(
+                signature,
+                0,
+                body,
+                0,
+                Math.min(
+                        signature.length,
+                        body.length
+                )
+        );
+
+        for (int i = signature.length;
+             i < body.length;
+             i++) {
+            body[i] =
+                    (byte) (
+                            i * 31
+                                    + wifiEngineeringTestSequence
+                    );
+        }
+
+        byte[] broadcast =
+                new byte[] {
+                        (byte) 0xFF,
+                        (byte) 0xFF,
+                        (byte) 0xFF,
+                        (byte) 0xFF,
+                        (byte) 0xFF,
+                        (byte) 0xFF
+                };
+
+        WifiMacFrame frame =
+                new WifiMacFrame(
+                        WifiMacController.FC_DATA,
+                        0,
+                        broadcast,
+                        engineeringMacBytes(
+                                macAddress
+                        ),
+                        broadcast,
+                        (
+                                wifiEngineeringTestSequence++
+                                        & 0x0FFF
+                        )
+                                << 4,
+                        body
+                );
+
+        transmitWifiFrame(
+                frame
+        );
+
+        return true;
+    }
+
+    private byte[] engineeringMacBytes(
+            String value
+    ) {
+        String normalized =
+                value == null
+                        ? ""
+                        : value.replace(
+                                ":",
+                                ""
+                        )
+                        .replace(
+                                "-",
+                                ""
+                        );
+
+        byte[] out =
+                new byte[
+                        6
+                ];
+
+        if (normalized.length() != 12) {
+            return out;
+        }
+
+        try {
+            for (int i = 0;
+                 i < out.length;
+                 i++) {
+                out[i] =
+                        (byte) Integer.parseInt(
+                                normalized.substring(
+                                        i * 2,
+                                        i * 2 + 2
+                                ),
+                                16
+                        );
+            }
+        } catch (Exception ignored) {
+            return new byte[
+                    6
+            ];
+        }
+
+        return out;
     }
 
     public WifiPpduEstimate estimateWifiPpdu(

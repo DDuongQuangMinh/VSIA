@@ -4,6 +4,8 @@ import com.k1ngtle.vsia.Vsia;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringModePacket;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringSnapshotPacket;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringSnapshotRequestPacket;
+import com.k1ngtle.vsia.network.wifi.WifiEngineeringTestLinkPacket;
+import com.k1ngtle.vsia.network.wifi.WifiEngineeringTestLinkResultPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkDirection;
@@ -75,6 +77,26 @@ public class VsiaNetwork {
                 .decoder(WifiEngineeringSnapshotPacket::new)
                 .encoder(WifiEngineeringSnapshotPacket::toBytes)
                 .consumerMainThread(WifiEngineeringSnapshotPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        WifiEngineeringTestLinkPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
+                .decoder(WifiEngineeringTestLinkPacket::new)
+                .encoder(WifiEngineeringTestLinkPacket::toBytes)
+                .consumerMainThread(WifiEngineeringTestLinkPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        WifiEngineeringTestLinkResultPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_CLIENT
+                )
+                .decoder(WifiEngineeringTestLinkResultPacket::new)
+                .encoder(WifiEngineeringTestLinkResultPacket::toBytes)
+                .consumerMainThread(WifiEngineeringTestLinkResultPacket::handle)
                 .add();
     }
 
