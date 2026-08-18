@@ -12,7 +12,6 @@ import com.k1ngtle.vsia.signality.engineering.channel.RfDiscreteEventScheduler;
 import com.k1ngtle.vsia.signality.engineering.channel.RfTransmissionRegistry;
 import com.k1ngtle.vsia.signality.engineering.channel.RfKinematicTracker;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiMacTimingScheduler;
-import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveScheduler;
 import com.k1ngtle.vsia.signality.debug.SignalityLabCommand;
 import com.k1ngtle.vsia.signality.engineering.vm.ProtocolProgramReloadListener;
 import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmScheduler;
@@ -155,7 +154,6 @@ public final class Signality {
       RfTransmissionRegistry.clear();
       RfKinematicTracker.clear();
       WifiMacTimingScheduler.clear();
-      TcpLiveScheduler.clear();
    }
 
    @SubscribeEvent
@@ -182,7 +180,6 @@ public final class Signality {
       if (event.phase == Phase.END) {
          try {
             ProtocolVmScheduler.tickAll();
-            TcpLiveScheduler.tickAll();
          } catch (Throwable throwable) {
             LOGGER.warn(
                     "Signality protocol VM scheduler tick failed.",

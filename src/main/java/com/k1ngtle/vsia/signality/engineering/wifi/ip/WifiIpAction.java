@@ -6,5 +6,7 @@ public enum WifiIpAction {
     ICMP_ECHO,
     UDP_ECHO,
     HTTP_GET,
+    TCP_HTTP_GET,
+    TCP_CLOSE,
     CLEAR_METRICS
 }

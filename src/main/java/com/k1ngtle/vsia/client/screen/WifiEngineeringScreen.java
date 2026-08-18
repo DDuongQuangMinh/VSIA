@@ -52,7 +52,7 @@ public final class WifiEngineeringScreen
             4;
 
     private static final int CONTROL_ROWS =
-            3;
+            4;
 
     private static final int CONTROL_AREA_PADDING =
             8;
@@ -139,9 +139,14 @@ public final class WifiEngineeringScreen
                         - OUTER_MARGIN
                         - CONTROL_AREA_HEIGHT;
 
-        int ipY =
+        int tcpY =
                 controlsTop
                         + CONTROL_AREA_PADDING;
+
+        int ipY =
+                tcpY
+                        + CONTROL_ROW_HEIGHT
+                        + CONTROL_ROW_GAP;
 
         int workflowY =
                 ipY
@@ -297,6 +302,65 @@ public final class WifiEngineeringScreen
                         .build()
         );
 
+        int tcpGap =
+                6;
+
+        int tcpWidth =
+                Math.max(
+                        80,
+                        (
+                                usableWidth
+                                        - tcpGap * 3
+                        )
+                                / 4
+                );
+
+        addIpButton(
+                "TCP HTTP",
+                OUTER_MARGIN,
+                tcpY,
+                tcpWidth,
+                WifiIpAction.TCP_HTTP_GET
+        );
+
+        addIpButton(
+                "TCP Close",
+                OUTER_MARGIN
+                        + (
+                        tcpWidth
+                                + tcpGap
+                ),
+                tcpY,
+                tcpWidth,
+                WifiIpAction.TCP_CLOSE
+        );
+
+        addIpButton(
+                "HTTP Direct",
+                OUTER_MARGIN
+                        + 2
+                        * (
+                        tcpWidth
+                                + tcpGap
+                ),
+                tcpY,
+                tcpWidth,
+                WifiIpAction.HTTP_GET
+        );
+
+        addIpButton(
+                "Clear IP/TCP",
+                OUTER_MARGIN
+                        + 3
+                        * (
+                        tcpWidth
+                                + tcpGap
+                ),
+                tcpY,
+                tcpWidth,
+                WifiIpAction.CLEAR_METRICS
+        );
+
         int ipGap =
                 6;
 
@@ -357,7 +421,7 @@ public final class WifiEngineeringScreen
         );
 
         addIpButton(
-                "HTTP GET",
+                "HTTP Direct",
                 OUTER_MARGIN
                         + 4
                         * (
@@ -548,8 +612,8 @@ public final class WifiEngineeringScreen
                 events == null
                         ? List.of()
                         : List.copyOf(
-                        events
-                );
+                                events
+                        );
     }
 
     public void acceptWorkflowSnapshot(
@@ -997,13 +1061,13 @@ public final class WifiEngineeringScreen
                 top
                         + (
                         int
-                        ) Math.round(
+                ) Math.round(
                         travel
                                 * (
                                 leftScroll
                                         / (
                                         double
-                                        ) maxScroll
+                                ) maxScroll
                         )
                 );
 
@@ -1110,7 +1174,7 @@ public final class WifiEngineeringScreen
                 leftScroll -=
                         (
                                 int
-                                ) Math.round(
+                        ) Math.round(
                                 delta
                                         * 22.0
                         );
@@ -1310,9 +1374,9 @@ public final class WifiEngineeringScreen
                         case QUEUED ->
                                 0xFF59D6FF;
                         case CAPTURE_DROP,
-                             ANALYTICAL_PHY_DROP,
-                             DETAILED_PHY_DROP,
-                             DECODE_DROP ->
+                                ANALYTICAL_PHY_DROP,
+                                DETAILED_PHY_DROP,
+                                DECODE_DROP ->
                                 0xFFFF6B6B;
                     };
 
@@ -1597,7 +1661,7 @@ public final class WifiEngineeringScreen
         return bottom
                 - (
                 int
-                ) Math.round(
+        ) Math.round(
                 (
                         clamped + 10.0
                 )
@@ -1634,7 +1698,7 @@ public final class WifiEngineeringScreen
         return bottom
                 - (
                 int
-                ) Math.round(
+        ) Math.round(
                 (
                         log + 8.0
                 )
@@ -1772,10 +1836,39 @@ public final class WifiEngineeringScreen
                         ipSnapshot.goodputKbps(),
                         " kbit/s"
                 )
-                        + " | "
+                        + " | protocol "
+                        + ipSnapshot.lastProtocol(),
+                "TCP "
+                        + ipSnapshot.tcpState()
+                        + " "
+                        + ipSnapshot.tcpLocalPort()
+                        + "->"
+                        + ipSnapshot.tcpRemotePort()
+                        + " | cwnd "
+                        + ipSnapshot.tcpCongestionWindowBytes()
+                        + "B | flight "
+                        + ipSnapshot.tcpBytesInFlight()
+                        + "B",
+                "TCP SRTT "
+                        + metric(
+                        ipSnapshot.tcpSrttMs(),
+                        " ms"
+                )
+                        + " | RTO "
+                        + metric(
+                        ipSnapshot.tcpRtoMs(),
+                        " ms"
+                )
+                        + " | retrans "
+                        + ipSnapshot.tcpRetransmissions(),
+                "TCP "
                         + truncate(
+                        ipSnapshot.tcpStatus(),
+                        54
+                ),
+                truncate(
                         ipStatus,
-                        44
+                        64
                 )
         );
     }
@@ -1859,13 +1952,13 @@ public final class WifiEngineeringScreen
                         .isEmpty()
                         ? "none"
                         : String.join(
-                        ", ",
-                        workflowSnapshot
-                                .discoveredSsids()
-                                .stream()
-                                .limit(3)
-                                .toList()
-                );
+                                ", ",
+                                workflowSnapshot
+                                        .discoveredSsids()
+                                        .stream()
+                                        .limit(3)
+                                        .toList()
+                        );
 
         String associated =
                 workflowSnapshot
@@ -1873,13 +1966,13 @@ public final class WifiEngineeringScreen
                         .isEmpty()
                         ? "none"
                         : String.join(
-                        ", ",
-                        workflowSnapshot
-                                .associatedStations()
-                                .stream()
-                                .limit(2)
-                                .toList()
-                );
+                                ", ",
+                                workflowSnapshot
+                                        .associatedStations()
+                                        .stream()
+                                        .limit(2)
+                                        .toList()
+                        );
 
         return List.of(
                 "MAC "

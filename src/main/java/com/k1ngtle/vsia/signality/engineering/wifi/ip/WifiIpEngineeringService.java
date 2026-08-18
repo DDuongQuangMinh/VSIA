@@ -1,6 +1,7 @@
 package com.k1ngtle.vsia.signality.engineering.wifi.ip;
 
 import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
+import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveSnapshot;
 
 public final class WifiIpEngineeringService {
     private WifiIpEngineeringService() {
@@ -24,6 +25,9 @@ public final class WifiIpEngineeringService {
         WifiIpFlowSnapshot flow =
                 device.wifiIpFlowSnapshot();
 
+        TcpLiveSnapshot tcp =
+                device.wifiTcpLiveSnapshot();
+
         return new WifiIpEngineeringSnapshot(
                 device.wifiIpAddress(),
                 device.wifiMacAddress(),
@@ -40,6 +44,16 @@ public final class WifiIpEngineeringService {
                 flow.jitterMs(),
                 flow.goodputKbps(),
                 flow.lastProtocol(),
+                tcp.state(),
+                tcp.localPort(),
+                tcp.remotePort(),
+                tcp.congestionWindowBytes(),
+                tcp.slowStartThresholdBytes(),
+                tcp.bytesInFlight(),
+                tcp.srttMs(),
+                tcp.rtoMs(),
+                tcp.retransmissions(),
+                tcp.status(),
                 flow.lastStatus()
         );
     }
@@ -56,6 +70,7 @@ public final class WifiIpEngineeringService {
 
         if (action == WifiIpAction.CLEAR_METRICS) {
             device.clearWifiIpMetrics();
+            device.clearWifiTcpLive();
             return snapshot(
                     device
             );
@@ -110,6 +125,16 @@ public final class WifiIpEngineeringService {
                             peer.wifiIpAddress(),
                             "/"
                     );
+
+            case TCP_HTTP_GET ->
+                    device.startWifiTcpHttpGet(
+                            peer.wifiMacAddress(),
+                            peer.wifiIpAddress(),
+                            "/"
+                    );
+
+            case TCP_CLOSE ->
+                    device.closeWifiTcpLive();
 
             case CLEAR_METRICS -> {
             }

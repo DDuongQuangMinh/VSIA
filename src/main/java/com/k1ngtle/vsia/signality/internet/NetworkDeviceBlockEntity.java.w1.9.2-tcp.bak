@@ -63,9 +63,6 @@ import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyEngine;
 import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyMode;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.WifiIpApplicationEngine;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.WifiIpFlowSnapshot;
-import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveController;
-import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveScheduler;
-import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveSnapshot;
 import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketDirection;
 import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketOutcome;
 import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketTraceBuffer;
@@ -152,9 +149,6 @@ public abstract class NetworkDeviceBlockEntity
     private final WifiIpApplicationEngine wifiIpApplication =
             new WifiIpApplicationEngine();
 
-    private final TcpLiveController wifiTcpLive =
-            new TcpLiveController();
-
     private final CellularRanController cellularRan =
             new CellularRanController();
 
@@ -219,30 +213,12 @@ public abstract class NetworkDeviceBlockEntity
                     signalId,
                     protocolVm
             );
-
-            TcpLiveScheduler.register(
-                    signalId,
-                    () -> {
-                        if (level instanceof ServerLevel serverLevel) {
-                            wifiTcpLive.tick(
-                                    NetworkTimebase.nowMicros(
-                                            serverLevel
-                                    ),
-                                    this::transmitPacket
-                            );
-                        }
-                    }
-            );
         }
     }
 
     @Override
     public void setRemoved() {
         ProtocolVmScheduler.unregister(
-                signalId
-        );
-
-        TcpLiveScheduler.unregister(
                 signalId
         );
 
@@ -942,82 +918,6 @@ public abstract class NetworkDeviceBlockEntity
 
     public String wifiSecurityDiagnostic() {
         return wifiMac.lastSecurityDiagnostic();
-    }
-
-    public TcpLiveSnapshot wifiTcpLiveSnapshot() {
-        return wifiTcpLive.snapshot();
-    }
-
-    public boolean startWifiTcpHttpGet(
-            String targetMac,
-            String targetIp,
-            String path
-    ) {
-        if (!wifiIpReady()) {
-            wifiIpApplication.setStatus(
-                    "TCP HTTP rejected: Wi-Fi is not associated/secured"
-            );
-
-            return false;
-        }
-
-        if (!com.k1ngtle.vsia.signality.engineering.wifi.ip.Ipv4Address
-                .isUsableUnicast(
-                        targetIp
-                )) {
-            wifiIpApplication.setStatus(
-                    "TCP HTTP rejected: peer IPv4 is invalid"
-            );
-
-            return false;
-        }
-
-        long nowMicros =
-                NetworkTimebase.nowMicros(
-                        level()
-                );
-
-        OSINetworkPacket application =
-                wifiIpApplication.createHttpGet(
-                        macAddress,
-                        ipAddress,
-                        targetMac,
-                        targetIp,
-                        path,
-                        nowMicros
-                );
-
-        boolean started =
-                wifiTcpLive.startApplication(
-                        application,
-                        nowMicros,
-                        this::transmitPacket
-                );
-
-        if (started) {
-            wifiIpApplication.setStatus(
-                    "TCP HTTP connection started"
-            );
-        }
-
-        return started;
-    }
-
-    public boolean closeWifiTcpLive() {
-        if (!(level instanceof ServerLevel serverLevel)) {
-            return false;
-        }
-
-        return wifiTcpLive.closeActive(
-                NetworkTimebase.nowMicros(
-                        serverLevel
-                ),
-                this::transmitPacket
-        );
-    }
-
-    public void clearWifiTcpLive() {
-        wifiTcpLive.clear();
     }
 
     public boolean sendWifiEngineeringAssociatedData(
@@ -2461,29 +2361,6 @@ public abstract class NetworkDeviceBlockEntity
         if (isWifiProfile()
                 && wifiMac.mode()
                 != WifiMode.LEGACY_DIRECT
-                && "TCP".equalsIgnoreCase(
-                packet.applicationProtocol
-        )) {
-            wifiTcpLive.handleIncoming(
-                    macAddress,
-                    ipAddress,
-                    packet,
-                    level instanceof ServerLevel serverLevel
-                            ? NetworkTimebase.nowMicros(
-                            serverLevel
-                    )
-                            : 0L,
-                    this::transmitPacket,
-                    this::deliverTcpApplication
-            );
-
-            setChanged();
-            return;
-        }
-
-        if (isWifiProfile()
-                && wifiMac.mode()
-                != WifiMode.LEGACY_DIRECT
                 && wifiIpApplication.handleIncoming(
                 macAddress,
                 ipAddress,
@@ -2512,18 +2389,6 @@ public abstract class NetworkDeviceBlockEntity
         } else {
             handleIncomingData(packet);
         }
-    }
-
-    private void deliverTcpApplication(
-            OSINetworkPacket application
-    ) {
-        if (application == null) {
-            return;
-        }
-
-        processLayer4(
-                application
-        );
     }
 
     protected void handleWebRequest(
@@ -2611,24 +2476,6 @@ public abstract class NetworkDeviceBlockEntity
     protected void transmitPacket(
             OSINetworkPacket packet
     ) {
-        if (packet != null
-                && !"TCP".equalsIgnoreCase(
-                packet.applicationProtocol
-        )
-                && packet.isResponse
-                && packet.sessionId != null
-                && !packet.sessionId.isBlank()
-                && level instanceof ServerLevel serverLevel
-                && wifiTcpLive.interceptApplicationResponse(
-                packet,
-                NetworkTimebase.nowMicros(
-                        serverLevel
-                ),
-                this::transmitPacket
-        )) {
-            return;
-        }
-
         if (protocolVm.bound()) {
             CompoundTag hostPayload =
                     new CompoundTag();

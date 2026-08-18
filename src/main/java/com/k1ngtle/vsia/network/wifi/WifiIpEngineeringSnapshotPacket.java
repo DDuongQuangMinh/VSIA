@@ -59,6 +59,20 @@ public final class WifiIpEngineeringSnapshotPacket {
                                 64
                         ),
                         buf.readUtf(
+                                64
+                        ),
+                        buf.readVarInt(),
+                        buf.readVarInt(),
+                        buf.readVarLong(),
+                        buf.readVarLong(),
+                        buf.readVarLong(),
+                        buf.readDouble(),
+                        buf.readDouble(),
+                        buf.readVarInt(),
+                        buf.readUtf(
+                                1024
+                        ),
+                        buf.readUtf(
                                 1024
                         )
                 );
@@ -134,6 +148,48 @@ public final class WifiIpEngineeringSnapshotPacket {
         buf.writeUtf(
                 snapshot.lastProtocol(),
                 64
+        );
+
+        buf.writeUtf(
+                snapshot.tcpState(),
+                64
+        );
+
+        buf.writeVarInt(
+                snapshot.tcpLocalPort()
+        );
+
+        buf.writeVarInt(
+                snapshot.tcpRemotePort()
+        );
+
+        buf.writeVarLong(
+                snapshot.tcpCongestionWindowBytes()
+        );
+
+        buf.writeVarLong(
+                snapshot.tcpSlowStartThresholdBytes()
+        );
+
+        buf.writeVarLong(
+                snapshot.tcpBytesInFlight()
+        );
+
+        buf.writeDouble(
+                snapshot.tcpSrttMs()
+        );
+
+        buf.writeDouble(
+                snapshot.tcpRtoMs()
+        );
+
+        buf.writeVarInt(
+                snapshot.tcpRetransmissions()
+        );
+
+        buf.writeUtf(
+                snapshot.tcpStatus(),
+                1024
         );
 
         buf.writeUtf(

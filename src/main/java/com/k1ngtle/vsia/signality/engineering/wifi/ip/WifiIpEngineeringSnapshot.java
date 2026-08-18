@@ -16,6 +16,16 @@ public record WifiIpEngineeringSnapshot(
         double jitterMs,
         double goodputKbps,
         String lastProtocol,
+        String tcpState,
+        int tcpLocalPort,
+        int tcpRemotePort,
+        long tcpCongestionWindowBytes,
+        long tcpSlowStartThresholdBytes,
+        long tcpBytesInFlight,
+        double tcpSrttMs,
+        double tcpRtoMs,
+        int tcpRetransmissions,
+        String tcpStatus,
         String status
 ) {
 }
