@@ -64,7 +64,6 @@ import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyEngine;
 import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyMode;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.WifiIpApplicationEngine;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.WifiIpFlowSnapshot;
-import com.k1ngtle.vsia.signality.engineering.wifi.arp.live.ArpRawLiveCarrierCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveController;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveScheduler;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveSnapshot;
@@ -164,9 +163,6 @@ public abstract class NetworkDeviceBlockEntity
             ExecutionMode.SIMULATION;
 
     private final Set<String> wifiRawTcpSessions =
-            new HashSet<>();
-
-    private final Set<String> wifiRawArpPeers =
             new HashSet<>();
 
     private final CellularRanController cellularRan =
@@ -983,7 +979,6 @@ public abstract class NetworkDeviceBlockEntity
 
         wifiTcpLive.clear();
         wifiRawTcpSessions.clear();
-        wifiRawArpPeers.clear();
 
         wifiIpApplication.setStatus(
                 "TCP carrier mode "
@@ -1064,7 +1059,6 @@ public abstract class NetworkDeviceBlockEntity
     public void clearWifiTcpLive() {
         wifiTcpLive.clear();
         wifiRawTcpSessions.clear();
-        wifiRawArpPeers.clear();
     }
 
     public boolean sendWifiEngineeringAssociatedData(
@@ -2330,32 +2324,6 @@ public abstract class NetworkDeviceBlockEntity
         }
 
         if (data != null
-                && ArpRawLiveCarrierCodec.isRawArpCarrier(
-                data
-        )) {
-            try {
-                OSINetworkPacket rawArp =
-                        ArpRawLiveCarrierCodec.decode(
-                                data
-                        );
-
-                if (rawArp.sourceMac != null
-                        && !rawArp.sourceMac.isBlank()) {
-                    wifiRawArpPeers.add(
-                            rawArp.sourceMac
-                    );
-                }
-
-                processLayer2(
-                        rawArp
-                );
-            } catch (Exception exception) {
-                wifiIpApplication.setStatus(
-                        "RAW ARP drop: "
-                                + exception.getMessage()
-                );
-            }
-        } else if (data != null
                 && TcpRawLiveCarrierCodec.isRawCarrier(
                 data
         )) {
@@ -2728,35 +2696,6 @@ public abstract class NetworkDeviceBlockEntity
             return;
         }
 
-        if (shouldUseRawWifiArpCarrier(
-                packet
-        )) {
-            CompoundTag body =
-                    ArpRawLiveCarrierCodec.encode(
-                            packet
-                    );
-
-            if (packet.targetMac != null
-                    && !packet.targetMac.isBlank()
-                    && !"FF:FF:FF:FF:FF:FF".equalsIgnoreCase(
-                    packet.targetMac
-            )) {
-                wifiRawArpPeers.add(
-                        packet.targetMac
-                );
-            }
-
-            wifiMac.sendData(
-                    macAddress,
-                    packet.targetMac,
-                    body,
-                    WifiAccessCategory.BEST_EFFORT,
-                    wifiSender()
-            );
-
-            return;
-        }
-
         if (shouldUseRawWifiTcpCarrier(
                 packet
         )) {
@@ -2899,31 +2838,6 @@ public abstract class NetworkDeviceBlockEntity
         );
 
         broadcastPayload(payload);
-    }
-
-    private boolean shouldUseRawWifiArpCarrier(
-            OSINetworkPacket packet
-    ) {
-        if (packet == null
-                || !isWifiProfile()
-                || wifiMac.mode()
-                == WifiMode.LEGACY_DIRECT
-                || !"ARP".equalsIgnoreCase(
-                packet.applicationProtocol
-        )) {
-            return false;
-        }
-
-        if (wifiTcpExecutionMode
-                == ExecutionMode.CONFORMANCE) {
-            return true;
-        }
-
-        return packet.targetMac != null
-                && !packet.targetMac.isBlank()
-                && wifiRawArpPeers.contains(
-                packet.targetMac
-        );
     }
 
     private boolean shouldUseRawWifiTcpCarrier(
@@ -4058,7 +3972,6 @@ public abstract class NetworkDeviceBlockEntity
         }
 
         wifiRawTcpSessions.clear();
-        wifiRawArpPeers.clear();
 
         if (tag.contains("WifiMac")) {
             wifiMac.load(
