@@ -6,7 +6,6 @@ import com.k1ngtle.vsia.signality.api.signal.SignalBand;
 import com.k1ngtle.vsia.signality.api.signal.SignalPacket;
 import com.k1ngtle.vsia.signality.core.signal.SignalBus;
 import com.k1ngtle.vsia.signality.engineering.EngineeringPhyEngine;
-import com.k1ngtle.vsia.signality.engineering.ExecutionMode;
 import com.k1ngtle.vsia.signality.engineering.channel.ActiveRfTransmission;
 import com.k1ngtle.vsia.signality.engineering.channel.RfChannelAssessment;
 import com.k1ngtle.vsia.signality.engineering.channel.RfChannelSettings;
@@ -67,7 +66,6 @@ import com.k1ngtle.vsia.signality.engineering.wifi.ip.WifiIpFlowSnapshot;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveController;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveScheduler;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveSnapshot;
-import com.k1ngtle.vsia.signality.engineering.wifi.tcp.raw.live.TcpRawLiveCarrierCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketDirection;
 import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketOutcome;
 import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketTraceBuffer;
@@ -97,9 +95,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 public abstract class NetworkDeviceBlockEntity
@@ -158,12 +154,6 @@ public abstract class NetworkDeviceBlockEntity
 
     private final TcpLiveController wifiTcpLive =
             new TcpLiveController();
-
-    private ExecutionMode wifiTcpExecutionMode =
-            ExecutionMode.SIMULATION;
-
-    private final Set<String> wifiRawTcpSessions =
-            new HashSet<>();
 
     private final CellularRanController cellularRan =
             new CellularRanController();
@@ -958,36 +948,6 @@ public abstract class NetworkDeviceBlockEntity
         return wifiTcpLive.snapshot();
     }
 
-    public ExecutionMode wifiTcpExecutionMode() {
-        return wifiTcpExecutionMode;
-    }
-
-    public void setWifiTcpExecutionMode(
-            ExecutionMode mode
-    ) {
-        ExecutionMode next =
-                mode == null
-                        ? ExecutionMode.SIMULATION
-                        : mode;
-
-        if (wifiTcpExecutionMode == next) {
-            return;
-        }
-
-        wifiTcpExecutionMode =
-                next;
-
-        wifiTcpLive.clear();
-        wifiRawTcpSessions.clear();
-
-        wifiIpApplication.setStatus(
-                "TCP carrier mode "
-                        + wifiTcpExecutionMode
-        );
-
-        setChanged();
-    }
-
     public boolean startWifiTcpHttpGet(
             String targetMac,
             String targetIp,
@@ -1058,7 +1018,6 @@ public abstract class NetworkDeviceBlockEntity
 
     public void clearWifiTcpLive() {
         wifiTcpLive.clear();
-        wifiRawTcpSessions.clear();
     }
 
     public boolean sendWifiEngineeringAssociatedData(
@@ -2324,32 +2283,6 @@ public abstract class NetworkDeviceBlockEntity
         }
 
         if (data != null
-                && TcpRawLiveCarrierCodec.isRawCarrier(
-                data
-        )) {
-            try {
-                OSINetworkPacket rawTcp =
-                        TcpRawLiveCarrierCodec.decode(
-                                data
-                        );
-
-                if (rawTcp.sessionId != null
-                        && !rawTcp.sessionId.isBlank()) {
-                    wifiRawTcpSessions.add(
-                            rawTcp.sessionId
-                    );
-                }
-
-                processLayer2(
-                        rawTcp
-                );
-            } catch (Exception exception) {
-                wifiIpApplication.setStatus(
-                        "RAW IPv4/TCP drop: "
-                                + exception.getMessage()
-                );
-            }
-        } else if (data != null
                 && data.contains(
                 "osi_packet"
         )) {
@@ -2696,34 +2629,6 @@ public abstract class NetworkDeviceBlockEntity
             return;
         }
 
-        if (shouldUseRawWifiTcpCarrier(
-                packet
-        )) {
-            CompoundTag body =
-                    TcpRawLiveCarrierCodec.encode(
-                            packet
-                    );
-
-            if (packet.sessionId != null
-                    && !packet.sessionId.isBlank()) {
-                wifiRawTcpSessions.add(
-                        packet.sessionId
-                );
-            }
-
-            wifiMac.sendData(
-                    macAddress,
-                    packet.targetMac,
-                    body,
-                    classifyAccessCategory(
-                            packet
-                    ),
-                    wifiSender()
-            );
-
-            return;
-        }
-
         if (protocolVm.bound()) {
             CompoundTag hostPayload =
                     new CompoundTag();
@@ -2838,31 +2743,6 @@ public abstract class NetworkDeviceBlockEntity
         );
 
         broadcastPayload(payload);
-    }
-
-    private boolean shouldUseRawWifiTcpCarrier(
-            OSINetworkPacket packet
-    ) {
-        if (packet == null
-                || !isWifiProfile()
-                || wifiMac.mode()
-                == WifiMode.LEGACY_DIRECT
-                || !"TCP".equalsIgnoreCase(
-                packet.applicationProtocol
-        )) {
-            return false;
-        }
-
-        if (wifiTcpExecutionMode
-                == ExecutionMode.CONFORMANCE) {
-            return true;
-        }
-
-        return packet.sessionId != null
-                && !packet.sessionId.isBlank()
-                && wifiRawTcpSessions.contains(
-                packet.sessionId
-        );
     }
 
     private long estimatePacketBits(
@@ -3810,11 +3690,6 @@ public abstract class NetworkDeviceBlockEntity
                 wifiLivePhyMode.name()
         );
 
-        tag.putString(
-                "WifiTcpExecutionMode",
-                wifiTcpExecutionMode.name()
-        );
-
         tag.put(
                 "WifiMac",
                 wifiMac.save()
@@ -3951,27 +3826,6 @@ public abstract class NetworkDeviceBlockEntity
                         WifiLivePhyMode.ANALYTICAL;
             }
         }
-
-        if (tag.contains(
-                "WifiTcpExecutionMode"
-        )) {
-            try {
-                wifiTcpExecutionMode =
-                        ExecutionMode.valueOf(
-                                tag.getString(
-                                        "WifiTcpExecutionMode"
-                                )
-                        );
-            } catch (Exception ignored) {
-                wifiTcpExecutionMode =
-                        ExecutionMode.SIMULATION;
-            }
-        } else {
-            wifiTcpExecutionMode =
-                    ExecutionMode.SIMULATION;
-        }
-
-        wifiRawTcpSessions.clear();
 
         if (tag.contains("WifiMac")) {
             wifiMac.load(
