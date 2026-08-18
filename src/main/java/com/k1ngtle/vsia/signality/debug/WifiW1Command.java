@@ -5,6 +5,8 @@ import com.k1ngtle.vsia.signality.engineering.wifi.baseband.WifiBasebandTestResu
 import com.k1ngtle.vsia.signality.engineering.wifi.baseband.WifiBasebandTestSuite;
 import com.k1ngtle.vsia.signality.engineering.wifi.baseband.WifiWaveformTestResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.baseband.WifiWaveformTestSuite;
+import com.k1ngtle.vsia.signality.engineering.wifi.ldpc.WifiLdpcTestResult;
+import com.k1ngtle.vsia.signality.engineering.wifi.ldpc.WifiLdpcTestSuite;
 import com.mojang.brigadier.CommandDispatcher;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
@@ -83,6 +85,17 @@ public final class WifiW1Command {
                                                         )
                                         )
                         )
+                        .then(
+                                Commands.literal(
+                                                "ldpc"
+                                        )
+                                        .executes(
+                                                context ->
+                                                        runLdpc(
+                                                                context.getSource()
+                                                        )
+                                        )
+                        )
         );
     }
 
@@ -108,6 +121,16 @@ public final class WifiW1Command {
         );
 
         runWaveformTests(
+                source,
+                counts
+        );
+
+        header(
+                source,
+                "Wi-Fi W1.3 QC-LDPC"
+        );
+
+        runLdpcTests(
                 source,
                 counts
         );
@@ -172,6 +195,48 @@ public final class WifiW1Command {
         return counts.failed == 0
                 ? 1
                 : 0;
+    }
+
+    private static int runLdpc(
+            CommandSourceStack source
+    ) {
+        Counts counts =
+                new Counts();
+
+        header(
+                source,
+                "Wi-Fi W1.3 QC-LDPC"
+        );
+
+        runLdpcTests(
+                source,
+                counts
+        );
+
+        summary(
+                source,
+                counts
+        );
+
+        return counts.failed == 0
+                ? 1
+                : 0;
+    }
+
+    private static void runLdpcTests(
+            CommandSourceStack source,
+            Counts counts
+    ) {
+        for (WifiLdpcTestResult result
+                : WifiLdpcTestSuite.runAll()) {
+            emit(
+                    source,
+                    result.id(),
+                    result.passed(),
+                    result.detail(),
+                    counts
+            );
+        }
     }
 
     private static void runBasebandTests(
