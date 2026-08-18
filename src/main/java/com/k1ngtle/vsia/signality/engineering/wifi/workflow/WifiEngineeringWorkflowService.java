@@ -38,6 +38,7 @@ public final class WifiEngineeringWorkflowService {
                         device.wifiAssociatedStations()
                 ),
                 device.wifiPendingDataTransmissions(),
+                device.wifiSecurityDiagnostic(),
                 status
         );
     }

@@ -72,6 +72,11 @@ public final class WifiEngineeringWorkflowSnapshotPacket {
         int pending =
                 buf.readVarInt();
 
+        String securityDiagnostic =
+                buf.readUtf(
+                        1024
+                );
+
         String status =
                 buf.readUtf(
                         1024
@@ -86,6 +91,7 @@ public final class WifiEngineeringWorkflowSnapshotPacket {
                         discovered,
                         associated,
                         pending,
+                        securityDiagnostic,
                         status
                 );
     }
@@ -114,6 +120,11 @@ public final class WifiEngineeringWorkflowSnapshotPacket {
 
         buf.writeVarInt(
                 snapshot.pendingDataTransmissions()
+        );
+
+        buf.writeUtf(
+                snapshot.securityDiagnostic(),
+                1024
         );
 
         buf.writeUtf(

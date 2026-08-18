@@ -1,6 +1,5 @@
 package com.k1ngtle.vsia.signality.engineering.wifi;
 
-import com.k1ngtle.vsia.signality.engineering.wifi.security.WifiHandshakeMicMaterial;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
 
@@ -141,9 +140,6 @@ public final class WifiMacController {
 
     private int currentMcsIndex;
 
-    private String lastSecurityDiagnostic =
-            "IDLE";
-
     public WifiMode mode() {
         return mode;
     }
@@ -154,10 +150,6 @@ public final class WifiMacController {
 
     public WifiSecurityState securityState() {
         return securityState;
-    }
-
-    public String lastSecurityDiagnostic() {
-        return lastSecurityDiagnostic;
     }
 
     public Collection<WifiNetworkRecord> discoveredNetworks() {
@@ -232,8 +224,6 @@ public final class WifiMacController {
     public void useLegacyDirectMode() {
         mode = WifiMode.LEGACY_DIRECT;
         resetStation();
-        lastSecurityDiagnostic =
-                "LEGACY_DIRECT";
         authenticated.clear();
         associated.clear();
         securedStations.clear();
@@ -249,8 +239,6 @@ public final class WifiMacController {
             String passphrase
     ) {
         mode = WifiMode.STATION;
-        lastSecurityDiagnostic =
-                "STATION_CONFIGURED";
         stationPassphrase =
                 passphrase == null
                         ? ""
@@ -283,8 +271,6 @@ public final class WifiMacController {
         }
 
         mode = WifiMode.ACCESS_POINT;
-        lastSecurityDiagnostic =
-                "AP_CONFIGURED";
         apSsid = ssid;
         apSecurity =
                 security == null || security.isBlank()
@@ -684,12 +670,6 @@ public final class WifiMacController {
             ).equals(
                     "EAPOL_KEY"
             )) {
-                sendAck(
-                        ownMac,
-                        frame,
-                        sender
-                );
-
                 handleEapolKey(
                         ownMac,
                         frame,
@@ -1051,18 +1031,6 @@ public final class WifiMacController {
             pendingTransmissions.remove(
                     pending.sequence()
             );
-
-            if (isEapolKeyBody(
-                    pending.body()
-            )) {
-                lastSecurityDiagnostic =
-                        "EAPOL_M"
-                                + pending.body()
-                                .getInt(
-                                        "message"
-                                )
-                                + "_RETRY_LIMIT";
-            }
 
             return;
         }
@@ -1636,15 +1604,14 @@ public final class WifiMacController {
                 anonce
         );
 
-        lastSecurityDiagnostic =
-                "AP_EAPOL_M1_READY";
-
-        queueEapolKeyFrame(
-                apMac,
-                stationMac,
-                apMac,
-                message,
-                sender
+        sender.send(
+                newFrame(
+                        FC_DATA,
+                        stationMac,
+                        apMac,
+                        apMac,
+                        message
+                )
         );
     }
 
@@ -1734,11 +1701,13 @@ public final class WifiMacController {
             );
 
             byte[] micData =
-                    WifiHandshakeMicMaterial.micData(
-                            "M2",
-                            selectedBssid,
-                            ownMac
-                    );
+                    ("M2|"
+                            + selectedBssid
+                            + "|"
+                            + ownMac)
+                            .getBytes(
+                                    StandardCharsets.UTF_8
+                            );
 
             message2.putByteArray(
                     "mic",
@@ -1751,15 +1720,14 @@ public final class WifiMacController {
             securityState =
                     WifiSecurityState.WAITING_MESSAGE_3;
 
-            lastSecurityDiagnostic =
-                    "STATION_EAPOL_M1_OK_M2_READY";
-
-            queueEapolKeyFrame(
-                    ownMac,
-                    selectedBssid,
-                    selectedBssid,
-                    message2,
-                    sender
+            sender.send(
+                    newFrame(
+                            FC_DATA,
+                            selectedBssid,
+                            ownMac,
+                            selectedBssid,
+                            message2
+                    )
             );
 
             return;
@@ -1769,11 +1737,13 @@ public final class WifiMacController {
                 && securityState
                 == WifiSecurityState.WAITING_MESSAGE_3) {
             byte[] micData =
-                    WifiHandshakeMicMaterial.micData(
-                            "M3",
-                            selectedBssid,
-                            ownMac
-                    );
+                    ("M3|"
+                            + selectedBssid
+                            + "|"
+                            + ownMac)
+                            .getBytes(
+                                    StandardCharsets.UTF_8
+                            );
 
             if (!WifiSecurityEngine.verifyMic(
                     stationPtk,
@@ -1787,9 +1757,6 @@ public final class WifiMacController {
 
                 stationState =
                         WifiStationState.DISCONNECTED;
-
-                lastSecurityDiagnostic =
-                        "STATION_EAPOL_M3_MIC_INVALID";
 
                 return;
             }
@@ -1808,11 +1775,13 @@ public final class WifiMacController {
             );
 
             byte[] message4Data =
-                    WifiHandshakeMicMaterial.micData(
-                            "M4",
-                            selectedBssid,
-                            ownMac
-                    );
+                    ("M4|"
+                            + selectedBssid
+                            + "|"
+                            + ownMac)
+                            .getBytes(
+                                    StandardCharsets.UTF_8
+                            );
 
             message4.putByteArray(
                     "mic",
@@ -1828,15 +1797,14 @@ public final class WifiMacController {
             stationState =
                     WifiStationState.ASSOCIATED;
 
-            lastSecurityDiagnostic =
-                    "STATION_EAPOL_M3_OK_M4_READY";
-
-            queueEapolKeyFrame(
-                    ownMac,
-                    selectedBssid,
-                    selectedBssid,
-                    message4,
-                    sender
+            sender.send(
+                    newFrame(
+                            FC_DATA,
+                            selectedBssid,
+                            ownMac,
+                            selectedBssid,
+                            message4
+                    )
             );
         }
     }
@@ -1865,8 +1833,6 @@ public final class WifiMacController {
                     );
 
             if (anonce == null) {
-                lastSecurityDiagnostic =
-                        "AP_EAPOL_M2_NO_ANONCE";
                 return;
             }
 
@@ -1891,11 +1857,13 @@ public final class WifiMacController {
                     );
 
             byte[] micData =
-                    WifiHandshakeMicMaterial.micData(
-                            "M2",
-                            ownMac,
-                            station
-                    );
+                    ("M2|"
+                            + ownMac
+                            + "|"
+                            + station)
+                            .getBytes(
+                                    StandardCharsets.UTF_8
+                            );
 
             if (!WifiSecurityEngine.verifyMic(
                     ptk,
@@ -1904,8 +1872,6 @@ public final class WifiMacController {
                             "mic"
                     )
             )) {
-                lastSecurityDiagnostic =
-                        "AP_EAPOL_M2_MIC_INVALID";
                 return;
             }
 
@@ -1928,11 +1894,13 @@ public final class WifiMacController {
             );
 
             byte[] message3Data =
-                    WifiHandshakeMicMaterial.micData(
-                            "M3",
-                            ownMac,
-                            station
-                    );
+                    ("M3|"
+                            + ownMac
+                            + "|"
+                            + station)
+                            .getBytes(
+                                    StandardCharsets.UTF_8
+                            );
 
             message3.putByteArray(
                     "mic",
@@ -1942,15 +1910,14 @@ public final class WifiMacController {
                     )
             );
 
-            lastSecurityDiagnostic =
-                    "AP_EAPOL_M2_OK_M3_READY";
-
-            queueEapolKeyFrame(
-                    ownMac,
-                    station,
-                    ownMac,
-                    message3,
-                    sender
+            sender.send(
+                    newFrame(
+                            FC_DATA,
+                            station,
+                            ownMac,
+                            ownMac,
+                            message3
+                    )
             );
 
             return;
@@ -1963,17 +1930,17 @@ public final class WifiMacController {
                     );
 
             if (ptk == null) {
-                lastSecurityDiagnostic =
-                        "AP_EAPOL_M4_NO_PTK";
                 return;
             }
 
             byte[] micData =
-                    WifiHandshakeMicMaterial.micData(
-                            "M4",
-                            ownMac,
-                            station
-                    );
+                    ("M4|"
+                            + ownMac
+                            + "|"
+                            + station)
+                            .getBytes(
+                                    StandardCharsets.UTF_8
+                            );
 
             if (WifiSecurityEngine.verifyMic(
                     ptk,
@@ -1989,60 +1956,8 @@ public final class WifiMacController {
                 pendingAnonceByStation.remove(
                         key
                 );
-
-                lastSecurityDiagnostic =
-                        "AP_EAPOL_M4_OK_SECURED";
-            } else {
-                lastSecurityDiagnostic =
-                        "AP_EAPOL_M4_MIC_INVALID";
             }
         }
-    }
-
-    private boolean queueEapolKeyFrame(
-            String sourceMac,
-            String destinationMac,
-            String bssid,
-            CompoundTag body,
-            Sender sender
-    ) {
-        int message =
-                body.getInt(
-                        "message"
-                );
-
-        boolean queued =
-                transmitWithRetry(
-                        FC_DATA,
-                        destinationMac,
-                        sourceMac,
-                        bssid,
-                        body,
-                        WifiAccessCategory.BEST_EFFORT,
-                        sender
-                );
-
-        lastSecurityDiagnostic =
-                queued
-                        ? "EAPOL_M"
-                        + message
-                        + "_QUEUED"
-                        : "EAPOL_M"
-                        + message
-                        + "_QUEUE_FAILED";
-
-        return queued;
-    }
-
-    private boolean isEapolKeyBody(
-            CompoundTag body
-    ) {
-        return body != null
-                && "EAPOL_KEY".equals(
-                body.getString(
-                        "wifi_control"
-                )
-        );
     }
 
     private CompoundTag protectStationData(
@@ -2396,11 +2311,6 @@ public final class WifiMacController {
         stationAnonce = null;
         stationSnonce = null;
         stationPtk = null;
-
-        if (mode == WifiMode.STATION) {
-            lastSecurityDiagnostic =
-                    "STATION_RESET";
-        }
     }
 
     private static boolean isOpenSecurity(

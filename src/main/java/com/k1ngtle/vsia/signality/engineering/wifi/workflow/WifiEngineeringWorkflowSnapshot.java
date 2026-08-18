@@ -14,6 +14,7 @@ public record WifiEngineeringWorkflowSnapshot(
         List<String> discoveredSsids,
         List<String> associatedStations,
         int pendingDataTransmissions,
+        String securityDiagnostic,
         String status
 ) {
     public WifiEngineeringWorkflowSnapshot {
@@ -31,6 +32,11 @@ public record WifiEngineeringWorkflowSnapshot(
                 associatedStations == null
                         ? List.of()
                         : List.copyOf(associatedStations);
+
+        securityDiagnostic =
+                securityDiagnostic == null
+                        ? ""
+                        : securityDiagnostic;
 
         status =
                 status == null

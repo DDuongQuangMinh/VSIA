@@ -410,10 +410,6 @@ public abstract class NetworkDeviceBlockEntity
         return wifiMac.securityState();
     }
 
-    public String wifiSecurityDiagnostic() {
-        return wifiMac.lastSecurityDiagnostic();
-    }
-
     public int wifiMcsIndex() {
         return wifiMac.currentMcsIndex();
     }

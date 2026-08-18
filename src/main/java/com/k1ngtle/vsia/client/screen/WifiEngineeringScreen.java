@@ -1242,6 +1242,12 @@ public final class WifiEngineeringScreen
                         + " | pending DATA "
                         + workflowSnapshot
                         .pendingDataTransmissions(),
+                "Security diag "
+                        + truncate(
+                        workflowSnapshot
+                                .securityDiagnostic(),
+                        48
+                ),
                 truncate(
                         workflowStatus,
                         64
