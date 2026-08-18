@@ -6,6 +6,8 @@ import com.k1ngtle.vsia.network.wifi.WifiEngineeringSnapshotRequestPacket;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringTestLinkPacket;
 import com.k1ngtle.vsia.network.wifi.WifiPacketTraceRequestPacket;
 import com.k1ngtle.vsia.network.wifi.WifiPacketTraceClearPacket;
+import com.k1ngtle.vsia.network.wifi.WifiEngineeringWorkflowRequestPacket;
+import com.k1ngtle.vsia.network.wifi.WifiEngineeringWorkflowActionPacket;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringHistory;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringSample;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringSnapshot;
@@ -14,6 +16,8 @@ import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringTes
 import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyMode;
 import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketTraceEvent;
 import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketTraceFormatter;
+import com.k1ngtle.vsia.signality.engineering.wifi.workflow.WifiEngineeringWorkflowAction;
+import com.k1ngtle.vsia.signality.engineering.wifi.workflow.WifiEngineeringWorkflowSnapshot;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -54,6 +58,11 @@ public final class WifiEngineeringScreen
 
     private Button viewButton;
 
+    private WifiEngineeringWorkflowSnapshot workflowSnapshot;
+
+    private String workflowStatus =
+            "Configure one endpoint as AP and another as STATION";
+
     public WifiEngineeringScreen(
             BlockPos targetPos,
             WifiEngineeringSnapshot snapshot
@@ -79,6 +88,9 @@ public final class WifiEngineeringScreen
     protected void init() {
         int buttonY =
                 height - 30;
+
+        int workflowY =
+                height - 54;
 
         modeButton =
                 addRenderableWidget(
@@ -179,6 +191,62 @@ public final class WifiEngineeringScreen
                         )
                         .build()
         );
+
+        addWorkflowButton(
+                "Make AP",
+                12,
+                workflowY,
+                78,
+                WifiEngineeringWorkflowAction.CONFIGURE_AP
+        );
+
+        addWorkflowButton(
+                "Station",
+                96,
+                workflowY,
+                78,
+                WifiEngineeringWorkflowAction.CONFIGURE_STATION
+        );
+
+        addWorkflowButton(
+                "Beacon",
+                180,
+                workflowY,
+                72,
+                WifiEngineeringWorkflowAction.SEND_BEACON
+        );
+
+        addWorkflowButton(
+                "Scan",
+                258,
+                workflowY,
+                64,
+                WifiEngineeringWorkflowAction.SCAN
+        );
+
+        addWorkflowButton(
+                "Connect",
+                328,
+                workflowY,
+                78,
+                WifiEngineeringWorkflowAction.CONNECT_FIRST
+        );
+
+        addWorkflowButton(
+                "Send DATA",
+                412,
+                workflowY,
+                90,
+                WifiEngineeringWorkflowAction.SEND_DATA
+        );
+
+        addWorkflowButton(
+                "Legacy",
+                508,
+                workflowY,
+                72,
+                WifiEngineeringWorkflowAction.LEGACY_DIRECT
+        );
     }
 
     @Override
@@ -250,6 +318,21 @@ public final class WifiEngineeringScreen
                         );
     }
 
+    public void acceptWorkflowSnapshot(
+            WifiEngineeringWorkflowSnapshot value
+    ) {
+        workflowSnapshot =
+                value;
+
+        if (value != null
+                && value.status() != null
+                && !value.status()
+                .isBlank()) {
+            workflowStatus =
+                    value.status();
+        }
+    }
+
     @Override
     public void render(
             GuiGraphics graphics,
@@ -277,7 +360,7 @@ public final class WifiEngineeringScreen
                 left - 4,
                 top - 4,
                 left + panelWidth,
-                height - 42,
+                height - 66,
                 0xCC101820
         );
 
@@ -434,17 +517,26 @@ public final class WifiEngineeringScreen
                         )
                 );
 
+        y =
+                drawSection(
+                        graphics,
+                        left,
+                        y,
+                        "TEST LINK",
+                        List.of(
+                                truncate(
+                                        testLinkStatus,
+                                        64
+                                )
+                        )
+                );
+
         drawSection(
                 graphics,
                 left,
                 y,
-                "TEST LINK",
-                List.of(
-                        truncate(
-                                testLinkStatus,
-                                64
-                        )
-                )
+                "WIFI WORKFLOW",
+                workflowLines()
         );
 
         int chartLeft =
@@ -458,7 +550,7 @@ public final class WifiEngineeringScreen
                     top;
 
             int chartBottom =
-                    height - 44;
+                    height - 68;
 
             drawAnalyzer(
                     graphics,
@@ -1045,6 +1137,118 @@ public final class WifiEngineeringScreen
                 / 70;
     }
 
+    private void addWorkflowButton(
+            String label,
+            int x,
+            int y,
+            int width,
+            WifiEngineeringWorkflowAction action
+    ) {
+        addRenderableWidget(
+                Button.builder(
+                                Component.literal(
+                                        label
+                                ),
+                                button ->
+                                        sendWorkflowAction(
+                                                action
+                                        )
+                        )
+                        .bounds(
+                                x,
+                                y,
+                                width,
+                                20
+                        )
+                        .build()
+        );
+    }
+
+    private void sendWorkflowAction(
+            WifiEngineeringWorkflowAction action
+    ) {
+        workflowStatus =
+                "Requesting "
+                        + action
+                        + "...";
+
+        VsiaNetwork.sendToServer(
+                new WifiEngineeringWorkflowActionPacket(
+                        targetPos,
+                        action
+                )
+        );
+    }
+
+    private List<String> workflowLines() {
+        if (workflowSnapshot == null) {
+            return List.of(
+                    "MAC: n/a",
+                    "Discovered APs: n/a | Associated: n/a",
+                    truncate(
+                            workflowStatus,
+                            64
+                    )
+            );
+        }
+
+        String discovered =
+                workflowSnapshot
+                        .discoveredSsids()
+                        .isEmpty()
+                        ? "none"
+                        : String.join(
+                                ", ",
+                                workflowSnapshot
+                                        .discoveredSsids()
+                                        .stream()
+                                        .limit(3)
+                                        .toList()
+                        );
+
+        String associated =
+                workflowSnapshot
+                        .associatedStations()
+                        .isEmpty()
+                        ? "none"
+                        : String.join(
+                                ", ",
+                                workflowSnapshot
+                                        .associatedStations()
+                                        .stream()
+                                        .limit(2)
+                                        .toList()
+                        );
+
+        return List.of(
+                "MAC "
+                        + workflowSnapshot.macAddress()
+                        + " | "
+                        + workflowSnapshot.mode(),
+                "State "
+                        + workflowSnapshot.stationState()
+                        + " | security "
+                        + workflowSnapshot.securityState(),
+                "APs "
+                        + truncate(
+                        discovered,
+                        44
+                ),
+                "Associated "
+                        + truncate(
+                        associated,
+                        30
+                )
+                        + " | pending DATA "
+                        + workflowSnapshot
+                        .pendingDataTransmissions(),
+                truncate(
+                        workflowStatus,
+                        64
+                )
+        );
+    }
+
     private void toggleAnalyzerView() {
         packetView =
                 !packetView;
@@ -1115,6 +1319,12 @@ public final class WifiEngineeringScreen
         );
 
         requestPacketTrace();
+
+        VsiaNetwork.sendToServer(
+                new WifiEngineeringWorkflowRequestPacket(
+                        targetPos
+                )
+        );
     }
 
     private Component viewText() {

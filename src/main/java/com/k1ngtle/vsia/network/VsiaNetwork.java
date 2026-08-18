@@ -9,6 +9,9 @@ import com.k1ngtle.vsia.network.wifi.WifiEngineeringTestLinkResultPacket;
 import com.k1ngtle.vsia.network.wifi.WifiPacketTraceRequestPacket;
 import com.k1ngtle.vsia.network.wifi.WifiPacketTraceSnapshotPacket;
 import com.k1ngtle.vsia.network.wifi.WifiPacketTraceClearPacket;
+import com.k1ngtle.vsia.network.wifi.WifiEngineeringWorkflowRequestPacket;
+import com.k1ngtle.vsia.network.wifi.WifiEngineeringWorkflowActionPacket;
+import com.k1ngtle.vsia.network.wifi.WifiEngineeringWorkflowSnapshotPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkDirection;
@@ -130,6 +133,36 @@ public class VsiaNetwork {
                 .decoder(WifiPacketTraceClearPacket::new)
                 .encoder(WifiPacketTraceClearPacket::toBytes)
                 .consumerMainThread(WifiPacketTraceClearPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        WifiEngineeringWorkflowRequestPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
+                .decoder(WifiEngineeringWorkflowRequestPacket::new)
+                .encoder(WifiEngineeringWorkflowRequestPacket::toBytes)
+                .consumerMainThread(WifiEngineeringWorkflowRequestPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        WifiEngineeringWorkflowActionPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
+                .decoder(WifiEngineeringWorkflowActionPacket::new)
+                .encoder(WifiEngineeringWorkflowActionPacket::toBytes)
+                .consumerMainThread(WifiEngineeringWorkflowActionPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        WifiEngineeringWorkflowSnapshotPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_CLIENT
+                )
+                .decoder(WifiEngineeringWorkflowSnapshotPacket::new)
+                .encoder(WifiEngineeringWorkflowSnapshotPacket::toBytes)
+                .consumerMainThread(WifiEngineeringWorkflowSnapshotPacket::handle)
                 .add();
     }
 

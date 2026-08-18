@@ -705,6 +705,119 @@ public abstract class NetworkDeviceBlockEntity
     public Collection<WifiNetworkRecord> discoveredWifiNetworks() {
         return wifiMac.discoveredNetworks();
     }
+    public String wifiMacAddress() {
+        return macAddress;
+    }
+
+    public java.util.Set<String> wifiAssociatedStations() {
+        return wifiMac.associatedStations();
+    }
+
+    public int wifiPendingDataTransmissions() {
+        return wifiMac.pendingDataTransmissions();
+    }
+
+    public boolean sendWifiEngineeringAssociatedData(
+            int requestedBytes
+    ) {
+        if (!isWifiProfile()
+                || wifiMac.mode()
+                == WifiMode.LEGACY_DIRECT) {
+            return false;
+        }
+
+        int dataBytes =
+                Math.max(
+                        64,
+                        Math.min(
+                                4096,
+                                requestedBytes
+                        )
+                );
+
+        String targetMac;
+
+        if (wifiMac.mode()
+                == WifiMode.STATION) {
+            if (!wifiMac.isAssociated()) {
+                return false;
+            }
+
+            targetMac =
+                    WifiMacController.BROADCAST;
+        } else {
+            targetMac =
+                    wifiMac.associatedStations()
+                            .stream()
+                            .findFirst()
+                            .orElse(
+                                    ""
+                            );
+
+            if (targetMac.isBlank()) {
+                return false;
+            }
+        }
+
+        CompoundTag body =
+                new CompoundTag();
+
+        body.putString(
+                "wifi_engineering_control",
+                "W1.8_ASSOCIATED_DATA"
+        );
+
+        body.putInt(
+                "wifi_engineering_length",
+                dataBytes
+        );
+
+        byte[] payload =
+                new byte[
+                        dataBytes
+                ];
+
+        byte[] signature =
+                "VSIA-W1.8-ASSOCIATED-DATA"
+                        .getBytes(
+                                java.nio.charset.StandardCharsets.UTF_8
+                        );
+
+        System.arraycopy(
+                signature,
+                0,
+                payload,
+                0,
+                Math.min(
+                        signature.length,
+                        payload.length
+                )
+        );
+
+        for (int i = signature.length;
+             i < payload.length;
+             i++) {
+            payload[i] =
+                    (byte) (
+                            i * 17
+                                    + wifiEngineeringTestSequence
+                    );
+        }
+
+        body.putByteArray(
+                "wifi_engineering_payload",
+                payload
+        );
+
+        return wifiMac.sendData(
+                macAddress,
+                targetMac,
+                body,
+                WifiAccessCategory.BEST_EFFORT,
+                wifiSender()
+        );
+    }
+
 
     public CellularMode cellularMode() {
         return cellularRan.mode();
