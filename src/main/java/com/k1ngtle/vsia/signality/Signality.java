@@ -10,6 +10,7 @@ import com.k1ngtle.vsia.signality.debug.SignalityCommand;
 import com.k1ngtle.vsia.signality.debug.SignalityTestCommand;
 import com.k1ngtle.vsia.signality.engineering.channel.RfDiscreteEventScheduler;
 import com.k1ngtle.vsia.signality.engineering.channel.RfTransmissionRegistry;
+import com.k1ngtle.vsia.signality.engineering.channel.RfKinematicTracker;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiMacTimingScheduler;
 import com.k1ngtle.vsia.signality.debug.SignalityLabCommand;
 import com.k1ngtle.vsia.signality.engineering.vm.ProtocolProgramReloadListener;
@@ -151,6 +152,7 @@ public final class Signality {
       ProtocolVmScheduler.clear();
       RfDiscreteEventScheduler.clear();
       RfTransmissionRegistry.clear();
+      RfKinematicTracker.clear();
       WifiMacTimingScheduler.clear();
    }
 

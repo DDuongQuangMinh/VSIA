@@ -12,6 +12,12 @@ import com.k1ngtle.vsia.signality.engineering.channel.RfChannelSettings;
 import com.k1ngtle.vsia.signality.engineering.channel.RfChannelEnvironment;
 import com.k1ngtle.vsia.signality.engineering.channel.RfDiscreteEventScheduler;
 import com.k1ngtle.vsia.signality.engineering.channel.RfMediumState;
+import com.k1ngtle.vsia.signality.engineering.channel.RfAntennaPattern;
+import com.k1ngtle.vsia.signality.engineering.channel.RfAntennaState;
+import com.k1ngtle.vsia.signality.engineering.channel.RfAntennaTransform;
+import com.k1ngtle.vsia.signality.engineering.channel.VsWorldPoseResolver;
+import com.k1ngtle.vsia.signality.engineering.channel.RfKinematicTracker;
+import com.k1ngtle.vsia.signality.engineering.channel.RfPolarization;
 import com.k1ngtle.vsia.signality.engineering.channel.ScheduledRfTransmission;
 import com.k1ngtle.vsia.signality.engineering.cellular.CellRecord;
 import com.k1ngtle.vsia.signality.engineering.cellular.CellularMode;
@@ -84,6 +90,9 @@ public abstract class NetworkDeviceBlockEntity
     private PhyResult lastPhyResult;
 
     private RfChannelAssessment lastRfChannelAssessment;
+
+    private RfAntennaState rfAntennaState =
+            RfAntennaState.isotropic();
 
     private final WifiMacController wifiMac =
             new WifiMacController();
@@ -164,6 +173,10 @@ public abstract class NetworkDeviceBlockEntity
         SignalBus.unregisterReceiver(signalId);
         SignalBus.unregisterTransmitter(signalId);
 
+        RfKinematicTracker.remove(
+                signalId
+        );
+
         super.setRemoved();
     }
 
@@ -177,10 +190,37 @@ public abstract class NetworkDeviceBlockEntity
         return (ServerLevel) level;
     }
 
+    private Vec3 localRfPosition() {
+        return Vec3.atCenterOf(
+                worldPosition
+        ).add(
+                0.0,
+                0.5,
+                0.0
+        );
+    }
+
     @Override
     public Vec3 positionWorld() {
-        return Vec3.atCenterOf(worldPosition)
-                .add(0.0, 0.5, 0.0);
+        Vec3 local =
+                localRfPosition();
+
+        if (level == null) {
+            return local;
+        }
+
+        return VsWorldPoseResolver.toWorld(
+                level,
+                local
+        );
+    }
+
+    public RfAntennaState worldRfAntennaState() {
+        return RfAntennaTransform.toWorld(
+                level,
+                localRfPosition(),
+                rfAntennaState
+        );
     }
 
     public NetworkProfile networkProfile() {
@@ -204,6 +244,53 @@ public abstract class NetworkDeviceBlockEntity
         return lastRfChannelAssessment;
     }
 
+    public RfAntennaState rfAntennaState() {
+        return rfAntennaState;
+    }
+
+    public void configureRfAntenna(
+            RfAntennaPattern pattern,
+            RfPolarization polarization,
+            Vec3 boresight,
+            double peakGainDbi,
+            double horizontalBeamwidthDeg,
+            double verticalBeamwidthDeg,
+            double frontToBackRatioDb
+    ) {
+        rfAntennaState =
+                new RfAntennaState(
+                        pattern,
+                        polarization,
+                        boresight,
+                        peakGainDbi,
+                        horizontalBeamwidthDeg,
+                        verticalBeamwidthDeg,
+                        frontToBackRatioDb
+                );
+
+        setChanged();
+    }
+
+    public void resetRfAntenna() {
+        rfAntennaState =
+                RfAntennaState.isotropic();
+
+        setChanged();
+    }
+
+    public Vec3 rfVelocityMetersPerSecond() {
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return Vec3.ZERO;
+        }
+
+        return RfKinematicTracker
+                .updateAndGetVelocityMetersPerSecond(
+                        signalId,
+                        positionWorld(),
+                        serverLevel.getGameTime()
+                );
+    }
+
     public RfMediumState senseRfMedium(
             double busyThresholdDbm
     ) {
@@ -221,7 +308,8 @@ public abstract class NetworkDeviceBlockEntity
                 positionWorld(),
                 activeFrequencyHz,
                 tuningBandwidthHz(),
-                busyThresholdDbm
+                busyThresholdDbm,
+                worldRfAntennaState()
         );
     }
 
@@ -984,7 +1072,9 @@ public abstract class NetworkDeviceBlockEntity
                             receivedPowerWatts,
                             signal.frequencyHz(),
                             receiveProfile.bandwidthHz(),
-                            receiveProfile.receiverNoiseFigureDb()
+                            receiveProfile.receiverNoiseFigureDb(),
+                            worldRfAntennaState(),
+                            rfVelocityMetersPerSecond()
                     );
 
             phyEvaluationPowerWatts =
@@ -1897,6 +1987,13 @@ public abstract class NetworkDeviceBlockEntity
                             profile.bandwidthHz(),
                             profile.transmitPowerWatts(),
                             profile.antennaGain(),
+                            worldRfAntennaState(),
+                            RfKinematicTracker
+                                    .updateAndGetVelocityMetersPerSecond(
+                                            signalId,
+                                            positionWorld(),
+                                            currentTick
+                                    ),
                             startTick,
                             startTick
                                     + airtimeTicks
@@ -1948,6 +2045,59 @@ public abstract class NetworkDeviceBlockEntity
         tag.putDouble(
                 "ActiveFrequencyHz",
                 activeFrequencyHz
+        );
+
+        CompoundTag antennaTag =
+                new CompoundTag();
+
+        antennaTag.putString(
+                "Pattern",
+                rfAntennaState.pattern().name()
+        );
+
+        antennaTag.putString(
+                "Polarization",
+                rfAntennaState.polarization().name()
+        );
+
+        antennaTag.putDouble(
+                "BoresightX",
+                rfAntennaState.boresight().x
+        );
+
+        antennaTag.putDouble(
+                "BoresightY",
+                rfAntennaState.boresight().y
+        );
+
+        antennaTag.putDouble(
+                "BoresightZ",
+                rfAntennaState.boresight().z
+        );
+
+        antennaTag.putDouble(
+                "PeakGainDbi",
+                rfAntennaState.peakGainDbi()
+        );
+
+        antennaTag.putDouble(
+                "HorizontalBeamwidthDeg",
+                rfAntennaState.horizontalBeamwidthDeg()
+        );
+
+        antennaTag.putDouble(
+                "VerticalBeamwidthDeg",
+                rfAntennaState.verticalBeamwidthDeg()
+        );
+
+        antennaTag.putDouble(
+                "FrontToBackRatioDb",
+                rfAntennaState.frontToBackRatioDb()
+        );
+
+        tag.put(
+                "RfAntenna",
+                antennaTag
         );
 
         tag.put(
@@ -2020,6 +2170,55 @@ public abstract class NetworkDeviceBlockEntity
                     tag.getDouble(
                             "ActiveFrequencyHz"
                     );
+        }
+
+        if (tag.contains("RfAntenna")) {
+            CompoundTag antennaTag =
+                    tag.getCompound(
+                            "RfAntenna"
+                    );
+
+            try {
+                rfAntennaState =
+                        new RfAntennaState(
+                                RfAntennaPattern.valueOf(
+                                        antennaTag.getString(
+                                                "Pattern"
+                                        )
+                                ),
+                                RfPolarization.valueOf(
+                                        antennaTag.getString(
+                                                "Polarization"
+                                        )
+                                ),
+                                new Vec3(
+                                        antennaTag.getDouble(
+                                                "BoresightX"
+                                        ),
+                                        antennaTag.getDouble(
+                                                "BoresightY"
+                                        ),
+                                        antennaTag.getDouble(
+                                                "BoresightZ"
+                                        )
+                                ),
+                                antennaTag.getDouble(
+                                        "PeakGainDbi"
+                                ),
+                                antennaTag.getDouble(
+                                        "HorizontalBeamwidthDeg"
+                                ),
+                                antennaTag.getDouble(
+                                        "VerticalBeamwidthDeg"
+                                ),
+                                antennaTag.getDouble(
+                                        "FrontToBackRatioDb"
+                                )
+                        );
+            } catch (Exception ignored) {
+                rfAntennaState =
+                        RfAntennaState.isotropic();
+            }
         }
 
         if (tag.contains("WifiMac")) {

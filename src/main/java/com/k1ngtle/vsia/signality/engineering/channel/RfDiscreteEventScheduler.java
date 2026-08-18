@@ -100,6 +100,24 @@ public final class RfDiscreteEventScheduler {
             double receiverBandwidthHz,
             double busyThresholdDbm
     ) {
+        return sense(
+                level,
+                receiverPosition,
+                receiverCenterFrequencyHz,
+                receiverBandwidthHz,
+                busyThresholdDbm,
+                RfAntennaState.isotropic()
+        );
+    }
+
+    public static RfMediumState sense(
+            ServerLevel level,
+            Vec3 receiverPosition,
+            double receiverCenterFrequencyHz,
+            double receiverBandwidthHz,
+            double busyThresholdDbm,
+            RfAntennaState receiverAntenna
+    ) {
         long tick =
                 level.getGameTime();
 
@@ -182,7 +200,8 @@ public final class RfDiscreteEventScheduler {
                     estimateReceivedPowerWatts(
                             level,
                             transmission,
-                            receiverPosition
+                            receiverPosition,
+                            receiverAntenna
                     );
 
             energyWatts +=
@@ -266,7 +285,8 @@ public final class RfDiscreteEventScheduler {
     private static double estimateReceivedPowerWatts(
             ServerLevel level,
             ActiveRfTransmission transmission,
-            Vec3 receiverPosition
+            Vec3 receiverPosition,
+            RfAntennaState receiverAntenna
     ) {
         double distance =
                 Math.max(
@@ -292,9 +312,54 @@ public final class RfDiscreteEventScheduler {
                         )
                 );
 
+        Vec3 txToRx =
+                receiverPosition.subtract(
+                        transmission.transmitterPosition()
+                );
+
+        Vec3 directionTxToRx =
+                txToRx.lengthSqr() < 1.0E-18
+                        ? new Vec3(
+                        0.0,
+                        0.0,
+                        1.0
+                )
+                        : txToRx.normalize();
+
+        Vec3 directionRxToTx =
+                directionTxToRx.scale(
+                        -1.0
+                );
+
         double antennaGainDbi =
-                linearGainToDbi(
+                transmission.antennaState() == null
+                        || (
+                        transmission.antennaState().pattern()
+                                == RfAntennaPattern.ISOTROPIC
+                                && Math.abs(
+                                transmission.antennaState().peakGainDbi()
+                        ) < 1.0E-12
+                                && transmission.antennaState().polarization()
+                                == RfPolarization.UNKNOWN
+                )
+                        ? linearGainToDbi(
                         transmission.antennaGainLinear()
+                )
+                        : AntennaPatternModel.gainTowardDbi(
+                        transmission.antennaState(),
+                        directionTxToRx
+                );
+
+        double receiverGainDbi =
+                AntennaPatternModel.gainTowardDbi(
+                        receiverAntenna,
+                        directionRxToTx
+                );
+
+        double polarizationLossDb =
+                PolarizationLossModel.mismatchLossDb(
+                        transmission.antennaState().polarization(),
+                        receiverAntenna.polarization()
                 );
 
         double materialLossDb =
@@ -342,6 +407,8 @@ public final class RfDiscreteEventScheduler {
         double receivedDbm =
                 txPowerDbm
                         + antennaGainDbi
+                        + receiverGainDbi
+                        - polarizationLossDb
                         - pathLossDb
                         - materialLossDb
                         + shadowingDb

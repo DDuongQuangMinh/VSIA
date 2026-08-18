@@ -4,6 +4,13 @@ import com.k1ngtle.vsia.signality.engineering.math.RfMath;
 import com.k1ngtle.vsia.signality.engineering.channel.DopplerModel;
 import com.k1ngtle.vsia.signality.engineering.channel.SpectralOverlap;
 import com.k1ngtle.vsia.signality.engineering.channel.TemporalOverlap;
+import com.k1ngtle.vsia.signality.engineering.channel.AntennaPatternModel;
+import com.k1ngtle.vsia.signality.engineering.channel.OfdmDopplerModel;
+import com.k1ngtle.vsia.signality.engineering.channel.PolarizationLossModel;
+import com.k1ngtle.vsia.signality.engineering.channel.RfAntennaPattern;
+import com.k1ngtle.vsia.signality.engineering.channel.RfAntennaState;
+import com.k1ngtle.vsia.signality.engineering.channel.RfPolarization;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -162,6 +169,90 @@ public final class EngineeringLabSuite {
                         ) - 0.2
                 ) < 1.0E-12,
                 "One overlapping tick out of five desired ticks must equal 20%"
+        );
+
+        RfAntennaState directional =
+                new RfAntennaState(
+                        RfAntennaPattern.YAGI,
+                        RfPolarization.VERTICAL,
+                        new Vec3(
+                                0.0,
+                                0.0,
+                                1.0
+                        ),
+                        10.0,
+                        60.0,
+                        60.0,
+                        20.0
+                );
+
+        add(
+                results,
+                "antenna-forward-gain-exceeds-back",
+                AntennaPatternModel.gainTowardDbi(
+                        directional,
+                        new Vec3(
+                                0.0,
+                                0.0,
+                                1.0
+                        )
+                )
+                        > AntennaPatternModel.gainTowardDbi(
+                        directional,
+                        new Vec3(
+                                0.0,
+                                0.0,
+                                -1.0
+                        )
+                ),
+                "Directional antenna gain must be larger in the boresight direction"
+        );
+
+        add(
+                results,
+                "polarization-linear-orthogonal-loss",
+                Math.abs(
+                        PolarizationLossModel.mismatchLossDb(
+                                RfPolarization.VERTICAL,
+                                RfPolarization.HORIZONTAL
+                        ) - 20.0
+                ) < 1.0E-12,
+                "Initial vertical/horizontal mismatch calibration is 20 dB"
+        );
+
+        add(
+                results,
+                "polarization-linear-circular-loss",
+                Math.abs(
+                        PolarizationLossModel.mismatchLossDb(
+                                RfPolarization.VERTICAL,
+                                RfPolarization.RHCP
+                        ) - 3.0
+                ) < 1.0E-12,
+                "Idealized linear/circular polarization mismatch is 3 dB"
+        );
+
+        add(
+                results,
+                "ofdm-doppler-zero-offset",
+                Math.abs(
+                        OfdmDopplerModel.assess(
+                                0.0,
+                                15_000.0
+                        ).desiredSubcarrierPowerFraction()
+                                - 1.0
+                ) < 1.0E-12,
+                "Zero Doppler must preserve full desired OFDM subcarrier power"
+        );
+
+        add(
+                results,
+                "doppler-approach-positive",
+                DopplerModel.shiftHz(
+                        6.0E9,
+                        100.0
+                ) > 0.0,
+                "Positive radial approach velocity must produce positive frequency shift"
         );
 
         add(

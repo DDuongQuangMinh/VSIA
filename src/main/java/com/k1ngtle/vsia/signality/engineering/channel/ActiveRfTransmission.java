@@ -13,6 +13,8 @@ public record ActiveRfTransmission(
         double bandwidthHz,
         double transmitPowerWatts,
         double antennaGainLinear,
+        RfAntennaState antennaState,
+        Vec3 transmitterVelocityMetersPerSecond,
         long startTick,
         long endTick,
         long payloadBits
@@ -40,6 +42,16 @@ public record ActiveRfTransmission(
             );
         }
 
+        antennaState =
+                antennaState == null
+                        ? RfAntennaState.isotropic()
+                        : antennaState;
+
+        transmitterVelocityMetersPerSecond =
+                transmitterVelocityMetersPerSecond == null
+                        ? Vec3.ZERO
+                        : transmitterVelocityMetersPerSecond;
+
         if (centerFrequencyHz <= 0.0) {
             throw new IllegalArgumentException(
                     "centerFrequencyHz"
@@ -51,6 +63,36 @@ public record ActiveRfTransmission(
                     "bandwidthHz"
             );
         }
+    }
+
+    public ActiveRfTransmission(
+            UUID transmissionId,
+            UUID transmitterId,
+            String dimensionId,
+            Vec3 transmitterPosition,
+            double centerFrequencyHz,
+            double bandwidthHz,
+            double transmitPowerWatts,
+            double antennaGainLinear,
+            long startTick,
+            long endTick,
+            long payloadBits
+    ) {
+        this(
+                transmissionId,
+                transmitterId,
+                dimensionId,
+                transmitterPosition,
+                centerFrequencyHz,
+                bandwidthHz,
+                transmitPowerWatts,
+                antennaGainLinear,
+                RfAntennaState.isotropic(),
+                Vec3.ZERO,
+                startTick,
+                endTick,
+                payloadBits
+        );
     }
 
     public boolean activeAt(

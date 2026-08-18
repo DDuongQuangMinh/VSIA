@@ -21,13 +21,34 @@ public final class RfChannelEnvironment {
             double receiverBandwidthHz,
             double receiverNoiseFigureDb
     ) {
-        long tick =
-                level.getGameTime();
+        return assess(
+                level,
+                receiverId,
+                desiredTransmissionId,
+                receiverPosition,
+                rawDesiredPowerWatts,
+                receiverCenterFrequencyHz,
+                receiverBandwidthHz,
+                receiverNoiseFigureDb,
+                RfAntennaState.isotropic(),
+                Vec3.ZERO
+        );
+    }
 
-        String dimensionId =
-                level.dimension()
-                        .location()
-                        .toString();
+    public static RfChannelAssessment assess(
+            ServerLevel level,
+            UUID receiverId,
+            UUID desiredTransmissionId,
+            Vec3 receiverPosition,
+            double rawDesiredPowerWatts,
+            double receiverCenterFrequencyHz,
+            double receiverBandwidthHz,
+            double receiverNoiseFigureDb,
+            RfAntennaState receiverAntenna,
+            Vec3 receiverVelocityMetersPerSecond
+    ) {
+        long tick = level.getGameTime();
+        String dimensionId = level.dimension().location().toString();
 
         ActiveRfTransmission desired =
                 RfTransmissionRegistry.get(
@@ -35,16 +56,31 @@ public final class RfChannelEnvironment {
                         tick
                 );
 
-        double materialLossDb =
-                0.0;
-
-        double shadowingDb =
-                0.0;
-
-        double fadingDb =
-                0.0;
+        double materialLossDb = 0.0;
+        double shadowingDb = 0.0;
+        double fadingDb = 0.0;
+        double txDirectionalGainDbi = 0.0;
+        double rxDirectionalGainDbi = 0.0;
+        double polarizationLossDb = 0.0;
+        double radialRelativeVelocityMps = 0.0;
+        double dopplerHz = 0.0;
 
         if (desired != null) {
+            Vec3 txToRx =
+                    receiverPosition.subtract(
+                            desired.transmitterPosition()
+                    );
+
+            Vec3 directionTxToRx =
+                    safeDirection(
+                            txToRx
+                    );
+
+            Vec3 directionRxToTx =
+                    directionTxToRx.scale(
+                            -1.0
+                    );
+
             materialLossDb =
                     MaterialAttenuationModel.estimateLossDb(
                             level,
@@ -74,12 +110,62 @@ public final class RfChannelEnvironment {
                             fadingModel,
                             6.0
                     );
+
+            double legacyTxGainDbi =
+                    linearGainToDbi(
+                            desired.antennaGainLinear()
+                    );
+
+            double actualTxGainDbi =
+                    effectiveTransmitGainDbi(
+                            desired,
+                            directionTxToRx
+                    );
+
+            txDirectionalGainDbi =
+                    actualTxGainDbi
+                            - legacyTxGainDbi;
+
+            rxDirectionalGainDbi =
+                    AntennaPatternModel.gainTowardDbi(
+                            receiverAntenna,
+                            directionRxToTx
+                    );
+
+            polarizationLossDb =
+                    PolarizationLossModel.mismatchLossDb(
+                            desired.antennaState()
+                                    .polarization(),
+                            receiverAntenna.polarization()
+                    );
+
+            Vec3 relativeVelocity =
+                    receiverVelocityMetersPerSecond.subtract(
+                            desired.transmitterVelocityMetersPerSecond()
+                    );
+
+            double separationRateMps =
+                    relativeVelocity.dot(
+                            directionTxToRx
+                    );
+
+            radialRelativeVelocityMps =
+                    -separationRateMps;
+
+            dopplerHz =
+                    DopplerModel.shiftHz(
+                            receiverCenterFrequencyHz,
+                            radialRelativeVelocityMps
+                    );
         }
 
         double totalDesiredAdjustmentDb =
                 -materialLossDb
                         + shadowingDb
-                        + fadingDb;
+                        + fadingDb
+                        + txDirectionalGainDbi
+                        + rxDirectionalGainDbi
+                        - polarizationLossDb;
 
         double effectiveDesiredPowerWatts =
                 rawDesiredPowerWatts
@@ -87,11 +173,8 @@ public final class RfChannelEnvironment {
                         totalDesiredAdjustmentDb
                 );
 
-        double interferenceWatts =
-                0.0;
-
-        int overlappingInterferers =
-                0;
+        double interferenceWatts = 0.0;
+        int overlappingInterferers = 0;
 
         if (RfChannelSettings.ENABLE_INTERFERENCE) {
             Collection<ActiveRfTransmission> active =
@@ -150,14 +233,25 @@ public final class RfChannelEnvironment {
                     continue;
                 }
 
+                Vec3 txToRx =
+                        receiverPosition.subtract(
+                                interferer.transmitterPosition()
+                        );
+
+                Vec3 directionTxToRx =
+                        safeDirection(
+                                txToRx
+                        );
+
+                Vec3 directionRxToTx =
+                        directionTxToRx.scale(
+                                -1.0
+                        );
+
                 double distance =
                         Math.max(
                                 0.01,
-                                interferer
-                                        .transmitterPosition()
-                                        .distanceTo(
-                                                receiverPosition
-                                        )
+                                txToRx.length()
                         );
 
                 double pathLossDb =
@@ -174,9 +268,23 @@ public final class RfChannelEnvironment {
                                 )
                         );
 
-                double antennaGainDbi =
-                        linearGainToDbi(
-                                interferer.antennaGainLinear()
+                double txGainDbi =
+                        effectiveTransmitGainDbi(
+                                interferer,
+                                directionTxToRx
+                        );
+
+                double rxGainDbi =
+                        AntennaPatternModel.gainTowardDbi(
+                                receiverAntenna,
+                                directionRxToTx
+                        );
+
+                double polarizationDb =
+                        PolarizationLossModel.mismatchLossDb(
+                                interferer.antennaState()
+                                        .polarization(),
+                                receiverAntenna.polarization()
                         );
 
                 double materialDb =
@@ -208,9 +316,11 @@ public final class RfChannelEnvironment {
 
                 double receivedDbm =
                         txPowerDbm
-                                + antennaGainDbi
+                                + txGainDbi
+                                + rxGainDbi
                                 - pathLossDb
                                 - materialDb
+                                - polarizationDb
                                 + shadowDb
                                 + fadingInterfererDb;
 
@@ -262,7 +372,11 @@ public final class RfChannelEnvironment {
                 materialLossDb,
                 shadowingDb,
                 fadingDb,
-                0.0,
+                txDirectionalGainDbi,
+                rxDirectionalGainDbi,
+                polarizationLossDb,
+                radialRelativeVelocityMps,
+                dopplerHz,
                 overlappingInterferers
         );
     }
@@ -312,6 +426,50 @@ public final class RfChannelEnvironment {
                                 * 20.0
                 )
         );
+    }
+
+    private static double effectiveTransmitGainDbi(
+            ActiveRfTransmission transmission,
+            Vec3 direction
+    ) {
+        RfAntennaState antenna =
+                transmission.antennaState();
+
+        if (antenna == null
+                || (
+                antenna.pattern()
+                        == RfAntennaPattern.ISOTROPIC
+                        && Math.abs(
+                        antenna.peakGainDbi()
+                ) < 1.0E-12
+                        && antenna.polarization()
+                        == RfPolarization.UNKNOWN
+        )) {
+            return linearGainToDbi(
+                    transmission.antennaGainLinear()
+            );
+        }
+
+        return AntennaPatternModel.gainTowardDbi(
+                antenna,
+                direction
+        );
+    }
+
+    private static Vec3 safeDirection(
+            Vec3 vector
+    ) {
+        if (vector == null
+                || vector.lengthSqr()
+                < 1.0E-18) {
+            return new Vec3(
+                    0.0,
+                    0.0,
+                    1.0
+            );
+        }
+
+        return vector.normalize();
     }
 
     private static double ratioDb(
