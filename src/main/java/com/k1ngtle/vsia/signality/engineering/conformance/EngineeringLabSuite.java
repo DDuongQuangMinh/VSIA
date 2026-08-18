@@ -1,6 +1,8 @@
 package com.k1ngtle.vsia.signality.engineering.conformance;
 
 import com.k1ngtle.vsia.signality.engineering.math.RfMath;
+import com.k1ngtle.vsia.signality.engineering.channel.DopplerModel;
+import com.k1ngtle.vsia.signality.engineering.channel.SpectralOverlap;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -105,6 +107,42 @@ public final class EngineeringLabSuite {
                 "deterministic-rng",
                 same,
                 "Identical seeds must generate identical lab sequences"
+        );
+
+        add(
+                results,
+                "channel-spectral-overlap-full",
+                Math.abs(
+                        SpectralOverlap.fractionOfReceiverBandwidth(
+                                2.4E9,
+                                20.0E6,
+                                2.4E9,
+                                20.0E6
+                        ) - 1.0
+                ) < 1.0E-12,
+                "Identical 20 MHz channels must overlap by 100%"
+        );
+
+        add(
+                results,
+                "channel-spectral-overlap-none",
+                SpectralOverlap.fractionOfReceiverBandwidth(
+                        2.4E9,
+                        20.0E6,
+                        2.5E9,
+                        20.0E6
+                ) == 0.0,
+                "Separated channels must have zero spectral overlap"
+        );
+
+        add(
+                results,
+                "channel-doppler-zero-velocity",
+                DopplerModel.shiftHz(
+                        6.0E9,
+                        0.0
+                ) == 0.0,
+                "Zero radial velocity must produce zero Doppler shift"
         );
 
         for (KnownAnswerResult kat
