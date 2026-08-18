@@ -489,7 +489,7 @@ public abstract class NetworkDeviceBlockEntity
         byte[] body =
                 new byte[
                         frameBytes
-                ];
+                        ];
 
         byte[] signature =
                 "VSIA-W1.6.4-LINK-TEST"
@@ -570,7 +570,7 @@ public abstract class NetworkDeviceBlockEntity
         byte[] out =
                 new byte[
                         6
-                ];
+                        ];
 
         if (normalized.length() != 12) {
             return out;
@@ -592,7 +592,7 @@ public abstract class NetworkDeviceBlockEntity
         } catch (Exception ignored) {
             return new byte[
                     6
-            ];
+                    ];
         }
 
         return out;
@@ -775,7 +775,7 @@ public abstract class NetworkDeviceBlockEntity
         byte[] payload =
                 new byte[
                         dataBytes
-                ];
+                        ];
 
         byte[] signature =
                 "VSIA-W1.8-ASSOCIATED-DATA"
@@ -2527,9 +2527,8 @@ public abstract class NetworkDeviceBlockEntity
                 baseEnvelope();
 
         WifiMcs mcs =
-                WifiMcsTable.select(
-                        networkProfile().protocol(),
-                        wifiMac.lastObservedSnrDb()
+                selectWifiMcsForFrame(
+                        frame
                 );
 
         payload.putInt(
@@ -2648,6 +2647,58 @@ public abstract class NetworkDeviceBlockEntity
         );
 
         broadcastPayload(payload);
+    }
+
+    private WifiMcs selectWifiMcsForFrame(
+            WifiMacFrame frame
+    ) {
+        if (requiresRobustBasicRate(
+                frame
+        )) {
+            return WifiMcsTable.byIndex(
+                    0
+            );
+        }
+
+        return WifiMcsTable.select(
+                networkProfile().protocol(),
+                wifiMac.lastObservedSnrDb()
+        );
+    }
+
+    private boolean requiresRobustBasicRate(
+            WifiMacFrame frame
+    ) {
+        if (frame == null) {
+            return true;
+        }
+
+        if (frame.type()
+                == com.k1ngtle.vsia.signality.engineering.wifi.WifiFrameType.MANAGEMENT
+                || frame.type()
+                == com.k1ngtle.vsia.signality.engineering.wifi.WifiFrameType.CONTROL) {
+            return true;
+        }
+
+        if (frame.type()
+                != com.k1ngtle.vsia.signality.engineering.wifi.WifiFrameType.DATA) {
+            return true;
+        }
+
+        CompoundTag body =
+                deserializeCompoundTag(
+                        frame.payload()
+                );
+
+        if (body == null) {
+            return false;
+        }
+
+        return "EAPOL_KEY".equals(
+                body.getString(
+                        "wifi_control"
+                )
+        );
     }
 
     private void traceWifiTransmit(
