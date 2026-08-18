@@ -5,5 +5,6 @@ public enum WifiStationState {
     SCANNING,
     AUTHENTICATING,
     ASSOCIATING,
+    FOUR_WAY_HANDSHAKE,
     ASSOCIATED
 }

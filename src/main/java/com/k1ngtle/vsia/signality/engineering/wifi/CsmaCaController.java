@@ -69,12 +69,15 @@ public final class CsmaCaController {
     }
 
     public int consumeBackoffForSimplifiedExecution() {
-        int consumed = backoff;
+        int value = backoff;
         backoff = 0;
-        return consumed;
+        return value;
     }
 
     private void select(Random random) {
-        backoff = random.nextInt(cw + 1);
+        backoff =
+                random.nextInt(
+                        cw + 1
+                );
     }
 }
