@@ -11,7 +11,15 @@ import com.k1ngtle.vsia.signality.engineering.cellular.CellularMode;
 import com.k1ngtle.vsia.signality.engineering.cellular.CellularRanController;
 import com.k1ngtle.vsia.signality.engineering.cellular.ResourceBlockAllocation;
 import com.k1ngtle.vsia.signality.engineering.cellular.UeRanState;
+import com.k1ngtle.vsia.signality.engineering.cellular.core.PduSession;
+import com.k1ngtle.vsia.signality.engineering.cellular.nas.NasState;
 import com.k1ngtle.vsia.signality.engineering.phy.PhyProfile;
+import com.k1ngtle.vsia.signality.engineering.radio.RadioChannel;
+import com.k1ngtle.vsia.signality.engineering.radio.RadioController;
+import com.k1ngtle.vsia.signality.engineering.radio.RadioEmission;
+import com.k1ngtle.vsia.signality.engineering.radio.RadioLinkQuality;
+import com.k1ngtle.vsia.signality.engineering.radio.RadioMode;
+import com.k1ngtle.vsia.signality.engineering.radio.RepeaterConfig;
 import com.k1ngtle.vsia.signality.engineering.phy.PhyResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiAccessCategory;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiMacController;
@@ -67,6 +75,9 @@ public abstract class NetworkDeviceBlockEntity
 
     private final CellularRanController cellularRan =
             new CellularRanController();
+
+    private final RadioController radio =
+            new RadioController();
 
     public NetworkDeviceBlockEntity(
             BlockEntityType<?> type,
@@ -136,12 +147,34 @@ public abstract class NetworkDeviceBlockEntity
     public PhyProfile currentPhyProfile() {
         NetworkProfile profile = networkProfile();
 
-        return profile.phy().toRuntimeProfile(
-                activeFrequencyHz,
-                profile.bandwidthHz(),
-                profile.transmitPowerWatts(),
-                profile.antennaGain()
-        );
+        PhyProfile base =
+                profile.phy().toRuntimeProfile(
+                        activeFrequencyHz,
+                        profile.bandwidthHz(),
+                        profile.transmitPowerWatts(),
+                        profile.antennaGain()
+                );
+
+        if (isRadioProfile()
+                && radio.mode()
+                != RadioMode.LEGACY_DIRECT
+                && radio.receiveBandwidthHz() > 0.0) {
+            return new PhyProfile(
+                    base.centerFrequencyHz(),
+                    radio.receiveBandwidthHz(),
+                    base.txPowerDbm(),
+                    base.txGainDbi(),
+                    base.rxGainDbi(),
+                    base.receiverNoiseFigureDb(),
+                    base.modulation(),
+                    base.coding(),
+                    base.spatialStreams(),
+                    base.guardEfficiency(),
+                    base.macEfficiency()
+            );
+        }
+
+        return base;
     }
 
     public WifiMode wifiMode() {
@@ -170,6 +203,26 @@ public abstract class NetworkDeviceBlockEntity
 
     public UeRanState cellularUeState() {
         return cellularRan.ueState();
+    }
+
+    public NasState cellularNasState() {
+        return cellularRan.nasState();
+    }
+
+    public PduSession cellularPduSession() {
+        return cellularRan.pduSession();
+    }
+
+    public RadioMode radioMode() {
+        return radio.mode();
+    }
+
+    public RadioLinkQuality lastRadioLinkQuality() {
+        return radio.lastLinkQuality();
+    }
+
+    public byte[] lastReceivedRadioVoice() {
+        return radio.lastReceivedVoice();
     }
 
     public UUID servingCellId() {
@@ -331,6 +384,57 @@ public abstract class NetworkDeviceBlockEntity
         return true;
     }
 
+    public boolean provisionCellularSubscriber(
+            String supi,
+            byte[] subscriberKey
+    ) {
+        if (!isCellularProfile()
+                || cellularRan.mode()
+                != CellularMode.BASE_STATION) {
+            return false;
+        }
+
+        cellularRan.provisionSubscriber(
+                supi,
+                subscriberKey
+        );
+
+        return true;
+    }
+
+    public boolean requestCellularPduSession(
+            String dnn,
+            int fiveQi
+    ) {
+        if (!isCellularProfile()
+                || cellularRan.mode()
+                != CellularMode.UE) {
+            return false;
+        }
+
+        boolean requested =
+                cellularRan.requestPduSession(
+                        signalId,
+                        dnn,
+                        fiveQi,
+                        this::transmitCellularControl
+                );
+
+        PduSession session =
+                cellularRan.pduSession();
+
+        if (requested
+                && session != null
+                && session.active()) {
+            ipAddress =
+                    session.ipAddress();
+
+            setChanged();
+        }
+
+        return requested;
+    }
+
     public boolean startCellSearch() {
         if (!isCellularProfile()
                 || cellularRan.mode() != CellularMode.UE) {
@@ -410,6 +514,167 @@ public abstract class NetworkDeviceBlockEntity
         return true;
     }
 
+    public boolean configureRadioTransceiver(
+            String channelId,
+            double frequencyHz,
+            double bandwidthHz,
+            RadioEmission emission,
+            String accessCode
+    ) {
+        if (!isRadioProfile()) {
+            return false;
+        }
+
+        radio.configureTransceiver(
+                new RadioChannel(
+                        channelId,
+                        frequencyHz,
+                        bandwidthHz,
+                        emission,
+                        accessCode
+                )
+        );
+
+        activeFrequencyHz =
+                frequencyHz;
+
+        setChanged();
+        return true;
+    }
+
+    public boolean configureRadioRepeater(
+            String channelId,
+            double inputFrequencyHz,
+            double outputFrequencyHz,
+            double bandwidthHz,
+            RadioEmission emission,
+            String accessCode
+    ) {
+        if (!isRadioProfile()) {
+            return false;
+        }
+
+        radio.configureRepeater(
+                new RadioChannel(
+                        channelId,
+                        inputFrequencyHz,
+                        bandwidthHz,
+                        emission,
+                        accessCode
+                ),
+                new RepeaterConfig(
+                        inputFrequencyHz,
+                        outputFrequencyHz,
+                        accessCode
+                )
+        );
+
+        activeFrequencyHz =
+                inputFrequencyHz;
+
+        setChanged();
+        return true;
+    }
+
+    public void setRadioSquelchSnrThresholdDb(
+            double thresholdDb
+    ) {
+        radio.setSquelchSnrThresholdDb(
+                thresholdDb
+        );
+
+        setChanged();
+    }
+
+    public void setRadioSecurityKey(
+            byte[] key
+    ) {
+        radio.setSecurityKey(
+                key
+        );
+    }
+
+    public void enableRadioMesh(
+            boolean enabled
+    ) {
+        radio.enableMesh(
+                enabled
+        );
+
+        setChanged();
+    }
+
+    public void enableRadioFrequencyHopping(
+            double[] frequenciesHz,
+            long seed
+    ) {
+        radio.enableFrequencyHopping(
+                frequenciesHz,
+                seed
+        );
+
+        setChanged();
+    }
+
+    public void disableRadioFrequencyHopping() {
+        radio.disableFrequencyHopping();
+        setChanged();
+    }
+
+    public boolean pressRadioPtt() {
+        return radio.pressPtt();
+    }
+
+    public void releaseRadioPtt() {
+        radio.releasePtt();
+    }
+
+    public boolean sendRadioVoice(
+            byte[] encodedAudio,
+            boolean endOfTransmission
+    ) {
+        if (!isRadioProfile()) {
+            return false;
+        }
+
+        return radio.sendVoice(
+                signalId,
+                encodedAudio,
+                endOfTransmission,
+                this::transmitRadioMessage
+        );
+    }
+
+    public boolean sendRadioPacket(
+            UUID destinationId,
+            CompoundTag payload
+    ) {
+        if (!isRadioProfile()) {
+            return false;
+        }
+
+        return radio.sendPacket(
+                signalId,
+                destinationId,
+                payload,
+                this::transmitRadioMessage
+        );
+    }
+
+    public void discoverRadioRoute(
+            UUID destinationId
+    ) {
+        if (!isRadioProfile()) {
+            return;
+        }
+
+        radio.discoverRoute(
+                signalId,
+                destinationId,
+                this::transmitRadioMessage
+        );
+    }
+
     public boolean setNetworkProfile(
             ResourceLocation profileId
     ) {
@@ -464,6 +729,11 @@ public abstract class NetworkDeviceBlockEntity
                 == NetworkKind.CELLULAR;
     }
 
+    private boolean isRadioProfile() {
+        return networkProfile().kind()
+                == NetworkKind.RADIO;
+    }
+
     private void normalizeNetworkProfile() {
         NetworkProfile profile =
                 NetworkProfileRegistry.get(
@@ -485,6 +755,19 @@ public abstract class NetworkDeviceBlockEntity
 
     @Override
     public SignalBand band() {
+        if (isRadioProfile()
+                && radio.mode()
+                != RadioMode.LEGACY_DIRECT) {
+            double[] frequencies =
+                    radio.receiveFrequenciesHz();
+
+            if (frequencies.length > 0) {
+                return SignalBand.forFrequency(
+                        frequencies[0]
+                );
+            }
+        }
+
         return SignalBand.forFrequency(
                 activeFrequencyHz
         );
@@ -492,6 +775,17 @@ public abstract class NetworkDeviceBlockEntity
 
     @Override
     public double[] tunedFrequenciesHz() {
+        if (isRadioProfile()
+                && radio.mode()
+                != RadioMode.LEGACY_DIRECT) {
+            double[] frequencies =
+                    radio.receiveFrequenciesHz();
+
+            if (frequencies.length > 0) {
+                return frequencies;
+            }
+        }
+
         return new double[]{
                 activeFrequencyHz
         };
@@ -499,6 +793,13 @@ public abstract class NetworkDeviceBlockEntity
 
     @Override
     public double tuningBandwidthHz() {
+        if (isRadioProfile()
+                && radio.mode()
+                != RadioMode.LEGACY_DIRECT
+                && radio.receiveBandwidthHz() > 0.0) {
+            return radio.receiveBandwidthHz();
+        }
+
         return networkProfile().bandwidthHz();
     }
 
@@ -573,6 +874,17 @@ public abstract class NetworkDeviceBlockEntity
         )) {
             processCellularEnvelope(
                     envelope,
+                    lastPhyResult
+            );
+            return;
+        }
+
+        if (envelope.contains(
+                "radio_message"
+        )) {
+            processRadioEnvelope(
+                    envelope,
+                    signal.frequencyHz(),
                     lastPhyResult
             );
             return;
@@ -690,6 +1002,45 @@ public abstract class NetworkDeviceBlockEntity
             processLayer2(
                     OSINetworkPacket.deserializeNBT(
                             data.getCompound(
+                                    "osi_packet"
+                            )
+                    )
+            );
+        }
+
+        setChanged();
+    }
+
+    private void processRadioEnvelope(
+            CompoundTag envelope,
+            double actualFrequencyHz,
+            PhyResult phyResult
+    ) {
+        if (!isRadioProfile()
+                || radio.mode()
+                == RadioMode.LEGACY_DIRECT) {
+            return;
+        }
+
+        CompoundTag payload =
+                radio.receive(
+                        signalId,
+                        envelope.getCompound(
+                                "radio_message"
+                        ),
+                        actualFrequencyHz,
+                        phyResult.receivedPowerDbm(),
+                        phyResult.snrDb(),
+                        this::transmitRadioMessage
+                );
+
+        if (payload != null
+                && payload.contains(
+                "osi_packet"
+        )) {
+            processLayer2(
+                    OSINetworkPacket.deserializeNBT(
+                            payload.getCompound(
                                     "osi_packet"
                             )
                     )
@@ -908,6 +1259,27 @@ public abstract class NetworkDeviceBlockEntity
             return;
         }
 
+        if (isRadioProfile()
+                && radio.mode()
+                == RadioMode.TRANSCEIVER) {
+            CompoundTag body =
+                    new CompoundTag();
+
+            body.put(
+                    "osi_packet",
+                    packet.serializeNBT()
+            );
+
+            radio.sendPacket(
+                    signalId,
+                    null,
+                    body,
+                    this::transmitRadioMessage
+            );
+
+            return;
+        }
+
         CompoundTag payload =
                 baseEnvelope();
 
@@ -1006,6 +1378,24 @@ public abstract class NetworkDeviceBlockEntity
         broadcastPayload(payload);
     }
 
+    private void transmitRadioMessage(
+            CompoundTag radioMessage,
+            double frequencyHz
+    ) {
+        CompoundTag payload =
+                baseEnvelope();
+
+        payload.put(
+                "radio_message",
+                radioMessage
+        );
+
+        broadcastPayload(
+                payload,
+                frequencyHz
+        );
+    }
+
     private CompoundTag baseEnvelope() {
         NetworkProfile profile =
                 networkProfile();
@@ -1039,6 +1429,16 @@ public abstract class NetworkDeviceBlockEntity
     private void broadcastPayload(
             CompoundTag rawPayload
     ) {
+        broadcastPayload(
+                rawPayload,
+                activeFrequencyHz
+        );
+    }
+
+    private void broadcastPayload(
+            CompoundTag rawPayload,
+            double transmitFrequencyHz
+    ) {
         byte[] payloadBytes;
 
         try {
@@ -1064,7 +1464,7 @@ public abstract class NetworkDeviceBlockEntity
                 new SignalPacket(
                         signalId,
                         positionWorld(),
-                        activeFrequencyHz,
+                        transmitFrequencyHz,
                         profile.transmitPowerWatts(),
                         profile.antennaGain(),
                         payloadBytes,
@@ -1126,6 +1526,11 @@ public abstract class NetworkDeviceBlockEntity
         tag.put(
                 "CellularRan",
                 cellularRan.save()
+        );
+
+        tag.put(
+                "Radio",
+                radio.save()
         );
     }
 
@@ -1192,6 +1597,14 @@ public abstract class NetworkDeviceBlockEntity
             cellularRan.load(
                     tag.getCompound(
                             "CellularRan"
+                    )
+            );
+        }
+
+        if (tag.contains("Radio")) {
+            radio.load(
+                    tag.getCompound(
+                            "Radio"
                     )
             );
         }
