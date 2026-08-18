@@ -28,6 +28,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -612,8 +613,8 @@ public final class WifiEngineeringScreen
                 events == null
                         ? List.of()
                         : List.copyOf(
-                                events
-                        );
+                        events
+                );
     }
 
     public void acceptWorkflowSnapshot(
@@ -1061,13 +1062,13 @@ public final class WifiEngineeringScreen
                 top
                         + (
                         int
-                ) Math.round(
+                        ) Math.round(
                         travel
                                 * (
                                 leftScroll
                                         / (
                                         double
-                                ) maxScroll
+                                        ) maxScroll
                         )
                 );
 
@@ -1174,7 +1175,7 @@ public final class WifiEngineeringScreen
                 leftScroll -=
                         (
                                 int
-                        ) Math.round(
+                                ) Math.round(
                                 delta
                                         * 22.0
                         );
@@ -1348,10 +1349,25 @@ public final class WifiEngineeringScreen
         int rowY =
                 top + 38;
 
+        int latestBoxHeight =
+                54;
+
+        int latestTop =
+                bottom - latestBoxHeight;
+
+        int latestInnerLeft =
+                left + 8;
+
+        int latestInnerRight =
+                right - 8;
+
+        int packetListBottom =
+                latestTop - 10;
+
         int maxRows =
                 Math.max(
                         1,
-                        (bottom - rowY - 48) / 11
+                        (packetListBottom - rowY) / 11
                 );
 
         int start =
@@ -1360,6 +1376,16 @@ public final class WifiEngineeringScreen
                         packetTrace.size()
                                 - maxRows
                 );
+
+        graphics.enableScissor(
+                left + 4,
+                rowY - 1,
+                right - 4,
+                Math.max(
+                        rowY,
+                        packetListBottom
+                )
+        );
 
         for (int i = start;
              i < packetTrace.size();
@@ -1374,20 +1400,20 @@ public final class WifiEngineeringScreen
                         case QUEUED ->
                                 0xFF59D6FF;
                         case CAPTURE_DROP,
-                                ANALYTICAL_PHY_DROP,
-                                DETAILED_PHY_DROP,
-                                DECODE_DROP ->
+                             ANALYTICAL_PHY_DROP,
+                             DETAILED_PHY_DROP,
+                             DECODE_DROP ->
                                 0xFFFF6B6B;
                     };
 
             graphics.drawString(
                     font,
-                    truncate(
+                    trimToPixelWidth(
                             WifiPacketTraceFormatter
                                     .compact(
                                             event
                                     ),
-                            100
+                            right - left - 20
                     ),
                     left + 8,
                     rowY,
@@ -1399,6 +1425,24 @@ public final class WifiEngineeringScreen
                     11;
         }
 
+        graphics.disableScissor();
+
+        graphics.fill(
+                latestInnerLeft,
+                latestTop - 2,
+                latestInnerRight,
+                bottom - 8,
+                0x66131D24
+        );
+
+        graphics.fill(
+                latestInnerLeft,
+                latestTop - 2,
+                latestInnerRight,
+                latestTop - 1,
+                0xFF35505E
+        );
+
         if (!packetTrace.isEmpty()) {
             WifiPacketTraceEvent newest =
                     packetTrace.get(
@@ -1408,32 +1452,35 @@ public final class WifiEngineeringScreen
             graphics.drawString(
                     font,
                     "LATEST",
-                    left + 8,
-                    bottom - 34,
+                    latestInnerLeft + 4,
+                    latestTop + 4,
                     0x6FD7FF,
                     false
             );
 
-            graphics.drawString(
-                    font,
-                    truncate(
+            drawWrappedLines(
+                    graphics,
+                    wrapToWidth(
                             WifiPacketTraceFormatter
                                     .detail(
                                             newest
                                     ),
-                            115
+                            latestInnerRight
+                                    - latestInnerLeft
+                                    - 8,
+                            3
                     ),
-                    left + 8,
-                    bottom - 22,
+                    latestInnerLeft + 4,
+                    latestTop + 16,
                     0xD8E2E8,
-                    false
+                    10
             );
         } else {
             graphics.drawString(
                     font,
                     "No Wi-Fi TX/RX events captured yet.",
-                    left + 8,
-                    rowY,
+                    latestInnerLeft + 4,
+                    latestTop + 16,
                     0xA8B7C1,
                     false
             );
@@ -1661,7 +1708,7 @@ public final class WifiEngineeringScreen
         return bottom
                 - (
                 int
-        ) Math.round(
+                ) Math.round(
                 (
                         clamped + 10.0
                 )
@@ -1698,7 +1745,7 @@ public final class WifiEngineeringScreen
         return bottom
                 - (
                 int
-        ) Math.round(
+                ) Math.round(
                 (
                         log + 8.0
                 )
@@ -1952,13 +1999,13 @@ public final class WifiEngineeringScreen
                         .isEmpty()
                         ? "none"
                         : String.join(
-                                ", ",
-                                workflowSnapshot
-                                        .discoveredSsids()
-                                        .stream()
-                                        .limit(3)
-                                        .toList()
-                        );
+                        ", ",
+                        workflowSnapshot
+                                .discoveredSsids()
+                                .stream()
+                                .limit(3)
+                                .toList()
+                );
 
         String associated =
                 workflowSnapshot
@@ -1966,13 +2013,13 @@ public final class WifiEngineeringScreen
                         .isEmpty()
                         ? "none"
                         : String.join(
-                                ", ",
-                                workflowSnapshot
-                                        .associatedStations()
-                                        .stream()
-                                        .limit(2)
-                                        .toList()
-                        );
+                        ", ",
+                        workflowSnapshot
+                                .associatedStations()
+                                .stream()
+                                .limit(2)
+                                .toList()
+                );
 
         return List.of(
                 "MAC "
@@ -2223,6 +2270,143 @@ public final class WifiEngineeringScreen
         return value
                 ? "yes"
                 : "no";
+    }
+
+    private void drawWrappedLines(
+            GuiGraphics graphics,
+            List<String> lines,
+            int x,
+            int y,
+            int color,
+            int lineHeight
+    ) {
+        for (String line : lines) {
+            graphics.drawString(
+                    font,
+                    line,
+                    x,
+                    y,
+                    color,
+                    false
+            );
+
+            y +=
+                    lineHeight;
+        }
+    }
+
+    private List<String> wrapToWidth(
+            String value,
+            int maxWidth,
+            int maxLines
+    ) {
+        if (value == null
+                || value.isBlank()) {
+            return List.of("");
+        }
+
+        List<String> lines =
+                new ArrayList<>();
+
+        String remaining =
+                value.trim();
+
+        while (!remaining.isEmpty()
+                && lines.size() < maxLines) {
+            if (lines.size() == maxLines - 1) {
+                lines.add(
+                        trimToPixelWidth(
+                                remaining,
+                                maxWidth
+                        )
+                );
+                break;
+            }
+
+            String candidate =
+                    font.plainSubstrByWidth(
+                            remaining,
+                            maxWidth
+                    );
+
+            if (candidate.isEmpty()) {
+                break;
+            }
+
+            int cut =
+                    candidate.length();
+
+            if (cut < remaining.length()) {
+                int split =
+                        candidate.lastIndexOf(' ');
+
+                if (split >= 8) {
+                    candidate =
+                            candidate.substring(
+                                    0,
+                                    split
+                            );
+
+                    cut =
+                            split;
+                }
+            }
+
+            lines.add(
+                    candidate.trim()
+            );
+
+            remaining =
+                    remaining.substring(
+                                    Math.min(
+                                            cut,
+                                            remaining.length()
+                                    )
+                            )
+                            .trim();
+        }
+
+        if (lines.isEmpty()) {
+            lines.add(
+                    trimToPixelWidth(
+                            value,
+                            maxWidth
+                    )
+            );
+        }
+
+        return lines;
+    }
+
+    private String trimToPixelWidth(
+            String value,
+            int maxWidth
+    ) {
+        if (value == null) {
+            return "";
+        }
+
+        if (font.width(
+                value
+        ) <= maxWidth) {
+            return value;
+        }
+
+        int ellipsisWidth =
+                font.width(
+                        "..."
+                );
+
+        String body =
+                font.plainSubstrByWidth(
+                        value,
+                        Math.max(
+                                0,
+                                maxWidth - ellipsisWidth
+                        )
+                );
+
+        return body + "...";
     }
 
     private static String truncate(

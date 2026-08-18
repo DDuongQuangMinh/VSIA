@@ -6,6 +6,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.k1ngtle.vsia.signality.engineering.wifi.tcp.stream.TcpReceiveQueue;
+import com.k1ngtle.vsia.signality.engineering.wifi.tcp.stream.TcpReceiveResult;
+import com.k1ngtle.vsia.signality.engineering.wifi.tcp.stream.TcpPersistTimer;
+import com.k1ngtle.vsia.signality.engineering.wifi.tcp.stream.TcpSackBlock;
+
 public final class TcpConnection {
     private static final int DEFAULT_WINDOW =
             65_535;
@@ -32,6 +37,13 @@ public final class TcpConnection {
     private long sendNext;
 
     private long receiveNext;
+
+    private TcpReceiveQueue receiveQueue;
+
+    private TcpReceiveResult lastReceiveResult;
+
+    private final TcpPersistTimer persistTimer =
+            new TcpPersistTimer();
 
     private int receiverWindow =
             DEFAULT_WINDOW;
@@ -85,10 +97,38 @@ public final class TcpConnection {
                 new TcpCongestionController(
                         smssBytes
                 );
+
+        this.receiveQueue =
+                new TcpReceiveQueue(
+                        0L,
+                        DEFAULT_WINDOW
+                );
     }
 
     public TcpState state() {
         return state;
+    }
+
+    public int receiveBufferedBytes() {
+        return receiveQueue.bufferedBytes();
+    }
+
+    public int advertisedReceiveWindow() {
+        return receiveQueue.advertisedWindowBytes();
+    }
+
+    public java.util.List<TcpSackBlock> sackBlocks() {
+        return receiveQueue.sackBlocks(
+                4
+        );
+    }
+
+    public boolean persistTimerArmed() {
+        return persistTimer.armed();
+    }
+
+    public long persistIntervalMicros() {
+        return persistTimer.intervalMicros();
     }
 
     public TcpConnectionAction listen() {
@@ -330,6 +370,11 @@ public final class TcpConnection {
         receiverWindow =
                 incoming.window();
 
+        persistTimer.observeWindow(
+                receiverWindow,
+                nowMicros
+        );
+
         if (incoming.flags()
                 .rst()) {
             state =
@@ -531,6 +576,10 @@ public final class TcpConnection {
                         1
                 );
 
+        receiveQueue.resetReceiveNext(
+                receiveNext
+        );
+
         TcpSegment synAck =
                 segment(
                         sendNext,
@@ -585,6 +634,11 @@ public final class TcpConnection {
                             incoming.sequenceNumber(),
                             1
                     );
+
+            receiveQueue.resetReceiveNext(
+                    receiveNext
+            );
+
 
             TcpSegment ack =
                     segment(
@@ -725,20 +779,30 @@ public final class TcpConnection {
         }
 
         if (incoming.payloadBytes() > 0) {
-            if (incoming.sequenceNumber()
-                    == receiveNext) {
-                receiveNext =
-                        TcpSequence.add(
-                                receiveNext,
-                                incoming.payloadBytes()
-                        );
-            }
+            lastReceiveResult =
+                    receiveQueue.accept(
+                            incoming.sequenceNumber(),
+                            incoming.payloadBytes()
+                    );
+
+            receiveNext =
+                    lastReceiveResult.cumulativeAck();
 
             outbound.add(
                     pureAck(
                             nowMicros
                     )
             );
+
+            if (lastReceiveResult.outOfOrder()) {
+                lastEvent =
+                        "Out-of-order segment buffered; cumulative ACK "
+                                + receiveNext;
+            } else if (lastReceiveResult.duplicateOnly()) {
+                lastEvent =
+                        "Duplicate segment suppressed; ACK "
+                                + receiveNext;
+            }
         }
 
         if (incoming.flags()
@@ -1168,7 +1232,13 @@ public final class TcpConnection {
                 sequence,
                 acknowledgement,
                 flags,
-                DEFAULT_WINDOW,
+                Math.min(
+                        65_535,
+                        Math.max(
+                                0,
+                                receiveQueue.advertisedWindowBytes()
+                        )
+                ),
                 payloadBytes,
                 nowMicros,
                 retransmission
