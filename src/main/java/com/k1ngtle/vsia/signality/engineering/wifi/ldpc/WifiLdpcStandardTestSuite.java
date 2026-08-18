@@ -12,32 +12,20 @@ public final class WifiLdpcStandardTestSuite {
         List<WifiLdpcStandardTestResult> results =
                 new ArrayList<>();
 
-        for (WifiLdpcStandardProfile profile
-                : WifiLdpcStandardProfiles.n648Family()) {
-            results.add(
-                    matrixGeometry(
-                            profile
-                    )
-            );
-            results.add(
-                    systematicEncoding(
-                            profile
-                    )
-            );
-            results.add(
-                    cleanDecode(
-                            profile
-                    )
-            );
-            results.add(
-                    awgnDecode(
-                            profile
-                    )
-            );
-        }
+        runFamily(
+                results,
+                WifiLdpcStandardProfiles.n648Family(),
+                WifiLdpcCodewordLength.N_648,
+                27,
+                "w13c"
+        );
 
-        results.add(
-                familyCompleteness()
+        runFamily(
+                results,
+                WifiLdpcStandardProfiles.n1296Family(),
+                WifiLdpcCodewordLength.N_1296,
+                54,
+                "w13d"
         );
 
         return List.copyOf(
@@ -45,14 +33,69 @@ public final class WifiLdpcStandardTestSuite {
         );
     }
 
+    private static void runFamily(
+            List<WifiLdpcStandardTestResult> results,
+            List<WifiLdpcStandardProfile> profiles,
+            WifiLdpcCodewordLength expectedLength,
+            int expectedZ,
+            String phase
+    ) {
+        for (WifiLdpcStandardProfile profile
+                : profiles) {
+            results.add(
+                    matrixGeometry(
+                            profile,
+                            expectedLength,
+                            expectedZ,
+                            phase
+                    )
+            );
+
+            results.add(
+                    systematicEncoding(
+                            profile,
+                            phase
+                    )
+            );
+
+            results.add(
+                    cleanDecode(
+                            profile,
+                            phase
+                    )
+            );
+
+            results.add(
+                    awgnDecode(
+                            profile,
+                            phase
+                    )
+            );
+        }
+
+        results.add(
+                familyCompleteness(
+                        profiles,
+                        expectedLength,
+                        phase
+                )
+        );
+    }
+
     private static WifiLdpcStandardTestResult matrixGeometry(
-            WifiLdpcStandardProfile profile
+            WifiLdpcStandardProfile profile,
+            WifiLdpcCodewordLength expectedLength,
+            int expectedZ,
+            String phase
     ) {
         QcLdpcBaseMatrix matrix =
                 profile.matrix();
 
+        int expectedN =
+                expectedLength.bits();
+
         int expectedK =
-                648
+                expectedN
                         * profile.metadata()
                         .rate()
                         .numerator()
@@ -62,26 +105,28 @@ public final class WifiLdpcStandardTestSuite {
 
         boolean passed =
                 matrix.standardized()
-                        && matrix.expansionFactor() == 27
+                        && matrix.expansionFactor() == expectedZ
                         && matrix.baseColumns() == 24
-                        && matrix.codewordBits() == 648
+                        && matrix.codewordBits() == expectedN
                         && matrix.informationBits() == expectedK
                         && profile.metadata()
                         .codewordLength()
-                        == WifiLdpcCodewordLength.N_648;
+                        == expectedLength;
 
         return result(
                 id(
                         profile,
+                        phase,
                         "geometry"
                 ),
                 passed,
-                "Pinned N=648 profile geometry and metadata must match its target rate"
+                "Pinned WLAN profile geometry and metadata must match codeword length, Z and target rate"
         );
     }
 
     private static WifiLdpcStandardTestResult systematicEncoding(
-            WifiLdpcStandardProfile profile
+            WifiLdpcStandardProfile profile,
+            String phase
     ) {
         QcLdpcEncoder encoder =
                 new QcLdpcEncoder(
@@ -93,6 +138,10 @@ public final class WifiLdpcStandardTestSuite {
                         profile.matrix()
                                 .informationBits(),
                         profile.metadata()
+                                .codewordLength()
+                                .ordinal()
+                                * 10
+                                + profile.metadata()
                                 .rate()
                                 .ordinal()
                                 + 1
@@ -118,6 +167,7 @@ public final class WifiLdpcStandardTestSuite {
         return result(
                 id(
                         profile,
+                        phase,
                         "encode"
                 ),
                 passed,
@@ -126,7 +176,8 @@ public final class WifiLdpcStandardTestSuite {
     }
 
     private static WifiLdpcStandardTestResult cleanDecode(
-            WifiLdpcStandardProfile profile
+            WifiLdpcStandardProfile profile,
+            String phase
     ) {
         WifiLdpcLabCodec codec =
                 new WifiLdpcLabCodec(
@@ -137,7 +188,11 @@ public final class WifiLdpcStandardTestSuite {
                 deterministicBits(
                         profile.matrix()
                                 .informationBits(),
-                        10
+                        100
+                                + profile.metadata()
+                                .codewordLength()
+                                .ordinal()
+                                * 10
                                 + profile.metadata()
                                 .rate()
                                 .ordinal()
@@ -165,7 +220,7 @@ public final class WifiLdpcStandardTestSuite {
         LdpcDecodeResult decoded =
                 codec.decode(
                         llrs,
-                        40
+                        50
                 );
 
         boolean passed =
@@ -179,15 +234,17 @@ public final class WifiLdpcStandardTestSuite {
         return result(
                 id(
                         profile,
+                        phase,
                         "clean-decode"
                 ),
                 passed,
-                "Pinned N=648 profile must round-trip through the existing min-sum decoder"
+                "Pinned WLAN profile must round-trip through the existing min-sum decoder"
         );
     }
 
     private static WifiLdpcStandardTestResult awgnDecode(
-            WifiLdpcStandardProfile profile
+            WifiLdpcStandardProfile profile,
+            String phase
     ) {
         WifiLdpcLabCodec codec =
                 new WifiLdpcLabCodec(
@@ -198,7 +255,11 @@ public final class WifiLdpcStandardTestSuite {
                 deterministicBits(
                         profile.matrix()
                                 .informationBits(),
-                        20
+                        200
+                                + profile.metadata()
+                                .codewordLength()
+                                .ordinal()
+                                * 10
                                 + profile.metadata()
                                 .rate()
                                 .ordinal()
@@ -210,18 +271,19 @@ public final class WifiLdpcStandardTestSuite {
                 );
 
         double snrDb =
-                switch (profile.metadata().rate()) {
-                    case RATE_1_2 -> 5.5;
-                    case RATE_2_3 -> 10.0;
-                    case RATE_3_4 -> 8.0;
-                    case RATE_5_6 -> 9.5;
-                };
+                regressionSnrDb(
+                        profile
+                );
 
         double[] llrs =
                 LdpcAwgn.bpskLlrs(
                         codeword,
                         snrDb,
-                        0x648000L
+                        0x1296000L
+                                + profile.metadata()
+                                .codewordLength()
+                                .ordinal()
+                                * 16L
                                 + profile.metadata()
                                 .rate()
                                 .ordinal()
@@ -230,7 +292,7 @@ public final class WifiLdpcStandardTestSuite {
         LdpcDecodeResult decoded =
                 codec.decode(
                         llrs,
-                        60
+                        70
                 );
 
         boolean passed =
@@ -244,20 +306,39 @@ public final class WifiLdpcStandardTestSuite {
         return result(
                 id(
                         profile,
+                        phase,
                         "awgn"
                 ),
                 passed,
-                "Pinned N=648 profile must recover its deterministic BPSK/AWGN vector"
+                "Pinned WLAN profile must recover its deterministic BPSK/AWGN regression vector"
         );
     }
 
-    private static WifiLdpcStandardTestResult familyCompleteness() {
-        List<WifiLdpcStandardProfile> profiles =
-                WifiLdpcStandardProfiles
-                        .n648Family();
+    private static double regressionSnrDb(
+            WifiLdpcStandardProfile profile
+    ) {
+        return switch (profile.metadata().rate()) {
+            case RATE_1_2 -> 12.0;
+            case RATE_2_3 -> 12.0;
+            case RATE_3_4 -> 12.0;
+            case RATE_5_6 -> 12.0;
+        };
+    }
 
+    private static WifiLdpcStandardTestResult familyCompleteness(
+            List<WifiLdpcStandardProfile> profiles,
+            WifiLdpcCodewordLength length,
+            String phase
+    ) {
         boolean passed =
                 profiles.size() == 4
+                        && profiles.stream()
+                        .allMatch(
+                                value ->
+                                        value.metadata()
+                                                .codewordLength()
+                                                == length
+                        )
                         && profiles.stream()
                         .map(
                                 value ->
@@ -269,14 +350,19 @@ public final class WifiLdpcStandardTestSuite {
                         == 4;
 
         return result(
-                "wifi-w13c-ieee-n648-family-complete",
+                "wifi-"
+                        + phase
+                        + "-ieee-n"
+                        + length.bits()
+                        + "-family-complete",
                 passed,
-                "N=648 standard profile registry must contain 1/2, 2/3, 3/4 and 5/6 exactly once"
+                "Standard profile registry must contain 1/2, 2/3, 3/4 and 5/6 exactly once for this codeword length"
         );
     }
 
     private static String id(
             WifiLdpcStandardProfile profile,
+            String phase,
             String suffix
     ) {
         String rate =
@@ -287,7 +373,13 @@ public final class WifiLdpcStandardTestSuite {
                     case RATE_5_6 -> "r56";
                 };
 
-        return "wifi-w13c-ieee-n648-"
+        return "wifi-"
+                + phase
+                + "-ieee-n"
+                + profile.metadata()
+                .codewordLength()
+                .bits()
+                + "-"
                 + rate
                 + "-"
                 + suffix;
