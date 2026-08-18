@@ -6,6 +6,9 @@ import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLivePacketCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.options.TcpOptionSet;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.raw.RawIpv4TcpCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.raw.RawIpv4TcpPacket;
+import com.k1ngtle.vsia.signality.engineering.wifi.link.EtherType;
+import com.k1ngtle.vsia.signality.engineering.wifi.link.LlcSnapCodec;
+import com.k1ngtle.vsia.signality.engineering.wifi.link.LlcSnapFrame;
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
 import net.minecraft.nbt.CompoundTag;
 
@@ -14,9 +17,15 @@ public final class TcpRawLiveCarrierCodec {
             "vsia_raw_network_control";
 
     public static final String CONTROL_VALUE =
+            "LLC_SNAP_IPV4_TCP_V1";
+
+    public static final String LEGACY_CONTROL_VALUE =
             "IPV4_TCP_V1";
 
-    public static final String RAW_PACKET_KEY =
+    public static final String RAW_MSDU_KEY =
+            "raw_llc_snap_msdu";
+
+    public static final String LEGACY_RAW_PACKET_KEY =
             "raw_ipv4_tcp";
 
     private TcpRawLiveCarrierCodec() {
@@ -25,14 +34,28 @@ public final class TcpRawLiveCarrierCodec {
     public static boolean isRawCarrier(
             CompoundTag body
     ) {
-        return body != null
-                && CONTROL_VALUE.equals(
+        if (body == null) {
+            return false;
+        }
+
+        String control =
                 body.getString(
                         CONTROL_KEY
-                )
+                );
+
+        if (CONTROL_VALUE.equals(
+                control
+        )) {
+            return body.contains(
+                    RAW_MSDU_KEY
+            );
+        }
+
+        return LEGACY_CONTROL_VALUE.equals(
+                control
         )
                 && body.contains(
-                RAW_PACKET_KEY
+                LEGACY_RAW_PACKET_KEY
         );
     }
 
@@ -103,9 +126,25 @@ public final class TcpRawLiveCarrierCodec {
                 ExecutionMode.CONFORMANCE.name()
         );
 
+        byte[] msdu =
+                LlcSnapCodec.encodeRfc1042(
+                        EtherType.IPV4,
+                        raw
+                );
+
         body.putByteArray(
-                RAW_PACKET_KEY,
-                raw
+                RAW_MSDU_KEY,
+                msdu
+        );
+
+        body.putString(
+                "network_framing",
+                "RFC1042_LLC_SNAP"
+        );
+
+        body.putInt(
+                "ether_type",
+                EtherType.IPV4.value()
         );
 
         body.putString(
@@ -170,11 +209,42 @@ public final class TcpRawLiveCarrierCodec {
             );
         }
 
+        byte[] rawIpv4;
+
+        if (CONTROL_VALUE.equals(
+                body.getString(
+                        CONTROL_KEY
+                )
+        )) {
+            LlcSnapFrame frame =
+                    LlcSnapCodec.decodeRfc1042(
+                            body.getByteArray(
+                                    RAW_MSDU_KEY
+                            )
+                    );
+
+            if (frame.etherType()
+                    != EtherType.IPV4.value()) {
+                throw new IllegalArgumentException(
+                        "Unsupported EtherType 0x"
+                                + Integer.toHexString(
+                                frame.etherType()
+                        )
+                );
+            }
+
+            rawIpv4 =
+                    frame.payload();
+        } else {
+            rawIpv4 =
+                    body.getByteArray(
+                            LEGACY_RAW_PACKET_KEY
+                    );
+        }
+
         RawIpv4TcpPacket decoded =
                 RawIpv4TcpCodec.decode(
-                        body.getByteArray(
-                                RAW_PACKET_KEY
-                        )
+                        rawIpv4
                 );
 
         if (!decoded.valid()) {

@@ -7,6 +7,8 @@ import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLivePacketCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.options.TcpOptionSet;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.raw.RawIpv4TcpCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.raw.RawIpv4TcpPacket;
+import com.k1ngtle.vsia.signality.engineering.wifi.link.LlcSnapCodec;
+import com.k1ngtle.vsia.signality.engineering.wifi.link.LlcSnapFrame;
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
 import net.minecraft.nbt.CompoundTag;
 
@@ -92,10 +94,10 @@ public final class TcpRawLiveCarrierTestSuite {
                 )
                         && ExecutionMode.CONFORMANCE.name()
                         .equals(
-                        carrier.getString(
-                                "execution_mode"
+                                carrier.getString(
+                                        "execution_mode"
+                                )
                         )
-                )
                         && segment.flags().syn()
                         && segment.sequenceNumber()
                         == 0x12345678L
@@ -202,21 +204,25 @@ public final class TcpRawLiveCarrierTestSuite {
                         logical
                 );
 
+        LlcSnapFrame frame =
+                LlcSnapCodec.decodeRfc1042(
+                        carrier.getByteArray(
+                                TcpRawLiveCarrierCodec.RAW_MSDU_KEY
+                        )
+                );
+
         RawIpv4TcpPacket raw =
                 RawIpv4TcpCodec.decode(
-                        carrier.getByteArray(
-                                TcpRawLiveCarrierCodec.RAW_PACKET_KEY
-                        )
+                        frame.payload()
                 );
 
         return result(
                 "wifi-w196-raw-checksums",
                 raw.valid()
+                        && frame.etherType() == 0x0800
                         && raw.ipv4().protocol() == 6
                         && raw.ipv4().totalLength()
-                        == carrier.getByteArray(
-                        TcpRawLiveCarrierCodec.RAW_PACKET_KEY
-                ).length
+                        == frame.payload().length
                         && raw.tcp().sourcePort() == 40000
                         && raw.tcp().destinationPort() == 443,
                 "The bytes that cross the conformance carrier must independently pass raw IPv4 and TCP checksum decoding"
@@ -248,17 +254,17 @@ public final class TcpRawLiveCarrierTestSuite {
                         logical
                 );
 
-        byte[] raw =
+        byte[] msdu =
                 carrier.getByteArray(
-                        TcpRawLiveCarrierCodec.RAW_PACKET_KEY
+                        TcpRawLiveCarrierCodec.RAW_MSDU_KEY
                 );
 
-        raw[raw.length - 1] ^=
+        msdu[msdu.length - 1] ^=
                 0x01;
 
         carrier.putByteArray(
-                TcpRawLiveCarrierCodec.RAW_PACKET_KEY,
-                raw
+                TcpRawLiveCarrierCodec.RAW_MSDU_KEY,
+                msdu
         );
 
         boolean rejected =
