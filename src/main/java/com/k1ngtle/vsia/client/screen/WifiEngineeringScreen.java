@@ -4,12 +4,16 @@ import com.k1ngtle.vsia.network.VsiaNetwork;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringModePacket;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringSnapshotRequestPacket;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringTestLinkPacket;
+import com.k1ngtle.vsia.network.wifi.WifiPacketTraceRequestPacket;
+import com.k1ngtle.vsia.network.wifi.WifiPacketTraceClearPacket;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringHistory;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringSample;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringSnapshot;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringTestLinkResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringTestLinkService;
 import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyMode;
+import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketTraceEvent;
+import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketTraceFormatter;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -42,6 +46,13 @@ public final class WifiEngineeringScreen
 
     private String testLinkStatus =
             "No test frame requested";
+
+    private List<WifiPacketTraceEvent> packetTrace =
+            List.of();
+
+    private boolean packetView;
+
+    private Button viewButton;
 
     public WifiEngineeringScreen(
             BlockPos targetPos,
@@ -135,6 +146,39 @@ public final class WifiEngineeringScreen
                         )
                         .build()
         );
+
+        viewButton =
+                addRenderableWidget(
+                        Button.builder(
+                                        viewText(),
+                                        button ->
+                                                toggleAnalyzerView()
+                                )
+                                .bounds(
+                                        476,
+                                        buttonY,
+                                        120,
+                                        20
+                                )
+                                .build()
+                );
+
+        addRenderableWidget(
+                Button.builder(
+                                Component.literal(
+                                        "Clear packets"
+                                ),
+                                button ->
+                                        clearPacketTrace()
+                        )
+                        .bounds(
+                                602,
+                                buttonY,
+                                110,
+                                20
+                        )
+                        .build()
+        );
     }
 
     @Override
@@ -193,6 +237,17 @@ public final class WifiEngineeringScreen
         }
 
         requestSnapshot();
+    }
+
+    public void acceptPacketTrace(
+            List<WifiPacketTraceEvent> events
+    ) {
+        packetTrace =
+                events == null
+                        ? List.of()
+                        : List.copyOf(
+                                events
+                        );
     }
 
     @Override
@@ -465,6 +520,17 @@ public final class WifiEngineeringScreen
             int right,
             int bottom
     ) {
+        if (packetView) {
+            drawPacketAnalyzer(
+                    graphics,
+                    left,
+                    top,
+                    right,
+                    bottom
+            );
+            return;
+        }
+
         graphics.fill(
                 left,
                 top,
@@ -556,6 +622,136 @@ public final class WifiEngineeringScreen
                 "FER / decoder load",
                 false
         );
+    }
+
+    private void drawPacketAnalyzer(
+            GuiGraphics graphics,
+            int left,
+            int top,
+            int right,
+            int bottom
+    ) {
+        graphics.fill(
+                left,
+                top,
+                right,
+                bottom,
+                0xCC0A1016
+        );
+
+        graphics.drawString(
+                font,
+                "PACKET / PROTOCOL TRACE",
+                left + 8,
+                top + 8,
+                0x6FD7FF,
+                false
+        );
+
+        graphics.drawString(
+                font,
+                "events "
+                        + packetTrace.size()
+                        + "/128 | newest last",
+                left + 8,
+                top + 20,
+                0x8295A3,
+                false
+        );
+
+        int rowY =
+                top + 38;
+
+        int maxRows =
+                Math.max(
+                        1,
+                        (bottom - rowY - 48) / 11
+                );
+
+        int start =
+                Math.max(
+                        0,
+                        packetTrace.size()
+                                - maxRows
+                );
+
+        for (int i = start;
+             i < packetTrace.size();
+             i++) {
+            WifiPacketTraceEvent event =
+                    packetTrace.get(i);
+
+            int color =
+                    switch (event.outcome()) {
+                        case DELIVERED ->
+                                0xFF7BE495;
+                        case QUEUED ->
+                                0xFF59D6FF;
+                        case CAPTURE_DROP,
+                                ANALYTICAL_PHY_DROP,
+                                DETAILED_PHY_DROP,
+                                DECODE_DROP ->
+                                0xFFFF6B6B;
+                    };
+
+            graphics.drawString(
+                    font,
+                    truncate(
+                            WifiPacketTraceFormatter
+                                    .compact(
+                                            event
+                                    ),
+                            100
+                    ),
+                    left + 8,
+                    rowY,
+                    color,
+                    false
+            );
+
+            rowY +=
+                    11;
+        }
+
+        if (!packetTrace.isEmpty()) {
+            WifiPacketTraceEvent newest =
+                    packetTrace.get(
+                            packetTrace.size() - 1
+                    );
+
+            graphics.drawString(
+                    font,
+                    "LATEST",
+                    left + 8,
+                    bottom - 34,
+                    0x6FD7FF,
+                    false
+            );
+
+            graphics.drawString(
+                    font,
+                    truncate(
+                            WifiPacketTraceFormatter
+                                    .detail(
+                                            newest
+                                    ),
+                            115
+                    ),
+                    left + 8,
+                    bottom - 22,
+                    0xD8E2E8,
+                    false
+            );
+        } else {
+            graphics.drawString(
+                    font,
+                    "No Wi-Fi TX/RX events captured yet.",
+                    left + 8,
+                    rowY,
+                    0xA8B7C1,
+                    false
+            );
+        }
     }
 
     private void drawMetricPlot(
@@ -849,6 +1045,40 @@ public final class WifiEngineeringScreen
                 / 70;
     }
 
+    private void toggleAnalyzerView() {
+        packetView =
+                !packetView;
+
+        if (viewButton != null) {
+            viewButton.setMessage(
+                    viewText()
+            );
+        }
+
+        if (packetView) {
+            requestPacketTrace();
+        }
+    }
+
+    private void clearPacketTrace() {
+        packetTrace =
+                List.of();
+
+        VsiaNetwork.sendToServer(
+                new WifiPacketTraceClearPacket(
+                        targetPos
+                )
+        );
+    }
+
+    private void requestPacketTrace() {
+        VsiaNetwork.sendToServer(
+                new WifiPacketTraceRequestPacket(
+                        targetPos
+                )
+        );
+    }
+
     private void runTestLink() {
         testLinkStatus =
                 "Requesting peer and queuing test frame...";
@@ -882,6 +1112,16 @@ public final class WifiEngineeringScreen
                 new WifiEngineeringSnapshotRequestPacket(
                         targetPos
                 )
+        );
+
+        requestPacketTrace();
+    }
+
+    private Component viewText() {
+        return Component.literal(
+                packetView
+                        ? "View: PACKETS"
+                        : "View: HISTORY"
         );
     }
 

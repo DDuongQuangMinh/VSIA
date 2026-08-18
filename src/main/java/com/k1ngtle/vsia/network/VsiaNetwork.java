@@ -6,6 +6,9 @@ import com.k1ngtle.vsia.network.wifi.WifiEngineeringSnapshotPacket;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringSnapshotRequestPacket;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringTestLinkPacket;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringTestLinkResultPacket;
+import com.k1ngtle.vsia.network.wifi.WifiPacketTraceRequestPacket;
+import com.k1ngtle.vsia.network.wifi.WifiPacketTraceSnapshotPacket;
+import com.k1ngtle.vsia.network.wifi.WifiPacketTraceClearPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkDirection;
@@ -97,6 +100,36 @@ public class VsiaNetwork {
                 .decoder(WifiEngineeringTestLinkResultPacket::new)
                 .encoder(WifiEngineeringTestLinkResultPacket::toBytes)
                 .consumerMainThread(WifiEngineeringTestLinkResultPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        WifiPacketTraceRequestPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
+                .decoder(WifiPacketTraceRequestPacket::new)
+                .encoder(WifiPacketTraceRequestPacket::toBytes)
+                .consumerMainThread(WifiPacketTraceRequestPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        WifiPacketTraceSnapshotPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_CLIENT
+                )
+                .decoder(WifiPacketTraceSnapshotPacket::new)
+                .encoder(WifiPacketTraceSnapshotPacket::toBytes)
+                .consumerMainThread(WifiPacketTraceSnapshotPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        WifiPacketTraceClearPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
+                .decoder(WifiPacketTraceClearPacket::new)
+                .encoder(WifiPacketTraceClearPacket::toBytes)
+                .consumerMainThread(WifiPacketTraceClearPacket::handle)
                 .add();
     }
 

@@ -3,6 +3,8 @@ package com.k1ngtle.vsia.client.wifi;
 import com.k1ngtle.vsia.client.screen.WifiEngineeringScreen;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringSnapshot;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringTestLinkResult;
+import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketTraceEvent;
+import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 
@@ -55,6 +57,25 @@ public final class WifiEngineeringClientPacketHandler {
                 )) {
             screen.acceptTestLinkResult(
                     result
+            );
+        }
+    }
+
+    public static void handlePacketTrace(
+            BlockPos pos,
+            List<WifiPacketTraceEvent> events
+    ) {
+        Minecraft minecraft =
+                Minecraft.getInstance();
+
+        if (minecraft.screen
+                instanceof WifiEngineeringScreen screen
+                && screen.targetPos()
+                .equals(
+                        pos
+                )) {
+            screen.acceptPacketTrace(
+                    events
             );
         }
     }

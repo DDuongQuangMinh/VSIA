@@ -61,6 +61,10 @@ import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPuncturingPattern;
 import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyDecision;
 import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyEngine;
 import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyMode;
+import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketDirection;
+import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketOutcome;
+import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketTraceBuffer;
+import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketTraceEvent;
 import com.k1ngtle.vsia.signality.engineering.reality.GeneralRfAirtimeModel;
 import com.k1ngtle.vsia.signality.engineering.reality.NetworkRealityAssessment;
 import com.k1ngtle.vsia.signality.engineering.reality.NetworkRealityEngine;
@@ -136,6 +140,9 @@ public abstract class NetworkDeviceBlockEntity
             -1L;
 
     private int wifiEngineeringTestSequence;
+
+    private final WifiPacketTraceBuffer wifiPacketTrace =
+            new WifiPacketTraceBuffer();
 
     private final CellularRanController cellularRan =
             new CellularRanController();
@@ -589,6 +596,14 @@ public abstract class NetworkDeviceBlockEntity
         }
 
         return out;
+    }
+
+    public java.util.List<WifiPacketTraceEvent> wifiPacketTraceSnapshot() {
+        return wifiPacketTrace.snapshot();
+    }
+
+    public void clearWifiPacketTrace() {
+        wifiPacketTrace.clear();
     }
 
     public WifiPpduEstimate estimateWifiPpdu(
@@ -1499,6 +1514,12 @@ public abstract class NetworkDeviceBlockEntity
 
                 if (!lastNetworkRealityAssessment
                         .receiverCapturedDesiredFrame()) {
+                    traceWifiReceive(
+                            envelope,
+                            receivedPowerWatts,
+                            WifiPacketOutcome.CAPTURE_DROP,
+                            "Receiver capture model rejected desired frame"
+                    );
                     return;
                 }
             }
@@ -1548,6 +1569,16 @@ public abstract class NetworkDeviceBlockEntity
 
         if (!EngineeringPhyEngine
                 .shouldDeliverFrame(lastPhyResult)) {
+            if (envelope.contains(
+                    "wifi_mac_frame"
+            )) {
+                traceWifiReceive(
+                        envelope,
+                        receivedPowerWatts,
+                        WifiPacketOutcome.ANALYTICAL_PHY_DROP,
+                        "EngineeringPhyEngine rejected frame"
+                );
+            }
             return;
         }
 
@@ -1594,6 +1625,12 @@ public abstract class NetworkDeviceBlockEntity
 
                 if (lastWifiLivePhyDecision.evaluated()
                         && !lastWifiLivePhyDecision.delivered()) {
+                    traceWifiReceive(
+                            envelope,
+                            receivedPowerWatts,
+                            WifiPacketOutcome.DETAILED_PHY_DROP,
+                            lastWifiLivePhyDecision.detail()
+                    );
                     return;
                 }
             } else {
@@ -1604,6 +1641,19 @@ public abstract class NetworkDeviceBlockEntity
                                 "Detailed live PHY not enabled at both endpoints"
                         );
             }
+        }
+
+        if (envelope.contains(
+                "wifi_mac_frame"
+        )) {
+            traceWifiReceive(
+                    envelope,
+                    receivedPowerWatts,
+                    WifiPacketOutcome.DELIVERED,
+                    lastWifiLivePhyDecision == null
+                            ? "Delivered by analytical PHY"
+                            : lastWifiLivePhyDecision.detail()
+            );
         }
 
         if (isWifiProfile()) {
@@ -2478,7 +2528,280 @@ public abstract class NetworkDeviceBlockEntity
             );
         }
 
+        traceWifiTransmit(
+                frame,
+                payload,
+                mcs
+        );
+
         broadcastPayload(payload);
+    }
+
+    private void traceWifiTransmit(
+            WifiMacFrame frame,
+            CompoundTag envelope,
+            WifiMcs mcs
+    ) {
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        long timestampMicros =
+                envelope.contains(
+                        "rf_absolute_start_us"
+                )
+                        ? envelope.getLong(
+                        "rf_absolute_start_us"
+                )
+                        : NetworkTimebase.nowMicros(
+                        serverLevel
+                )
+                        + (
+                        envelope.contains(
+                                "rf_start_delay_us"
+                        )
+                                ? envelope.getLong(
+                                "rf_start_delay_us"
+                        )
+                                : 0L
+                );
+
+        WifiPhyConfiguration configuration =
+                wifiPhy.configuration();
+
+        wifiPacketTrace.append(
+                timestampMicros,
+                WifiPacketDirection.TX,
+                frame.type().name(),
+                frame.subtype(),
+                formatEngineeringMac(
+                        frame.address2()
+                ),
+                formatEngineeringMac(
+                        frame.address1()
+                ),
+                mcs.index(),
+                configuration == null
+                        ? ""
+                        : configuration.generation()
+                        .name(),
+                frame.encode().length,
+                envelope.contains(
+                        "rf_airtime_us"
+                )
+                        ? envelope.getLong(
+                        "rf_airtime_us"
+                )
+                        : 0L,
+                Double.NaN,
+                Double.NaN,
+                Double.NaN,
+                frame.retry(),
+                wifiLivePhyMode.name(),
+                WifiPacketOutcome.QUEUED,
+                "Queued into RF scheduler"
+        );
+    }
+
+    private void traceWifiReceive(
+            CompoundTag envelope,
+            double receivedPowerWatts,
+            WifiPacketOutcome outcome,
+            String detail
+    ) {
+        if (!(level instanceof ServerLevel serverLevel)
+                || !envelope.contains(
+                "wifi_mac_frame"
+        )) {
+            return;
+        }
+
+        WifiMacFrame frame;
+
+        try {
+            frame =
+                    WifiMacFrame.decode(
+                            envelope.getByteArray(
+                                    "wifi_mac_frame"
+                            )
+                    );
+        } catch (Exception exception) {
+            wifiPacketTrace.append(
+                    NetworkTimebase.nowMicros(
+                            serverLevel
+                    ),
+                    WifiPacketDirection.RX,
+                    "UNKNOWN",
+                    -1,
+                    "",
+                    "",
+                    envelope.contains(
+                            "wifi_mcs_index"
+                    )
+                            ? envelope.getInt(
+                            "wifi_mcs_index"
+                    )
+                            : -1,
+                    envelope.getString(
+                            "wifi_phy_generation"
+                    ),
+                    envelope.getByteArray(
+                            "wifi_mac_frame"
+                    ).length,
+                    envelope.contains(
+                            "rf_airtime_us"
+                    )
+                            ? envelope.getLong(
+                            "rf_airtime_us"
+                    )
+                            : 0L,
+                    wattsToDbm(
+                            receivedPowerWatts
+                    ),
+                    lastPhyResult == null
+                            ? Double.NaN
+                            : lastPhyResult.snrDb(),
+                    lastNetworkRealityAssessment == null
+                            ? Double.NaN
+                            : lastNetworkRealityAssessment
+                            .correctedSinrDb(),
+                    false,
+                    liveTracePath(),
+                    WifiPacketOutcome.DECODE_DROP,
+                    "802.11 decode failed: "
+                            + exception.getClass()
+                            .getSimpleName()
+            );
+            return;
+        }
+
+        long timestampMicros =
+                NetworkTimebase.nowMicros(
+                        serverLevel
+                );
+
+        if (envelope.hasUUID(
+                "rf_tx_id"
+        )) {
+            RfMicroTiming timing =
+                    RfMicroTimingRegistry.get(
+                            envelope.getUUID(
+                                    "rf_tx_id"
+                            )
+                    );
+
+            if (timing != null) {
+                timestampMicros =
+                        timing.startMicros();
+            }
+        }
+
+        wifiPacketTrace.append(
+                timestampMicros,
+                WifiPacketDirection.RX,
+                frame.type().name(),
+                frame.subtype(),
+                formatEngineeringMac(
+                        frame.address2()
+                ),
+                formatEngineeringMac(
+                        frame.address1()
+                ),
+                envelope.contains(
+                        "wifi_mcs_index"
+                )
+                        ? envelope.getInt(
+                        "wifi_mcs_index"
+                )
+                        : -1,
+                envelope.getString(
+                        "wifi_phy_generation"
+                ),
+                envelope.getByteArray(
+                        "wifi_mac_frame"
+                ).length,
+                envelope.contains(
+                        "rf_airtime_us"
+                )
+                        ? envelope.getLong(
+                        "rf_airtime_us"
+                )
+                        : 0L,
+                outcome == WifiPacketOutcome.CAPTURE_DROP
+                        || lastPhyResult == null
+                        ? wattsToDbm(
+                        receivedPowerWatts
+                )
+                        : lastPhyResult
+                        .receivedPowerDbm(),
+                outcome == WifiPacketOutcome.CAPTURE_DROP
+                        || lastPhyResult == null
+                        ? Double.NaN
+                        : lastPhyResult.snrDb(),
+                lastNetworkRealityAssessment == null
+                        ? (
+                        lastPhyResult == null
+                                ? Double.NaN
+                                : lastPhyResult.snrDb()
+                )
+                        : lastNetworkRealityAssessment
+                        .correctedSinrDb(),
+                frame.retry(),
+                liveTracePath(),
+                outcome,
+                detail
+        );
+    }
+
+    private String liveTracePath() {
+        return lastWifiLivePhyDecision == null
+                ? wifiLivePhyMode.name()
+                : lastWifiLivePhyDecision.path()
+                .name();
+    }
+
+    private double wattsToDbm(
+            double watts
+    ) {
+        if (!Double.isFinite(
+                watts
+        )
+                || watts <= 0.0) {
+            return Double.NaN;
+        }
+
+        return 10.0
+                * Math.log10(
+                watts * 1000.0
+        );
+    }
+
+    private String formatEngineeringMac(
+            byte[] value
+    ) {
+        if (value == null
+                || value.length != 6) {
+            return "";
+        }
+
+        StringBuilder builder =
+                new StringBuilder();
+
+        for (int i = 0; i < value.length; i++) {
+            if (i > 0) {
+                builder.append(':');
+            }
+
+            builder.append(
+                    String.format(
+                            java.util.Locale.ROOT,
+                            "%02X",
+                            value[i] & 0xFF
+                    )
+            );
+        }
+
+        return builder.toString();
     }
 
     private void transmitCellularControl(
