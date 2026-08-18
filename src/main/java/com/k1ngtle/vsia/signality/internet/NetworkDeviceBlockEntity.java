@@ -48,6 +48,16 @@ import com.k1ngtle.vsia.signality.engineering.wifi.WifiMode;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiNetworkRecord;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiSecurityState;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiStationState;
+import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiChannelWidth;
+import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiGuardInterval;
+import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyConfiguration;
+import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyController;
+import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyGeneration;
+import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyLinkAssessment;
+import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyLinkModel;
+import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyAirtimeModel;
+import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPpduEstimate;
+import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPuncturingPattern;
 import com.k1ngtle.vsia.signality.internet.network.NetworkKind;
 import com.k1ngtle.vsia.signality.internet.network.NetworkProfile;
 import com.k1ngtle.vsia.signality.internet.network.NetworkProfileRegistry;
@@ -96,6 +106,9 @@ public abstract class NetworkDeviceBlockEntity
 
     private final WifiMacController wifiMac =
             new WifiMacController();
+
+    private final WifiPhyController wifiPhy =
+            new WifiPhyController();
 
     private final CellularRanController cellularRan =
             new CellularRanController();
@@ -322,15 +335,8 @@ public abstract class NetworkDeviceBlockEntity
     }
 
     public PhyProfile currentPhyProfile() {
-        NetworkProfile profile = networkProfile();
-
         PhyProfile base =
-                profile.phy().toRuntimeProfile(
-                        activeFrequencyHz,
-                        profile.bandwidthHz(),
-                        profile.transmitPowerWatts(),
-                        profile.antennaGain()
-                );
+                currentBasePhyProfile();
 
         if (isRadioProfile()
                 && radio.mode()
@@ -368,6 +374,131 @@ public abstract class NetworkDeviceBlockEntity
 
     public int wifiMcsIndex() {
         return wifiMac.currentMcsIndex();
+    }
+
+    public WifiPhyConfiguration wifiPhyConfiguration() {
+        ensureWifiPhyConfigured();
+
+        return wifiPhy.configuration();
+    }
+
+    public WifiPhyLinkAssessment lastWifiPhyAssessment() {
+        return wifiPhy.lastAssessment();
+    }
+
+    public double wifiEstimatedPhyRateBps() {
+        WifiPhyLinkAssessment assessment =
+                wifiPhy.lastAssessment();
+
+        return assessment == null
+                ? 0.0
+                : assessment.rate()
+                .effectivePhyRateBps();
+    }
+
+    public double wifiDopplerIciFraction() {
+        WifiPhyLinkAssessment assessment =
+                wifiPhy.lastAssessment();
+
+        return assessment == null
+                ? 0.0
+                : assessment.ofdmIciPowerFraction();
+    }
+
+    public WifiPpduEstimate estimateWifiPpdu(
+            int frameBytes
+    ) {
+        if (!isWifiProfile()) {
+            return null;
+        }
+
+        ensureWifiPhyConfigured();
+
+        WifiMcs mcs =
+                WifiMcsTable.byIndex(
+                        wifiMac.currentMcsIndex()
+                );
+
+        double snrDb =
+                wifiMac.lastObservedSnrDb();
+
+        if (!Double.isFinite(
+                snrDb
+        )) {
+            snrDb =
+                    0.0;
+        }
+
+        return WifiPhyAirtimeModel.estimate(
+                wifiPhy.configuration(),
+                mcs,
+                Math.max(
+                        1L,
+                        (long) frameBytes
+                                * 8L
+                ),
+                wifiPhy.puncturing(),
+                snrDb
+        );
+    }
+
+    public void configureWifiPhy(
+            WifiChannelWidth channelWidth,
+            WifiGuardInterval guardInterval,
+            int spatialStreams,
+            int transmitAntennas,
+            int receiveAntennas,
+            double spatialCorrelation
+    ) {
+        if (!isWifiProfile()) {
+            return;
+        }
+
+        WifiPhyGeneration generation =
+                WifiPhyGeneration.fromProtocol(
+                        networkProfile().protocol()
+                );
+
+        wifiPhy.configure(
+                new WifiPhyConfiguration(
+                        generation,
+                        channelWidth,
+                        guardInterval,
+                        spatialStreams,
+                        transmitAntennas,
+                        receiveAntennas,
+                        spatialCorrelation,
+                        1.0
+                )
+        );
+
+        setChanged();
+    }
+
+    public void setWifiPuncturingMask(
+            long inactiveTwentyMhzMask
+    ) {
+        if (!isWifiProfile()) {
+            return;
+        }
+
+        ensureWifiPhyConfigured();
+
+        WifiChannelWidth width =
+                wifiPhy.configuration()
+                        .channelWidth();
+
+        wifiPhy.setPuncturing(
+                new WifiPuncturingPattern(
+                        Math.max(
+                                1,
+                                width.mhz() / 20
+                        ),
+                        inactiveTwentyMhzMask
+                )
+        );
+
+        setChanged();
     }
 
     public Collection<WifiNetworkRecord> discoveredWifiNetworks() {
@@ -926,6 +1057,53 @@ public abstract class NetworkDeviceBlockEntity
         return true;
     }
 
+    private void ensureWifiPhyConfigured() {
+        if (!isWifiProfile()) {
+            return;
+        }
+
+        PhyProfile base =
+                currentBasePhyProfile();
+
+        WifiPhyGeneration generation =
+                WifiPhyGeneration.fromProtocol(
+                        networkProfile().protocol()
+                );
+
+        WifiChannelWidth width =
+                WifiChannelWidth.nearest(
+                        base.bandwidthHz()
+                );
+
+        WifiPhyConfiguration current =
+                wifiPhy.configuration();
+
+        if (current == null
+                || current.generation() != generation
+                || current.channelWidth() != width) {
+            wifiPhy.configure(
+                    WifiPhyConfiguration.from(
+                            networkProfile().protocol(),
+                            base.bandwidthHz(),
+                            base.spatialStreams()
+                    )
+            );
+        }
+    }
+
+    private PhyProfile currentBasePhyProfile() {
+        NetworkProfile profile =
+                networkProfile();
+
+        return profile.phy()
+                .toRuntimeProfile(
+                        activeFrequencyHz,
+                        profile.bandwidthHz(),
+                        profile.transmitPowerWatts(),
+                        profile.antennaGain()
+                );
+    }
+
     private boolean isWifiProfile() {
         return networkProfile().kind()
                 == NetworkKind.WIFI;
@@ -1082,6 +1260,34 @@ public abstract class NetworkDeviceBlockEntity
                             .equivalentSignalPowerForSinr(
                                     lastRfChannelAssessment
                             );
+
+            if (isWifiProfile()
+                    && envelope.contains(
+                    "wifi_mcs_index"
+            )) {
+                ensureWifiPhyConfigured();
+
+                WifiMcs wifiMcs =
+                        WifiMcsTable.byIndex(
+                                envelope.getInt(
+                                        "wifi_mcs_index"
+                                )
+                        );
+
+                WifiPhyLinkAssessment wifiAssessment =
+                        wifiPhy.assess(
+                                wifiMcs,
+                                lastRfChannelAssessment
+                        );
+
+                phyEvaluationPowerWatts =
+                        WifiPhyLinkModel
+                                .equivalentSignalPowerForNoiseFloor(
+                                        wifiAssessment,
+                                        lastRfChannelAssessment
+                                                .noisePowerWatts()
+                                );
+            }
         }
 
         lastPhyResult =
@@ -1821,6 +2027,36 @@ public abstract class NetworkDeviceBlockEntity
                 "wifi_mcs_index",
                 mcs.index()
         );
+
+        ensureWifiPhyConfigured();
+
+        WifiPhyConfiguration phyConfiguration =
+                wifiPhy.configuration();
+
+        if (phyConfiguration != null) {
+            payload.putString(
+                    "wifi_phy_generation",
+                    phyConfiguration.generation()
+                            .name()
+            );
+
+            payload.putInt(
+                    "wifi_channel_width_mhz",
+                    phyConfiguration.channelWidth()
+                            .mhz()
+            );
+
+            payload.putDouble(
+                    "wifi_guard_interval_us",
+                    phyConfiguration.guardInterval()
+                            .microseconds()
+            );
+
+            payload.putInt(
+                    "wifi_spatial_streams",
+                    phyConfiguration.spatialStreams()
+            );
+        }
 
         payload.putByteArray(
                 "wifi_mac_frame",

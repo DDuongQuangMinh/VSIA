@@ -25,10 +25,16 @@ public final class ConformanceStatusRegistry {
                             "AIFS/backoff/NAV/RTS/CTS concepts now run on a virtual microsecond clock, but RF delivery remains quantized to Minecraft server ticks."
                     ),
                     new ComponentConformanceStatus(
-                            "Wi-Fi EHT model",
-                            ImplementationLevel.SIMULATION,
+                            "Wi-Fi OFDM PHY numerology/rate model",
+                            ImplementationLevel.CONFORMANCE_PREP,
+                            "ieee-802.11-2024",
+                            "Generation-specific OFDM numerology, guard intervals, MCS spectral efficiency, MIMO rank limits and OFDMA RU accounting are deterministic; waveform/preamble/coding conformance is not complete."
+                    ),
+                    new ComponentConformanceStatus(
+                            "Wi-Fi EHT PHY model",
+                            ImplementationLevel.CONFORMANCE_PREP,
                             "ieee-802.11be-2024",
-                            "MCS/SNR mapping is gameplay calibration, not normative receiver sensitivity."
+                            "320 MHz, 4096-QAM MCS 12/13, analytical puncturing and Doppler/ICI integration are modeled; EHT PPDU fields, MRU rules and exact receiver thresholds remain incomplete."
                     ),
                     new ComponentConformanceStatus(
                             "NR PHY/RAN",

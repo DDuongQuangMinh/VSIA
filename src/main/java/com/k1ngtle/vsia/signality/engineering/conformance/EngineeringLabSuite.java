@@ -13,6 +13,8 @@ import com.k1ngtle.vsia.signality.engineering.channel.RfPolarization;
 import net.minecraft.world.phys.Vec3;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiMacWireTestResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiMacWireTestSuite;
+import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyTestResult;
+import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyTestSuite;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -274,6 +276,16 @@ public final class EngineeringLabSuite {
                     wifi.id(),
                     wifi.passed(),
                     wifi.detail()
+            );
+        }
+
+        for (WifiPhyTestResult wifiPhy
+                : WifiPhyTestSuite.runAll()) {
+            add(
+                    results,
+                    wifiPhy.id(),
+                    wifiPhy.passed(),
+                    wifiPhy.detail()
             );
         }
 
