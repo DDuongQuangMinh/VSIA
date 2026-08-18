@@ -5,6 +5,11 @@ import com.k1ngtle.vsia.signality.engineering.wifi.tcp.TcpConnectionAction;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.TcpConnectionSnapshot;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.TcpSegment;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.TcpState;
+import com.k1ngtle.vsia.signality.engineering.wifi.tcp.TcpSequence;
+import com.k1ngtle.vsia.signality.engineering.wifi.tcp.options.TcpOptionSet;
+import com.k1ngtle.vsia.signality.engineering.wifi.tcp.options.TcpSackScoreboard;
+import com.k1ngtle.vsia.signality.engineering.wifi.tcp.stream.TcpNegotiatedOptions;
+import com.k1ngtle.vsia.signality.engineering.wifi.tcp.stream.TcpSackBlock;
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
 
 import java.io.ByteArrayOutputStream;
@@ -19,6 +24,15 @@ import java.util.function.Consumer;
 public final class TcpLiveController {
     public static final int DEFAULT_SMSS =
             1200;
+
+    public static final int DEFAULT_WINDOW_SCALE =
+            2;
+
+    public static final boolean DEFAULT_SACK_PERMITTED =
+            true;
+
+    public static final boolean DEFAULT_TIMESTAMPS =
+            true;
 
     private final Map<String, Session> sessions =
             new LinkedHashMap<>();
@@ -71,6 +85,10 @@ public final class TcpLiveController {
                                 application.sourceMac
                         )
                 );
+
+        connection.setLocalWindowScale(
+                DEFAULT_WINDOW_SCALE
+        );
 
         application.sessionId =
                 sessionId;
@@ -201,6 +219,11 @@ public final class TcpLiveController {
                         packet
                 );
 
+        TcpOptionSet incomingOptions =
+                TcpLivePacketCodec.decodeOptions(
+                        packet
+                );
+
         Session session =
                 sessions.get(
                         packet.sessionId
@@ -226,6 +249,10 @@ public final class TcpLiveController {
                             )
                     );
 
+            connection.setLocalWindowScale(
+                    DEFAULT_WINDOW_SCALE
+            );
+
             connection.listen();
 
             session =
@@ -250,6 +277,11 @@ public final class TcpLiveController {
                     packet.sessionId;
         }
 
+        session.observeIncomingOptions(
+                incoming,
+                incomingOptions
+        );
+
         TcpConnectionAction action =
                 session.connection.onSegment(
                         incoming,
@@ -258,6 +290,15 @@ public final class TcpLiveController {
 
         sendAction(
                 session,
+                action,
+                nowMicros,
+                transmitter
+        );
+
+        maybeRetransmitSackHole(
+                session,
+                incoming,
+                incomingOptions,
                 action,
                 nowMicros,
                 transmitter
@@ -357,6 +398,29 @@ public final class TcpLiveController {
                 updateStatus(
                         session
                 );
+            }
+
+            if (session.connection.shouldSendPersistProbe(
+                    nowMicros
+            )) {
+                TcpConnectionAction probe =
+                        session.connection.createPersistProbe(
+                                nowMicros
+                        );
+
+                sendAction(
+                        session,
+                        probe,
+                        nowMicros,
+                        transmitter
+                );
+
+                session.persistProbes++;
+
+                status =
+                        "TCP zero-window probe #"
+                                + session.persistProbes
+                                + " sent";
             }
         }
 
@@ -580,6 +644,18 @@ public final class TcpLiveController {
                             segment.sequenceNumber()
                     );
 
+            if (chunk == null
+                    && segment.payloadBytes() == 1
+                    && action.event()
+                    .startsWith(
+                            "Zero-window persist probe"
+                    )) {
+                chunk =
+                        new byte[] {
+                                0
+                        };
+            }
+
             int offset =
                     session.outboundOffsetBySequence.getOrDefault(
                             segment.sequenceNumber(),
@@ -667,7 +743,18 @@ public final class TcpLiveController {
                     segment.sequenceNumber(),
                     total
             );
+
+            session.outboundSegmentBySequence.put(
+                    segment.sequenceNumber(),
+                    segment
+            );
         }
+
+        TcpOptionSet options =
+                optionsForSegment(
+                        session,
+                        segment
+                );
 
         transmitter.accept(
                 TcpLivePacketCodec.encode(
@@ -679,7 +766,8 @@ public final class TcpLiveController {
                         segment,
                         safeChunk,
                         offset,
-                        total
+                        total,
+                        options
                 )
         );
     }
@@ -793,6 +881,189 @@ public final class TcpLiveController {
                         + " application payload";
     }
 
+    private TcpOptionSet optionsForSegment(
+            Session session,
+            TcpSegment segment
+    ) {
+        long tsVal =
+                currentTimestampValue(
+                        segment.sentAtMicros()
+                );
+
+        if (segment.flags()
+                .syn()) {
+            if (!segment.flags()
+                    .ack()) {
+                return TcpOptionSet.synOffer(
+                        DEFAULT_SMSS,
+                        DEFAULT_WINDOW_SCALE,
+                        DEFAULT_SACK_PERMITTED,
+                        tsVal
+                );
+            }
+
+            return new TcpOptionSet(
+                    DEFAULT_SMSS,
+                    session.peerSynOptions
+                            .hasWindowScale()
+                            ? DEFAULT_WINDOW_SCALE
+                            : TcpOptionSet.ABSENT,
+                    DEFAULT_SACK_PERMITTED
+                            && session.peerSynOptions
+                            .sackPermitted(),
+                    List.of(),
+                    session.peerSynOptions
+                            .hasTimestamp()
+                            ? tsVal
+                            : TcpOptionSet.ABSENT,
+                    session.peerSynOptions
+                            .hasTimestamp()
+                            ? Math.max(
+                            0L,
+                            session.lastPeerTimestamp
+                    )
+                            : TcpOptionSet.ABSENT
+            );
+        }
+
+        List<TcpSackBlock> sacks =
+                session.negotiatedOptions.sackPermitted()
+                        && segment.flags().ack()
+                        ? session.connection.sackBlocks()
+                        : List.of();
+
+        if (session.negotiatedOptions.timestamps()) {
+            return new TcpOptionSet(
+                    TcpOptionSet.ABSENT,
+                    TcpOptionSet.ABSENT,
+                    false,
+                    sacks,
+                    tsVal,
+                    Math.max(
+                            0L,
+                            session.lastPeerTimestamp
+                    )
+            );
+        }
+
+        return new TcpOptionSet(
+                TcpOptionSet.ABSENT,
+                TcpOptionSet.ABSENT,
+                false,
+                sacks,
+                TcpOptionSet.ABSENT,
+                TcpOptionSet.ABSENT
+        );
+    }
+
+    private void maybeRetransmitSackHole(
+            Session session,
+            TcpSegment incoming,
+            TcpOptionSet options,
+            TcpConnectionAction primaryAction,
+            long nowMicros,
+            Consumer<OSINetworkPacket> transmitter
+    ) {
+        if (!session.negotiatedOptions.sackPermitted()
+                || options == null
+                || options.sackBlocks()
+                .isEmpty()
+                || primaryAction.retransmitEarliest()) {
+            return;
+        }
+
+        long cumulativeAck =
+                incoming.acknowledgementNumber();
+
+        session.sackScoreboard.update(
+                cumulativeAck,
+                options.sackBlocks()
+        );
+
+        Long candidate =
+                session.outboundSegmentBySequence
+                        .entrySet()
+                        .stream()
+                        .filter(
+                                entry -> {
+                                    TcpSegment segment =
+                                            entry.getValue();
+
+                                    return TcpSequence.after(
+                                            segment.endSequenceExclusive(),
+                                            cumulativeAck
+                                    )
+                                            && !session.sackScoreboard
+                                            .isSacked(
+                                                    segment.sequenceNumber(),
+                                                    segment.endSequenceExclusive()
+                                            );
+                                }
+                        )
+                        .map(
+                                Map.Entry::getKey
+                        )
+                        .min(
+                                Comparator.comparingLong(
+                                        sequence ->
+                                                TcpSequence.distance(
+                                                        cumulativeAck,
+                                                        sequence
+                                                )
+                                )
+                        )
+                        .orElse(
+                                null
+                        );
+
+        if (candidate == null) {
+            return;
+        }
+
+        if (session.lastSackRetransmitSequence
+                == candidate
+                && session.lastSackRetransmitAck
+                == cumulativeAck) {
+            return;
+        }
+
+        TcpConnectionAction targeted =
+                session.connection.retransmitSequence(
+                        candidate,
+                        nowMicros
+                );
+
+        if (!targeted.outbound()
+                .isEmpty()) {
+            session.lastSackRetransmitSequence =
+                    candidate;
+
+            session.lastSackRetransmitAck =
+                    cumulativeAck;
+
+            sendAction(
+                    session,
+                    targeted,
+                    nowMicros,
+                    transmitter
+            );
+
+            status =
+                    "SACK targeted retransmit seq="
+                            + candidate;
+        }
+    }
+
+    private static long currentTimestampValue(
+            long nowMicros
+    ) {
+        return (
+                nowMicros
+                        / 1000L
+        )
+                & 0xFFFF_FFFFL;
+    }
+
     private void updateStatus(
             Session session
     ) {
@@ -810,7 +1081,19 @@ public final class TcpLiveController {
                         java.util.Locale.ROOT,
                         "%.1f ms",
                         snapshot.rtoMs()
-                );
+                )
+                        + " | MSS "
+                        + session.negotiatedOptions.effectiveMss()
+                        + " | WS "
+                        + session.negotiatedOptions.windowScale()
+                        + " | SACK "
+                        + (
+                        session.negotiatedOptions.sackPermitted()
+                                ? "on"
+                                : "off"
+                )
+                        + " | probes "
+                        + session.persistProbes;
     }
 
     private long initialSequence(
@@ -841,6 +1124,32 @@ public final class TcpLiveController {
         private final boolean serverSide;
         private final TcpConnection connection;
 
+        private TcpOptionSet peerSynOptions =
+                TcpOptionSet.none();
+
+        private TcpNegotiatedOptions negotiatedOptions =
+                new TcpNegotiatedOptions(
+                        DEFAULT_SMSS,
+                        DEFAULT_SMSS,
+                        false,
+                        0,
+                        false
+                );
+
+        private final TcpSackScoreboard sackScoreboard =
+                new TcpSackScoreboard();
+
+        private long lastPeerTimestamp =
+                -1L;
+
+        private long lastSackRetransmitSequence =
+                -1L;
+
+        private long lastSackRetransmitAck =
+                -1L;
+
+        private int persistProbes;
+
         private byte[] pendingApplication;
         private byte[] pendingRemainder;
         private int pendingRemainderOffset;
@@ -859,6 +1168,9 @@ public final class TcpLiveController {
                 new LinkedHashMap<>();
 
         private final Map<Long, Integer> outboundTotalBySequence =
+                new LinkedHashMap<>();
+
+        private final Map<Long, TcpSegment> outboundSegmentBySequence =
                 new LinkedHashMap<>();
 
         private Session(
@@ -898,6 +1210,63 @@ public final class TcpLiveController {
 
             this.connection =
                     connection;
+        }
+
+        private void observeIncomingOptions(
+                TcpSegment incoming,
+                TcpOptionSet options
+        ) {
+            if (options == null) {
+                return;
+            }
+
+            if (options.hasTimestamp()) {
+                lastPeerTimestamp =
+                        options.timestampValue();
+            }
+
+            if (!incoming.flags()
+                    .syn()) {
+                return;
+            }
+
+            peerSynOptions =
+                    options;
+
+            int peerMss =
+                    options.hasMss()
+                            ? options.mss()
+                            : DEFAULT_SMSS;
+
+            int peerScale =
+                    options.hasWindowScale()
+                            ? options.windowScale()
+                            : 0;
+
+            boolean sack =
+                    DEFAULT_SACK_PERMITTED
+                            && options.sackPermitted();
+
+            boolean timestamps =
+                    DEFAULT_TIMESTAMPS
+                            && options.hasTimestamp();
+
+            negotiatedOptions =
+                    new TcpNegotiatedOptions(
+                            DEFAULT_SMSS,
+                            peerMss,
+                            sack,
+                            peerScale,
+                            timestamps
+                    );
+
+            connection.setPeerWindowScale(
+                    peerScale
+            );
+
+            connection.setLocalWindowScale(
+                    DEFAULT_WINDOW_SCALE
+            );
         }
     }
 }

@@ -3,6 +3,8 @@ package com.k1ngtle.vsia.signality.engineering.wifi.tcp.live;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.TcpFlags;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.TcpSegment;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.TcpWireHeader;
+import com.k1ngtle.vsia.signality.engineering.wifi.tcp.options.TcpOptionCodec;
+import com.k1ngtle.vsia.signality.engineering.wifi.tcp.options.TcpOptionSet;
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
 import net.minecraft.nbt.CompoundTag;
 
@@ -21,10 +23,41 @@ public final class TcpLivePacketCodec {
             int applicationOffset,
             int applicationTotalBytes
     ) {
+        return encode(
+                sessionId,
+                sourceMac,
+                targetMac,
+                sourceIp,
+                targetIp,
+                segment,
+                chunk,
+                applicationOffset,
+                applicationTotalBytes,
+                TcpOptionSet.none()
+        );
+    }
+
+    public static OSINetworkPacket encode(
+            String sessionId,
+            String sourceMac,
+            String targetMac,
+            String sourceIp,
+            String targetIp,
+            TcpSegment segment,
+            byte[] chunk,
+            int applicationOffset,
+            int applicationTotalBytes,
+            TcpOptionSet options
+    ) {
         byte[] payload =
                 chunk == null
                         ? new byte[0]
                         : chunk.clone();
+
+        byte[] optionBytes =
+                TcpOptionCodec.encode(
+                        options
+                );
 
         TcpWireHeader header =
                 new TcpWireHeader(
@@ -71,12 +104,14 @@ public final class TcpLivePacketCodec {
                 header.checksum(
                         sourceIp,
                         targetIp,
-                        payload
+                        payload,
+                        optionBytes
                 );
 
         packet.ipPacketLength =
                 20
-                        + TcpWireHeader.HEADER_BYTES
+                        + TcpWireHeader.BASE_HEADER_BYTES
+                        + optionBytes.length
                         + payload.length;
 
         packet.dontFragment =
@@ -134,6 +169,13 @@ public final class TcpLivePacketCodec {
                 "tcp_retransmission",
                 segment.retransmission()
         );
+
+        if (optionBytes.length > 0) {
+            body.putByteArray(
+                    "tcp_options",
+                    optionBytes
+            );
+        }
 
         if (payload.length > 0) {
             body.putByteArray(
@@ -222,6 +264,11 @@ public final class TcpLivePacketCodec {
                         "tcp_app_chunk"
                 );
 
+        byte[] optionBytes =
+                packet.payload.getByteArray(
+                        "tcp_options"
+                );
+
         TcpWireHeader header =
                 new TcpWireHeader(
                         segment.sourcePort(),
@@ -237,7 +284,22 @@ public final class TcpLivePacketCodec {
                 == header.checksum(
                 packet.sourceIp,
                 packet.targetIp,
-                chunk
+                chunk,
+                optionBytes
+        );
+    }
+
+    public static TcpOptionSet decodeOptions(
+            OSINetworkPacket packet
+    ) {
+        if (packet == null) {
+            return TcpOptionSet.none();
+        }
+
+        return TcpOptionCodec.decode(
+                packet.payload.getByteArray(
+                        "tcp_options"
+                )
         );
     }
 }

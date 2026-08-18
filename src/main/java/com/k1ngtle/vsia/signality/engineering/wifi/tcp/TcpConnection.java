@@ -15,6 +15,9 @@ public final class TcpConnection {
     private static final int DEFAULT_WINDOW =
             65_535;
 
+    private static final int RECEIVE_BUFFER_BYTES =
+            262_140;
+
     private final int localPort;
     private final int remotePort;
     private final int smssBytes;
@@ -47,6 +50,11 @@ public final class TcpConnection {
 
     private int receiverWindow =
             DEFAULT_WINDOW;
+
+    private int localWindowScale =
+            2;
+
+    private int peerWindowScale;
 
     private int retransmissions;
 
@@ -101,7 +109,7 @@ public final class TcpConnection {
         this.receiveQueue =
                 new TcpReceiveQueue(
                         0L,
-                        DEFAULT_WINDOW
+                        RECEIVE_BUFFER_BYTES
                 );
     }
 
@@ -129,6 +137,151 @@ public final class TcpConnection {
 
     public long persistIntervalMicros() {
         return persistTimer.intervalMicros();
+    }
+
+    public boolean shouldSendPersistProbe(
+            long nowMicros
+    ) {
+        return state == TcpState.ESTABLISHED
+                && receiverWindow == 0
+                && persistTimer.shouldProbe(
+                nowMicros
+        );
+    }
+
+    public TcpConnectionAction createPersistProbe(
+            long nowMicros
+    ) {
+        if (!shouldSendPersistProbe(
+                nowMicros
+        )) {
+            return TcpConnectionAction.none(
+                    "Persist probe not due"
+            );
+        }
+
+        long probeSequence =
+                bytesInFlight() > 0L
+                        ? sendUnacknowledged
+                        : TcpSequence.add(
+                        sendNext,
+                        -1L
+                );
+
+        TcpSegment probe =
+                new TcpSegment(
+                        localPort,
+                        remotePort,
+                        probeSequence,
+                        receiveNext,
+                        TcpFlags.data(),
+                        advertisedWindowField(
+                                TcpFlags.data()
+                        ),
+                        1,
+                        nowMicros,
+                        true
+                );
+
+        persistTimer.onProbeSent(
+                nowMicros
+        );
+
+        lastEvent =
+                "Zero-window persist probe seq="
+                        + probeSequence;
+
+        return new TcpConnectionAction(
+                List.of(
+                        probe
+                ),
+                true,
+                false,
+                lastEvent
+        );
+    }
+
+    public TcpConnectionAction retransmitSequence(
+            long sequence,
+            long nowMicros
+    ) {
+        Outstanding current =
+                outstanding.get(
+                        TcpSequence.normalize(
+                                sequence
+                        )
+                );
+
+        if (current == null) {
+            return TcpConnectionAction.none(
+                    "SACK retransmit sequence not outstanding"
+            );
+        }
+
+        TcpSegment retransmitted =
+                cloneRetransmission(
+                        current.segment(),
+                        nowMicros
+                );
+
+        outstanding.put(
+                retransmitted.sequenceNumber(),
+                new Outstanding(
+                        retransmitted,
+                        current.firstSentMicros(),
+                        nowMicros,
+                        true
+                )
+        );
+
+        retransmissions++;
+
+        lastEvent =
+                "SACK retransmit seq="
+                        + retransmitted.sequenceNumber();
+
+        return new TcpConnectionAction(
+                List.of(
+                        retransmitted
+                ),
+                true,
+                false,
+                lastEvent
+        );
+    }
+
+    public void setLocalWindowScale(
+            int scale
+    ) {
+        localWindowScale =
+                Math.max(
+                        0,
+                        Math.min(
+                                14,
+                                scale
+                        )
+                );
+    }
+
+    public void setPeerWindowScale(
+            int scale
+    ) {
+        peerWindowScale =
+                Math.max(
+                        0,
+                        Math.min(
+                                14,
+                                scale
+                        )
+                );
+    }
+
+    public int localWindowScale() {
+        return localWindowScale;
+    }
+
+    public int peerWindowScale() {
+        return peerWindowScale;
     }
 
     public TcpConnectionAction listen() {
@@ -367,8 +520,24 @@ public final class TcpConnection {
             );
         }
 
+        long rawWindow =
+                incoming.window()
+                        & 0xFFFFL;
+
+        long scaledWindow =
+                incoming.flags()
+                        .syn()
+                        ? rawWindow
+                        : rawWindow
+                        << peerWindowScale;
+
         receiverWindow =
-                incoming.window();
+                (
+                        int
+                ) Math.min(
+                        Integer.MAX_VALUE,
+                        scaledWindow
+                );
 
         persistTimer.observeWindow(
                 receiverWindow,
@@ -1232,16 +1401,41 @@ public final class TcpConnection {
                 sequence,
                 acknowledgement,
                 flags,
-                Math.min(
-                        65_535,
-                        Math.max(
-                                0,
-                                receiveQueue.advertisedWindowBytes()
-                        )
+                advertisedWindowField(
+                        flags
                 ),
                 payloadBytes,
                 nowMicros,
                 retransmission
+        );
+    }
+
+    private int advertisedWindowField(
+            TcpFlags flags
+    ) {
+        int available =
+                Math.max(
+                        0,
+                        receiveQueue.advertisedWindowBytes()
+                );
+
+        if (flags.syn()) {
+            return Math.min(
+                    65_535,
+                    available
+            );
+        }
+
+        int shifted =
+                available
+                        >>> localWindowScale;
+
+        return Math.min(
+                65_535,
+                Math.max(
+                        0,
+                        shifted
+                )
         );
     }
 

@@ -14,22 +14,59 @@ public record TcpWireHeader(
         int window,
         int urgentPointer
 ) {
-    public static final int HEADER_BYTES =
+    public static final int BASE_HEADER_BYTES =
             20;
+
+    public static final int HEADER_BYTES =
+            BASE_HEADER_BYTES;
 
     public byte[] encode(
             String sourceIp,
             String destinationIp,
             byte[] payload
     ) {
+        return encode(
+                sourceIp,
+                destinationIp,
+                payload,
+                new byte[0]
+        );
+    }
+
+    public byte[] encode(
+            String sourceIp,
+            String destinationIp,
+            byte[] payload,
+            byte[] options
+    ) {
         byte[] body =
                 payload == null
                         ? new byte[0]
                         : payload.clone();
 
+        byte[] optionBytes =
+                options == null
+                        ? new byte[0]
+                        : options.clone();
+
+        if (optionBytes.length > 40
+                || (
+                optionBytes.length
+                        & 3
+        )
+                != 0) {
+            throw new IllegalArgumentException(
+                    "TCP option bytes must be 0..40 and padded to a 32-bit boundary"
+            );
+        }
+
+        int headerBytes =
+                BASE_HEADER_BYTES
+                        + optionBytes.length;
+
         byte[] header =
                 new byte[
-                        HEADER_BYTES
+                        headerBytes
                 ];
 
         put16(
@@ -60,7 +97,10 @@ public record TcpWireHeader(
                 (
                         byte
                 ) (
-                5
+                (
+                        headerBytes
+                                / 4
+                )
                         << 4
         );
 
@@ -109,6 +149,16 @@ public record TcpWireHeader(
                 urgentPointer
         );
 
+        if (optionBytes.length > 0) {
+            System.arraycopy(
+                    optionBytes,
+                    0,
+                    header,
+                    BASE_HEADER_BYTES,
+                    optionBytes.length
+            );
+        }
+
         byte[] pseudo =
                 pseudoHeader(
                         sourceIp,
@@ -136,11 +186,26 @@ public record TcpWireHeader(
             String destinationIp,
             byte[] payload
     ) {
+        return checksum(
+                sourceIp,
+                destinationIp,
+                payload,
+                new byte[0]
+        );
+    }
+
+    public int checksum(
+            String sourceIp,
+            String destinationIp,
+            byte[] payload,
+            byte[] options
+    ) {
         byte[] encoded =
                 encode(
                         sourceIp,
                         destinationIp,
-                        payload
+                        payload,
+                        options
                 );
 
         return (
