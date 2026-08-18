@@ -7,6 +7,8 @@ import com.k1ngtle.vsia.signality.core.scan.RadarScanScheduler;
 import com.k1ngtle.vsia.signality.debug.DebugVisualization;
 import com.k1ngtle.vsia.signality.debug.RadarBeaconBlockEntity;
 import com.k1ngtle.vsia.signality.debug.SignalityCommand;
+import com.k1ngtle.vsia.signality.engineering.vm.ProtocolProgramReloadListener;
+import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmScheduler;
 import com.k1ngtle.vsia.signality.integration.dh.DhCompat;
 import com.k1ngtle.vsia.signality.integration.vs.VsCompat;
 import com.k1ngtle.vsia.signality.internet.network.NetworkProfileReloadListener;
@@ -28,6 +30,7 @@ import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.slf4j.Logger;
 
 public final class Signality {
+
    public static final String MODID =
            Vsia.MOD_ID;
 
@@ -64,7 +67,9 @@ public final class Signality {
    public static void initialize(
            FMLJavaModLoadingContext context
    ) {
-      new Signality(context);
+      new Signality(
+              context
+      );
    }
 
    private void commonSetup(
@@ -79,6 +84,7 @@ public final class Signality {
                  && (Boolean) SignalityConfig
                  .ENABLE_VS_INTEGRATION
                  .get()) {
+
             RadarRegistry.addTargetSource(
                     VsCompat.hook()::shipTargetsIn
             );
@@ -92,6 +98,7 @@ public final class Signality {
                  && (Boolean) SignalityConfig
                  .ENABLE_DH_OCCLUSION
                  .get()) {
+
             RadarRegistry.addOcclusionProvider(
                     DhCompat.provider()
             );
@@ -109,6 +116,10 @@ public final class Signality {
    ) {
       event.addListener(
               new NetworkProfileReloadListener()
+      );
+
+      event.addListener(
+              new ProtocolProgramReloadListener()
       );
    }
 
@@ -132,6 +143,7 @@ public final class Signality {
            ServerStoppedEvent event
    ) {
       RadarScanScheduler.stop();
+      ProtocolVmScheduler.clear();
    }
 
    @SubscribeEvent
@@ -148,10 +160,20 @@ public final class Signality {
            ServerTickEvent event
    ) {
       if (event.phase == Phase.END) {
+         try {
+            ProtocolVmScheduler.tickAll();
+         } catch (Throwable throwable) {
+            LOGGER.warn(
+                    "Signality protocol VM scheduler tick failed.",
+                    throwable
+            );
+         }
+
          for (ServerLevel level
                  : event
                  .getServer()
                  .getAllLevels()) {
+
             try {
                RadarScanScheduler.onServerTick(
                        level

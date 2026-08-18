@@ -20,6 +20,11 @@ import com.k1ngtle.vsia.signality.engineering.radio.RadioEmission;
 import com.k1ngtle.vsia.signality.engineering.radio.RadioLinkQuality;
 import com.k1ngtle.vsia.signality.engineering.radio.RadioMode;
 import com.k1ngtle.vsia.signality.engineering.radio.RepeaterConfig;
+import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmController;
+import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmEnvironment;
+import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmHost;
+import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmRunResult;
+import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmScheduler;
 import com.k1ngtle.vsia.signality.engineering.phy.PhyResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiAccessCategory;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiMacController;
@@ -48,6 +53,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.util.Collection;
+import java.util.Map;
 import java.util.UUID;
 
 public abstract class NetworkDeviceBlockEntity
@@ -79,6 +85,36 @@ public abstract class NetworkDeviceBlockEntity
     private final RadioController radio =
             new RadioController();
 
+    private final ProtocolVmController protocolVm =
+            new ProtocolVmController(
+                    new ProtocolVmHost() {
+                        @Override
+                        public void sendFrame(
+                                byte[] frame
+                        ) {
+                            transmitProtocolVmFrame(
+                                    frame
+                            );
+                        }
+
+                        @Override
+                        public void deliverToHost(
+                                byte[] payload
+                        ) {
+                            handleProtocolVmHostPayload(
+                                    payload
+                            );
+                        }
+
+                        @Override
+                        public long currentTick() {
+                            return level == null
+                                    ? 0L
+                                    : level.getGameTime();
+                        }
+                    }
+            );
+
     public NetworkDeviceBlockEntity(
             BlockEntityType<?> type,
             BlockPos pos,
@@ -99,15 +135,26 @@ public abstract class NetworkDeviceBlockEntity
 
         if (level != null && !level.isClientSide) {
             normalizeNetworkProfile();
+
             SignalBus.registerReceiver(this);
             SignalBus.registerTransmitter(this);
+
+            ProtocolVmScheduler.register(
+                    signalId,
+                    protocolVm
+            );
         }
     }
 
     @Override
     public void setRemoved() {
+        ProtocolVmScheduler.unregister(
+                signalId
+        );
+
         SignalBus.unregisterReceiver(signalId);
         SignalBus.unregisterTransmitter(signalId);
+
         super.setRemoved();
     }
 
@@ -223,6 +270,34 @@ public abstract class NetworkDeviceBlockEntity
 
     public byte[] lastReceivedRadioVoice() {
         return radio.lastReceivedVoice();
+    }
+
+    public boolean bindProtocolProgram(
+            ResourceLocation programId
+    ) {
+        boolean bound =
+                protocolVm.bind(
+                        programId
+                );
+
+        if (bound) {
+            setChanged();
+        }
+
+        return bound;
+    }
+
+    public void unbindProtocolProgram() {
+        protocolVm.unbind();
+        setChanged();
+    }
+
+    public ResourceLocation boundProtocolProgramId() {
+        return protocolVm.programId();
+    }
+
+    public ProtocolVmRunResult lastProtocolVmResult() {
+        return protocolVm.lastResult();
     }
 
     public UUID servingCellId() {
@@ -863,6 +938,18 @@ public abstract class NetworkDeviceBlockEntity
         }
 
         if (envelope.contains(
+                "protocol_vm_frame"
+        )) {
+            processProtocolVmEnvelope(
+                    envelope,
+                    signal.frequencyHz(),
+                    lastPhyResult
+            );
+
+            return;
+        }
+
+        if (envelope.contains(
                 "wifi_mac_frame"
         )) {
             processWifiMacEnvelope(envelope);
@@ -926,6 +1013,58 @@ public abstract class NetworkDeviceBlockEntity
                 );
 
         return mcs.applyTo(base);
+    }
+
+    private void processProtocolVmEnvelope(
+            CompoundTag envelope,
+            double actualFrequencyHz,
+            PhyResult phyResult
+    ) {
+        if (!protocolVm.bound()) {
+            return;
+        }
+
+        ResourceLocation incomingProgram =
+                ResourceLocation.tryParse(
+                        envelope.getString(
+                                "protocol_vm_program"
+                        )
+                );
+
+        if (incomingProgram == null
+                || !incomingProgram.equals(
+                protocolVm.programId()
+        )) {
+            return;
+        }
+
+        protocolVm.receiveFrame(
+                envelope.getByteArray(
+                        "protocol_vm_frame"
+                ),
+                new ProtocolVmEnvironment(
+                        Map.of(
+                                "received_power_dbm",
+                                phyResult.receivedPowerDbm(),
+                                "snr_db",
+                                phyResult.snrDb(),
+                                "frequency_hz",
+                                actualFrequencyHz,
+                                "bandwidth_hz",
+                                tuningBandwidthHz()
+                        ),
+                        Map.of(
+                                "network_profile",
+                                networkProfile()
+                                        .id()
+                                        .toString(),
+                                "protocol_program",
+                                incomingProgram.toString()
+                        )
+                )
+        );
+
+        setChanged();
     }
 
     private void processWifiMacEnvelope(
@@ -1214,6 +1353,45 @@ public abstract class NetworkDeviceBlockEntity
     protected void transmitPacket(
             OSINetworkPacket packet
     ) {
+        if (protocolVm.bound()) {
+            CompoundTag hostPayload =
+                    new CompoundTag();
+
+            hostPayload.put(
+                    "osi_packet",
+                    packet.serializeNBT()
+            );
+
+            protocolVm.transmitHostPayload(
+                    serializeCompoundTag(
+                            hostPayload
+                    ),
+                    new ProtocolVmEnvironment(
+                            Map.of(
+                                    "frequency_hz",
+                                    activeFrequencyHz,
+                                    "bandwidth_hz",
+                                    tuningBandwidthHz(),
+                                    "last_snr_db",
+                                    lastPhyResult == null
+                                            ? 0.0
+                                            : lastPhyResult.snrDb()
+                            ),
+                            Map.of(
+                                    "network_profile",
+                                    networkProfile()
+                                            .id()
+                                            .toString(),
+                                    "protocol_program",
+                                    protocolVm.programId()
+                                            .toString()
+                            )
+                    )
+            );
+
+            return;
+        }
+
         if (isWifiProfile()
                 && wifiMac.mode()
                 != WifiMode.LEGACY_DIRECT) {
@@ -1337,6 +1515,95 @@ public abstract class NetworkDeviceBlockEntity
         }
 
         return WifiAccessCategory.BEST_EFFORT;
+    }
+
+    private void transmitProtocolVmFrame(
+            byte[] frame
+    ) {
+        if (!protocolVm.bound()) {
+            return;
+        }
+
+        CompoundTag payload =
+                baseEnvelope();
+
+        payload.putString(
+                "protocol_vm_program",
+                protocolVm.programId()
+                        .toString()
+        );
+
+        payload.putByteArray(
+                "protocol_vm_frame",
+                frame
+        );
+
+        broadcastPayload(
+                payload
+        );
+    }
+
+    private void handleProtocolVmHostPayload(
+            byte[] payload
+    ) {
+        CompoundTag hostPayload =
+                deserializeCompoundTag(
+                        payload
+                );
+
+        if (hostPayload == null
+                || !hostPayload.contains(
+                "osi_packet"
+        )) {
+            return;
+        }
+
+        processLayer2(
+                OSINetworkPacket.deserializeNBT(
+                        hostPayload.getCompound(
+                                "osi_packet"
+                        )
+                )
+        );
+    }
+
+    private byte[] serializeCompoundTag(
+            CompoundTag tag
+    ) {
+        try {
+            ByteArrayOutputStream bytes =
+                    new ByteArrayOutputStream();
+
+            NbtIo.write(
+                    tag,
+                    new DataOutputStream(
+                            bytes
+                    )
+            );
+
+            return bytes.toByteArray();
+        } catch (Exception exception) {
+            throw new IllegalStateException(
+                    "Unable to serialize protocol VM host payload",
+                    exception
+            );
+        }
+    }
+
+    private CompoundTag deserializeCompoundTag(
+            byte[] bytes
+    ) {
+        try {
+            return NbtIo.read(
+                    new DataInputStream(
+                            new ByteArrayInputStream(
+                                    bytes
+                            )
+                    )
+            );
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private void transmitWifiFrame(
@@ -1532,6 +1799,11 @@ public abstract class NetworkDeviceBlockEntity
                 "Radio",
                 radio.save()
         );
+
+        tag.put(
+                "ProtocolVm",
+                protocolVm.save()
+        );
     }
 
     @Override
@@ -1605,6 +1877,14 @@ public abstract class NetworkDeviceBlockEntity
             radio.load(
                     tag.getCompound(
                             "Radio"
+                    )
+            );
+        }
+
+        if (tag.contains("ProtocolVm")) {
+            protocolVm.load(
+                    tag.getCompound(
+                            "ProtocolVm"
                     )
             );
         }
