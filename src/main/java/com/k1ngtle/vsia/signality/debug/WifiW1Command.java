@@ -7,6 +7,8 @@ import com.k1ngtle.vsia.signality.engineering.wifi.baseband.WifiWaveformTestResu
 import com.k1ngtle.vsia.signality.engineering.wifi.baseband.WifiWaveformTestSuite;
 import com.k1ngtle.vsia.signality.engineering.wifi.ldpc.WifiLdpcTestResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.ldpc.WifiLdpcTestSuite;
+import com.k1ngtle.vsia.signality.engineering.wifi.ldpc.WifiLdpcStandardTestResult;
+import com.k1ngtle.vsia.signality.engineering.wifi.ldpc.WifiLdpcStandardTestSuite;
 import com.mojang.brigadier.CommandDispatcher;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
@@ -96,6 +98,17 @@ public final class WifiW1Command {
                                                         )
                                         )
                         )
+                        .then(
+                                Commands.literal(
+                                                "ldpc-standard"
+                                        )
+                                        .executes(
+                                                context ->
+                                                        runLdpcStandard(
+                                                                context.getSource()
+                                                        )
+                                        )
+                        )
         );
     }
 
@@ -131,6 +144,16 @@ public final class WifiW1Command {
         );
 
         runLdpcTests(
+                source,
+                counts
+        );
+
+        header(
+                source,
+                "Wi-Fi W1.3b Standard LDPC Profile"
+        );
+
+        runLdpcStandardTests(
                 source,
                 counts
         );
@@ -221,6 +244,48 @@ public final class WifiW1Command {
         return counts.failed == 0
                 ? 1
                 : 0;
+    }
+
+    private static int runLdpcStandard(
+            CommandSourceStack source
+    ) {
+        Counts counts =
+                new Counts();
+
+        header(
+                source,
+                "Wi-Fi W1.3b Standard LDPC Profile"
+        );
+
+        runLdpcStandardTests(
+                source,
+                counts
+        );
+
+        summary(
+                source,
+                counts
+        );
+
+        return counts.failed == 0
+                ? 1
+                : 0;
+    }
+
+    private static void runLdpcStandardTests(
+            CommandSourceStack source,
+            Counts counts
+    ) {
+        for (WifiLdpcStandardTestResult result
+                : WifiLdpcStandardTestSuite.runAll()) {
+            emit(
+                    source,
+                    result.id(),
+                    result.passed(),
+                    result.detail(),
+                    counts
+            );
+        }
     }
 
     private static void runLdpcTests(
