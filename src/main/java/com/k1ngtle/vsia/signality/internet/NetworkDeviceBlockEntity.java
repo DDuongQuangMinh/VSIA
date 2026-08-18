@@ -6,6 +6,11 @@ import com.k1ngtle.vsia.signality.api.signal.SignalBand;
 import com.k1ngtle.vsia.signality.api.signal.SignalPacket;
 import com.k1ngtle.vsia.signality.core.signal.SignalBus;
 import com.k1ngtle.vsia.signality.engineering.EngineeringPhyEngine;
+import com.k1ngtle.vsia.signality.engineering.cellular.CellRecord;
+import com.k1ngtle.vsia.signality.engineering.cellular.CellularMode;
+import com.k1ngtle.vsia.signality.engineering.cellular.CellularRanController;
+import com.k1ngtle.vsia.signality.engineering.cellular.ResourceBlockAllocation;
+import com.k1ngtle.vsia.signality.engineering.cellular.UeRanState;
 import com.k1ngtle.vsia.signality.engineering.phy.PhyProfile;
 import com.k1ngtle.vsia.signality.engineering.phy.PhyResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiAccessCategory;
@@ -41,14 +46,11 @@ public abstract class NetworkDeviceBlockEntity
         extends BlockEntity
         implements ISignalReceiver, ISignalTransmitter {
 
-    private UUID signalId =
-            UUID.randomUUID();
+    private UUID signalId = UUID.randomUUID();
 
     protected String macAddress;
-    protected String ipAddress =
-            "0.0.0.0";
-    protected String defaultGatewayMac =
-            "";
+    protected String ipAddress = "0.0.0.0";
+    protected String defaultGatewayMac = "";
 
     private ResourceLocation networkProfileId =
             NetworkProfileRegistry.DEFAULT_PROFILE_ID;
@@ -62,6 +64,9 @@ public abstract class NetworkDeviceBlockEntity
 
     private final WifiMacController wifiMac =
             new WifiMacController();
+
+    private final CellularRanController cellularRan =
+            new CellularRanController();
 
     public NetworkDeviceBlockEntity(
             BlockEntityType<?> type,
@@ -81,11 +86,8 @@ public abstract class NetworkDeviceBlockEntity
     public void onLoad() {
         super.onLoad();
 
-        if (level != null
-                && !level.isClientSide) {
-
+        if (level != null && !level.isClientSide) {
             normalizeNetworkProfile();
-
             SignalBus.registerReceiver(this);
             SignalBus.registerTransmitter(this);
         }
@@ -93,14 +95,8 @@ public abstract class NetworkDeviceBlockEntity
 
     @Override
     public void setRemoved() {
-        SignalBus.unregisterReceiver(
-                signalId
-        );
-
-        SignalBus.unregisterTransmitter(
-                signalId
-        );
-
+        SignalBus.unregisterReceiver(signalId);
+        SignalBus.unregisterTransmitter(signalId);
         super.setRemoved();
     }
 
@@ -116,22 +112,13 @@ public abstract class NetworkDeviceBlockEntity
 
     @Override
     public Vec3 positionWorld() {
-        return Vec3
-                .atCenterOf(
-                        worldPosition
-                )
-                .add(
-                        0.0,
-                        0.5,
-                        0.0
-                );
+        return Vec3.atCenterOf(worldPosition)
+                .add(0.0, 0.5, 0.0);
     }
 
     public NetworkProfile networkProfile() {
         return NetworkProfileRegistry
-                .getOrDefault(
-                        networkProfileId
-                );
+                .getOrDefault(networkProfileId);
     }
 
     public ResourceLocation networkProfileId() {
@@ -144,6 +131,17 @@ public abstract class NetworkDeviceBlockEntity
 
     public PhyResult lastPhyResult() {
         return lastPhyResult;
+    }
+
+    public PhyProfile currentPhyProfile() {
+        NetworkProfile profile = networkProfile();
+
+        return profile.phy().toRuntimeProfile(
+                activeFrequencyHz,
+                profile.bandwidthHz(),
+                profile.transmitPowerWatts(),
+                profile.antennaGain()
+        );
     }
 
     public WifiMode wifiMode() {
@@ -166,49 +164,44 @@ public abstract class NetworkDeviceBlockEntity
         return wifiMac.discoveredNetworks();
     }
 
-    public PhyProfile currentPhyProfile() {
-        NetworkProfile profile =
-                networkProfile();
+    public CellularMode cellularMode() {
+        return cellularRan.mode();
+    }
 
-        return profile
-                .phy()
-                .toRuntimeProfile(
-                        activeFrequencyHz,
-                        profile.bandwidthHz(),
-                        profile.transmitPowerWatts(),
-                        profile.antennaGain()
-                );
+    public UeRanState cellularUeState() {
+        return cellularRan.ueState();
+    }
+
+    public UUID servingCellId() {
+        return cellularRan.servingCellId();
+    }
+
+    public Collection<CellRecord> discoveredCells() {
+        return cellularRan.discoveredCells();
+    }
+
+    public Collection<ResourceBlockAllocation> scheduleCellularResourceBlocks(
+            int totalResourceBlocks
+    ) {
+        return cellularRan.schedule(totalResourceBlocks);
     }
 
     public boolean configureWifiStation() {
-        return configureWifiStation(
-                ""
-        );
+        return configureWifiStation("");
     }
 
-    public boolean configureWifiStation(
-            String passphrase
-    ) {
+    public boolean configureWifiStation(String passphrase) {
         if (!isWifiProfile()) {
             return false;
         }
 
-        wifiMac.configureStation(
-                passphrase
-        );
-
+        wifiMac.configureStation(passphrase);
         setChanged();
-
         return true;
     }
 
-    public boolean configureWifiAccessPoint(
-            String ssid
-    ) {
-        return configureWifiAccessPoint(
-                ssid,
-                ""
-        );
+    public boolean configureWifiAccessPoint(String ssid) {
+        return configureWifiAccessPoint(ssid, "");
     }
 
     public boolean configureWifiAccessPoint(
@@ -226,33 +219,25 @@ public abstract class NetworkDeviceBlockEntity
         );
 
         setChanged();
-
         return true;
     }
 
     public void useLegacyWifiDirectMode() {
         wifiMac.useLegacyDirectMode();
-
         setChanged();
     }
 
     public boolean scanWifi() {
         if (!isWifiProfile()
-                || wifiMac.mode()
-                != WifiMode.STATION) {
-
+                || wifiMac.mode() != WifiMode.STATION) {
             return false;
         }
 
-        double originalFrequency =
-                activeFrequencyHz;
+        double originalFrequency = activeFrequencyHz;
 
         for (double frequency
-                : networkProfile()
-                .frequenciesHz()) {
-
-            activeFrequencyHz =
-                    frequency;
+                : networkProfile().frequenciesHz()) {
+            activeFrequencyHz = frequency;
 
             wifiMac.startScan(
                     macAddress,
@@ -260,49 +245,32 @@ public abstract class NetworkDeviceBlockEntity
             );
         }
 
-        activeFrequencyHz =
-                originalFrequency;
-
+        activeFrequencyHz = originalFrequency;
         setChanged();
-
         return true;
     }
 
-    public boolean connectWifi(
-            String ssid
-    ) {
+    public boolean connectWifi(String ssid) {
         if (!isWifiProfile()
-                || wifiMac.mode()
-                != WifiMode.STATION) {
-
+                || wifiMac.mode() != WifiMode.STATION) {
             return false;
         }
 
         WifiNetworkRecord selected =
                 discoveredWifiNetworks()
                         .stream()
-                        .filter(
-                                network ->
-                                        network
-                                                .ssid()
-                                                .equals(
-                                                        ssid
-                                                )
-                        )
+                        .filter(network ->
+                                network.ssid().equals(ssid))
                         .findFirst()
-                        .orElse(
-                                null
-                        );
+                        .orElse(null);
 
         if (selected == null) {
             return false;
         }
 
-        if (networkProfile()
-                .supportsFrequency(
-                        selected.frequencyHz()
-                )) {
-
+        if (networkProfile().supportsFrequency(
+                selected.frequencyHz()
+        )) {
             activeFrequencyHz =
                     selected.frequencyHz();
         }
@@ -315,25 +283,128 @@ public abstract class NetworkDeviceBlockEntity
                 );
 
         setChanged();
-
         return result;
     }
 
     public boolean sendWifiBeacon() {
         if (!isWifiProfile()
-                || wifiMac.mode()
-                != WifiMode.ACCESS_POINT) {
-
+                || wifiMac.mode() != WifiMode.ACCESS_POINT) {
             return false;
         }
 
         wifiMac.sendBeacon(
                 macAddress,
-                networkProfile()
-                        .id()
-                        .toString(),
+                networkProfile().id().toString(),
                 activeFrequencyHz,
                 this::transmitWifiFrame
+        );
+
+        return true;
+    }
+
+    public boolean configureCellularUe() {
+        if (!isCellularProfile()) {
+            return false;
+        }
+
+        cellularRan.configureUe();
+        setChanged();
+        return true;
+    }
+
+    public boolean configureCellularBaseStation(
+            int physicalCellId,
+            long cellIdentity,
+            String plmn
+    ) {
+        if (!isCellularProfile()) {
+            return false;
+        }
+
+        cellularRan.configureBaseStation(
+                physicalCellId,
+                cellIdentity,
+                plmn
+        );
+
+        setChanged();
+        return true;
+    }
+
+    public boolean startCellSearch() {
+        if (!isCellularProfile()
+                || cellularRan.mode() != CellularMode.UE) {
+            return false;
+        }
+
+        cellularRan.startCellSearch();
+        setChanged();
+        return true;
+    }
+
+    public boolean selectAndAttachStrongestCell() {
+        if (!isCellularProfile()
+                || cellularRan.mode() != CellularMode.UE) {
+            return false;
+        }
+
+        CellRecord strongest =
+                cellularRan.discoveredCells()
+                        .stream()
+                        .max((a, b) ->
+                                Double.compare(
+                                        a.rsrpDbm(),
+                                        b.rsrpDbm()
+                                ))
+                        .orElse(null);
+
+        if (strongest == null) {
+            return false;
+        }
+
+        if (networkProfile().supportsFrequency(
+                strongest.frequencyHz()
+        )) {
+            activeFrequencyHz =
+                    strongest.frequencyHz();
+        }
+
+        boolean result =
+                cellularRan.selectStrongestCell(
+                        signalId,
+                        this::transmitCellularControl
+                );
+
+        setChanged();
+        return result;
+    }
+
+    public boolean sendCellBroadcast() {
+        if (!isCellularProfile()
+                || cellularRan.mode()
+                != CellularMode.BASE_STATION) {
+            return false;
+        }
+
+        cellularRan.sendSystemInformation(
+                signalId,
+                activeFrequencyHz,
+                networkProfile().id().toString(),
+                this::transmitCellularControl
+        );
+
+        return true;
+    }
+
+    public boolean sendCellularMeasurementReport() {
+        if (!isCellularProfile()
+                || cellularRan.mode() != CellularMode.UE) {
+            return false;
+        }
+
+        cellularRan.sendMeasurementReport(
+                signalId,
+                this::transmitCellularControl
         );
 
         return true;
@@ -343,83 +414,70 @@ public abstract class NetworkDeviceBlockEntity
             ResourceLocation profileId
     ) {
         NetworkProfile profile =
-                NetworkProfileRegistry
-                        .get(
-                                profileId
-                        )
-                        .orElse(
-                                null
-                        );
+                NetworkProfileRegistry.get(profileId)
+                        .orElse(null);
 
         if (profile == null) {
             return false;
         }
 
-        networkProfileId =
-                profile.id();
-
+        networkProfileId = profile.id();
         activeFrequencyHz =
                 profile.defaultFrequencyHz();
 
-        lastPhyResult =
-                null;
+        lastPhyResult = null;
 
-        if (profile.kind()
-                != NetworkKind.WIFI) {
-
+        if (profile.kind() != NetworkKind.WIFI) {
             wifiMac.useLegacyDirectMode();
         }
 
-        setChanged();
+        if (profile.kind() != NetworkKind.CELLULAR) {
+            cellularRan.useLegacyDirectMode();
+        }
 
+        setChanged();
         return true;
     }
 
     public boolean setActiveFrequencyHz(
             double frequencyHz
     ) {
-        if (!networkProfile()
-                .supportsFrequency(
-                        frequencyHz
-                )) {
-
+        if (!networkProfile().supportsFrequency(
+                frequencyHz
+        )) {
             return false;
         }
 
-        activeFrequencyHz =
-                frequencyHz;
-
-        lastPhyResult =
-                null;
-
+        activeFrequencyHz = frequencyHz;
+        lastPhyResult = null;
         setChanged();
-
         return true;
     }
 
     private boolean isWifiProfile() {
-        return networkProfile()
-                .kind()
+        return networkProfile().kind()
                 == NetworkKind.WIFI;
+    }
+
+    private boolean isCellularProfile() {
+        return networkProfile().kind()
+                == NetworkKind.CELLULAR;
     }
 
     private void normalizeNetworkProfile() {
         NetworkProfile profile =
-                NetworkProfileRegistry
-                        .get(
+                NetworkProfileRegistry.get(
                                 networkProfileId
                         )
                         .orElseGet(
                                 NetworkProfileRegistry::defaultProfile
                         );
 
-        networkProfileId =
-                profile.id();
+        networkProfileId = profile.id();
 
         if (!profile.supportsFrequency(
                 activeFrequencyHz
         )) {
-
             activeFrequencyHz =
                     profile.defaultFrequencyHz();
         }
@@ -441,20 +499,17 @@ public abstract class NetworkDeviceBlockEntity
 
     @Override
     public double tuningBandwidthHz() {
-        return networkProfile()
-                .bandwidthHz();
+        return networkProfile().bandwidthHz();
     }
 
     @Override
     public double antennaGain() {
-        return networkProfile()
-                .antennaGain();
+        return networkProfile().antennaGain();
     }
 
     @Override
     public double sensitivityWatts() {
-        return networkProfile()
-                .sensitivityWatts();
+        return networkProfile().sensitivityWatts();
     }
 
     @Override
@@ -469,29 +524,20 @@ public abstract class NetworkDeviceBlockEntity
             double receivedPowerWatts
     ) {
         CompoundTag envelope =
-                readSignalPayload(
-                        signal
-                );
+                readSignalPayload(signal);
 
         if (envelope == null
-                || !isCompatibleMedium(
-                envelope
-        )) {
-
+                || !isCompatibleMedium(envelope)) {
             return;
         }
 
         PhyProfile receiveProfile =
-                receivePhyProfile(
-                        envelope
-                );
+                receivePhyProfile(envelope);
 
         long frameBits =
                 Math.max(
                         1L,
-                        (long) signal
-                                .payload()
-                                .length
+                        (long) signal.payload().length
                                 * 8L
                 );
 
@@ -504,17 +550,13 @@ public abstract class NetworkDeviceBlockEntity
                         );
 
         if (!EngineeringPhyEngine
-                .shouldDeliverFrame(
-                        lastPhyResult
-                )) {
-
+                .shouldDeliverFrame(lastPhyResult)) {
             return;
         }
 
         if (isWifiProfile()) {
             wifiMac.observeSnr(
-                    networkProfile()
-                            .protocol(),
+                    networkProfile().protocol(),
                     lastPhyResult.snrDb()
             );
         }
@@ -522,29 +564,32 @@ public abstract class NetworkDeviceBlockEntity
         if (envelope.contains(
                 "wifi_mac_frame"
         )) {
+            processWifiMacEnvelope(envelope);
+            return;
+        }
 
-            processWifiMacEnvelope(
-                    envelope
+        if (envelope.contains(
+                "cellular_control"
+        )) {
+            processCellularEnvelope(
+                    envelope,
+                    lastPhyResult
             );
-
             return;
         }
 
         if (!envelope.contains(
                 "osi_packet"
         )) {
-
             return;
         }
 
         processLayer2(
-                OSINetworkPacket
-                        .deserializeNBT(
-                                envelope
-                                        .getCompound(
-                                                "osi_packet"
-                                        )
+                OSINetworkPacket.deserializeNBT(
+                        envelope.getCompound(
+                                "osi_packet"
                         )
+                )
         );
     }
 
@@ -558,7 +603,6 @@ public abstract class NetworkDeviceBlockEntity
                 || !envelope.contains(
                 "wifi_mcs_index"
         )) {
-
             return base;
         }
 
@@ -569,9 +613,7 @@ public abstract class NetworkDeviceBlockEntity
                         )
                 );
 
-        return mcs.applyTo(
-                base
-        );
+        return mcs.applyTo(base);
     }
 
     private void processWifiMacEnvelope(
@@ -580,20 +622,17 @@ public abstract class NetworkDeviceBlockEntity
         if (!isWifiProfile()
                 || wifiMac.mode()
                 == WifiMode.LEGACY_DIRECT) {
-
             return;
         }
 
         WifiMacFrame frame;
 
         try {
-            frame =
-                    WifiMacFrame.decode(
-                            envelope
-                                    .getByteArray(
-                                            "wifi_mac_frame"
-                                    )
-                    );
+            frame = WifiMacFrame.decode(
+                    envelope.getByteArray(
+                            "wifi_mac_frame"
+                    )
+            );
         } catch (Exception ignored) {
             return;
         }
@@ -602,9 +641,7 @@ public abstract class NetworkDeviceBlockEntity
                 wifiMac.receive(
                         macAddress,
                         frame,
-                        networkProfile()
-                                .id()
-                                .toString(),
+                        networkProfile().id().toString(),
                         activeFrequencyHz,
                         this::transmitWifiFrame
                 );
@@ -613,15 +650,49 @@ public abstract class NetworkDeviceBlockEntity
                 && data.contains(
                 "osi_packet"
         )) {
-
             processLayer2(
-                    OSINetworkPacket
-                            .deserializeNBT(
-                                    data
-                                            .getCompound(
-                                                    "osi_packet"
-                                            )
+                    OSINetworkPacket.deserializeNBT(
+                            data.getCompound(
+                                    "osi_packet"
                             )
+                    )
+            );
+        }
+
+        setChanged();
+    }
+
+    private void processCellularEnvelope(
+            CompoundTag envelope,
+            PhyResult phyResult
+    ) {
+        if (!isCellularProfile()
+                || cellularRan.mode()
+                == CellularMode.LEGACY_DIRECT) {
+            return;
+        }
+
+        CompoundTag data =
+                cellularRan.receive(
+                        signalId,
+                        envelope.getCompound(
+                                "cellular_control"
+                        ),
+                        phyResult.receivedPowerDbm(),
+                        phyResult.snrDb(),
+                        this::transmitCellularControl
+                );
+
+        if (data != null
+                && data.contains(
+                "osi_packet"
+        )) {
+            processLayer2(
+                    OSINetworkPacket.deserializeNBT(
+                            data.getCompound(
+                                    "osi_packet"
+                            )
+                    )
             );
         }
 
@@ -650,17 +721,15 @@ public abstract class NetworkDeviceBlockEntity
         if (!payload.contains(
                 "signality_medium"
         )) {
-
             return true;
         }
 
         return networkProfile()
                 .compatibilityGroup()
                 .equals(
-                        payload
-                                .getString(
-                                        "signality_medium"
-                                )
+                        payload.getString(
+                                "signality_medium"
+                        )
                 );
     }
 
@@ -668,23 +737,17 @@ public abstract class NetworkDeviceBlockEntity
             OSINetworkPacket packet
     ) {
         boolean addressed =
-                packet.targetMac
-                        .equals(
-                                macAddress
-                        );
+                packet.targetMac.equals(
+                        macAddress
+                );
 
         boolean broadcast =
-                packet.targetMac
-                        .equals(
-                                "FF:FF:FF:FF:FF:FF"
-                        );
+                packet.targetMac.equals(
+                        "FF:FF:FF:FF:FF:FF"
+                );
 
-        if (addressed
-                || broadcast) {
-
-            processLayer3(
-                    packet
-            );
+        if (addressed || broadcast) {
+            processLayer3(packet);
         }
     }
 
@@ -692,23 +755,17 @@ public abstract class NetworkDeviceBlockEntity
             OSINetworkPacket packet
     ) {
         boolean addressed =
-                packet.targetIp
-                        .equals(
-                                ipAddress
-                        );
+                packet.targetIp.equals(
+                        ipAddress
+                );
 
         boolean broadcast =
-                packet.targetIp
-                        .equals(
-                                "255.255.255.255"
-                        );
+                packet.targetIp.equals(
+                        "255.255.255.255"
+                );
 
-        if (addressed
-                || broadcast) {
-
-            processLayer4(
-                    packet
-            );
+        if (addressed || broadcast) {
+            processLayer4(packet);
         }
     }
 
@@ -716,29 +773,17 @@ public abstract class NetworkDeviceBlockEntity
             OSINetworkPacket packet
     ) {
         if (packet.targetPort == 80) {
-            handleWebRequest(
-                    packet
-            );
+            handleWebRequest(packet);
         } else if (packet.targetPort == 53) {
-            handleDnsRequest(
-                    packet
-            );
+            handleDnsRequest(packet);
         } else if (packet.targetPort == 25) {
-            handleMailRequest(
-                    packet
-            );
+            handleMailRequest(packet);
         } else if (packet.targetPort == 68) {
-            handleDhcpResponse(
-                    packet
-            );
+            handleDhcpResponse(packet);
         } else if (packet.targetPort == 67) {
-            handleDhcpRequest(
-                    packet
-            );
+            handleDhcpRequest(packet);
         } else {
-            handleIncomingData(
-                    packet
-            );
+            handleIncomingData(packet);
         }
     }
 
@@ -771,16 +816,10 @@ public abstract class NetworkDeviceBlockEntity
             OSINetworkPacket packet
     ) {
         if (packet.applicationProtocol
-                .equals(
-                        "DHCP"
-                )
+                .equals("DHCP")
                 && packet.payload
-                .getString(
-                        "type"
-                )
-                .equals(
-                        "ACK"
-                )) {
+                .getString("type")
+                .equals("ACK")) {
 
             ipAddress =
                     packet.payload
@@ -799,23 +838,16 @@ public abstract class NetworkDeviceBlockEntity
         OSINetworkPacket packet =
                 new OSINetworkPacket();
 
-        packet.sourceMac =
-                macAddress;
-
+        packet.sourceMac = macAddress;
         packet.targetMac =
                 "FF:FF:FF:FF:FF:FF";
 
-        packet.sourceIp =
-                "0.0.0.0";
-
+        packet.sourceIp = "0.0.0.0";
         packet.targetIp =
                 "255.255.255.255";
 
-        packet.sourcePort =
-                68;
-
-        packet.targetPort =
-                67;
+        packet.sourcePort = 68;
+        packet.targetPort = 67;
 
         packet.applicationProtocol =
                 "DHCP";
@@ -825,9 +857,7 @@ public abstract class NetworkDeviceBlockEntity
                 "DISCOVER"
         );
 
-        transmitPacket(
-                packet
-        );
+        transmitPacket(packet);
     }
 
     protected void transmitPacket(
@@ -849,10 +879,30 @@ public abstract class NetworkDeviceBlockEntity
                     macAddress,
                     packet.targetMac,
                     body,
-                    classifyAccessCategory(
-                            packet
-                    ),
+                    classifyAccessCategory(packet),
                     this::transmitWifiFrame
+            );
+
+            return;
+        }
+
+        if (isCellularProfile()
+                && cellularRan.mode()
+                == CellularMode.UE) {
+
+            CompoundTag body =
+                    new CompoundTag();
+
+            body.put(
+                    "osi_packet",
+                    packet.serializeNBT()
+            );
+
+            cellularRan.sendDataFromUe(
+                    signalId,
+                    body,
+                    estimatePacketBits(packet),
+                    this::transmitCellularControl
             );
 
             return;
@@ -866,9 +916,28 @@ public abstract class NetworkDeviceBlockEntity
                 packet.serializeNBT()
         );
 
-        broadcastPayload(
-                payload
-        );
+        broadcastPayload(payload);
+    }
+
+    private long estimatePacketBits(
+            OSINetworkPacket packet
+    ) {
+        try {
+            ByteArrayOutputStream bytes =
+                    new ByteArrayOutputStream();
+
+            NbtIo.write(
+                    packet.serializeNBT(),
+                    new DataOutputStream(bytes)
+            );
+
+            return Math.max(
+                    1L,
+                    (long) bytes.size() * 8L
+            );
+        } catch (Exception ignored) {
+            return 1L;
+        }
     }
 
     private WifiAccessCategory classifyAccessCategory(
@@ -881,20 +950,17 @@ public abstract class NetworkDeviceBlockEntity
                 || port == 5061
                 || (port >= 16384
                 && port <= 32767)) {
-
             return WifiAccessCategory.VOICE;
         }
 
         if (port == 554
                 || port == 1935) {
-
             return WifiAccessCategory.VIDEO;
         }
 
         if (port == 20
                 || port == 21
                 || port == 25) {
-
             return WifiAccessCategory.BACKGROUND;
         }
 
@@ -909,10 +975,8 @@ public abstract class NetworkDeviceBlockEntity
 
         WifiMcs mcs =
                 WifiMcsTable.select(
-                        networkProfile()
-                                .protocol(),
-                        wifiMac
-                                .lastObservedSnrDb()
+                        networkProfile().protocol(),
+                        wifiMac.lastObservedSnrDb()
                 );
 
         payload.putInt(
@@ -925,9 +989,21 @@ public abstract class NetworkDeviceBlockEntity
                 frame.encode()
         );
 
-        broadcastPayload(
-                payload
+        broadcastPayload(payload);
+    }
+
+    private void transmitCellularControl(
+            CompoundTag cellularMessage
+    ) {
+        CompoundTag payload =
+                baseEnvelope();
+
+        payload.put(
+                "cellular_control",
+                cellularMessage
         );
+
+        broadcastPayload(payload);
     }
 
     private CompoundTag baseEnvelope() {
@@ -939,8 +1015,7 @@ public abstract class NetworkDeviceBlockEntity
 
         payload.putString(
                 "signality_network_profile",
-                profile.id()
-                        .toString()
+                profile.id().toString()
         );
 
         payload.putString(
@@ -972,9 +1047,7 @@ public abstract class NetworkDeviceBlockEntity
 
             NbtIo.write(
                     rawPayload,
-                    new DataOutputStream(
-                            bytes
-                    )
+                    new DataOutputStream(bytes)
             );
 
             payloadBytes =
@@ -1002,7 +1075,6 @@ public abstract class NetworkDeviceBlockEntity
 
         if (level
                 instanceof ServerLevel serverLevel) {
-
             SignalBus.broadcast(
                     outgoing,
                     serverLevel
@@ -1014,9 +1086,7 @@ public abstract class NetworkDeviceBlockEntity
     protected void saveAdditional(
             CompoundTag tag
     ) {
-        super.saveAdditional(
-                tag
-        );
+        super.saveAdditional(tag);
 
         tag.putUUID(
                 "SignalId",
@@ -1040,8 +1110,7 @@ public abstract class NetworkDeviceBlockEntity
 
         tag.putString(
                 "NetworkProfile",
-                networkProfileId
-                        .toString()
+                networkProfileId.toString()
         );
 
         tag.putDouble(
@@ -1053,67 +1122,48 @@ public abstract class NetworkDeviceBlockEntity
                 "WifiMac",
                 wifiMac.save()
         );
+
+        tag.put(
+                "CellularRan",
+                cellularRan.save()
+        );
     }
 
     @Override
     public void load(
             CompoundTag tag
     ) {
-        super.load(
-                tag
-        );
+        super.load(tag);
 
-        if (tag.hasUUID(
-                "SignalId"
-        )) {
-
+        if (tag.hasUUID("SignalId")) {
             signalId =
-                    tag.getUUID(
-                            "SignalId"
-                    );
+                    tag.getUUID("SignalId");
         }
 
-        if (tag.contains(
-                "MacAddress"
-        )) {
-
+        if (tag.contains("MacAddress")) {
             macAddress =
-                    tag.getString(
-                            "MacAddress"
-                    );
+                    tag.getString("MacAddress");
         }
 
-        if (tag.contains(
-                "IpAddress"
-        )) {
-
+        if (tag.contains("IpAddress")) {
             ipAddress =
-                    tag.getString(
-                            "IpAddress"
-                    );
+                    tag.getString("IpAddress");
         }
 
-        if (tag.contains(
-                "DefaultGatewayMac"
-        )) {
-
+        if (tag.contains("DefaultGatewayMac")) {
             defaultGatewayMac =
                     tag.getString(
                             "DefaultGatewayMac"
                     );
         }
 
-        if (tag.contains(
-                "NetworkProfile"
-        )) {
-
+        if (tag.contains("NetworkProfile")) {
             ResourceLocation parsed =
-                    ResourceLocation
-                            .tryParse(
-                                    tag.getString(
-                                            "NetworkProfile"
-                                    )
-                            );
+                    ResourceLocation.tryParse(
+                            tag.getString(
+                                    "NetworkProfile"
+                            )
+                    );
 
             if (parsed != null) {
                 networkProfileId =
@@ -1124,17 +1174,13 @@ public abstract class NetworkDeviceBlockEntity
         if (tag.contains(
                 "ActiveFrequencyHz"
         )) {
-
             activeFrequencyHz =
                     tag.getDouble(
                             "ActiveFrequencyHz"
                     );
         }
 
-        if (tag.contains(
-                "WifiMac"
-        )) {
-
+        if (tag.contains("WifiMac")) {
             wifiMac.load(
                     tag.getCompound(
                             "WifiMac"
@@ -1142,9 +1188,15 @@ public abstract class NetworkDeviceBlockEntity
             );
         }
 
-        normalizeNetworkProfile();
+        if (tag.contains("CellularRan")) {
+            cellularRan.load(
+                    tag.getCompound(
+                            "CellularRan"
+                    )
+            );
+        }
 
-        lastPhyResult =
-                null;
+        normalizeNetworkProfile();
+        lastPhyResult = null;
     }
 }
