@@ -58,6 +58,9 @@ import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyLinkModel;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyAirtimeModel;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPpduEstimate;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPuncturingPattern;
+import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyDecision;
+import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyEngine;
+import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyMode;
 import com.k1ngtle.vsia.signality.engineering.reality.GeneralRfAirtimeModel;
 import com.k1ngtle.vsia.signality.engineering.reality.NetworkRealityAssessment;
 import com.k1ngtle.vsia.signality.engineering.reality.NetworkRealityEngine;
@@ -118,6 +121,16 @@ public abstract class NetworkDeviceBlockEntity
 
     private final WifiPhyController wifiPhy =
             new WifiPhyController();
+
+    private WifiLivePhyMode wifiLivePhyMode =
+            WifiLivePhyMode.ANALYTICAL;
+
+    private WifiLivePhyDecision lastWifiLivePhyDecision =
+            WifiLivePhyDecision.bypass(
+                    WifiLivePhyMode.ANALYTICAL,
+                    Double.NaN,
+                    "Not evaluated"
+            );
 
     private long activeWifiResponseReferenceMicros =
             -1L;
@@ -419,6 +432,32 @@ public abstract class NetworkDeviceBlockEntity
         return assessment == null
                 ? 0.0
                 : assessment.ofdmIciPowerFraction();
+    }
+
+    public WifiLivePhyMode wifiLivePhyMode() {
+        return wifiLivePhyMode;
+    }
+
+    public WifiLivePhyDecision lastWifiLivePhyDecision() {
+        return lastWifiLivePhyDecision;
+    }
+
+    public void setWifiLivePhyMode(
+            WifiLivePhyMode mode
+    ) {
+        wifiLivePhyMode =
+                mode == null
+                        ? WifiLivePhyMode.ANALYTICAL
+                        : mode;
+
+        lastWifiLivePhyDecision =
+                WifiLivePhyDecision.bypass(
+                        wifiLivePhyMode,
+                        Double.NaN,
+                        "Mode changed"
+                );
+
+        setChanged();
     }
 
     public WifiPpduEstimate estimateWifiPpdu(
@@ -1045,6 +1084,12 @@ public abstract class NetworkDeviceBlockEntity
         lastPhyResult = null;
         lastRfChannelAssessment = null;
         lastNetworkRealityAssessment = null;
+        lastWifiLivePhyDecision =
+                WifiLivePhyDecision.bypass(
+                        wifiLivePhyMode,
+                        Double.NaN,
+                        "Network profile changed"
+                );
 
         if (profile.kind() != NetworkKind.WIFI) {
             wifiMac.useLegacyDirectMode();
@@ -1375,6 +1420,61 @@ public abstract class NetworkDeviceBlockEntity
             return;
         }
 
+        if (isWifiProfile()
+                && envelope.contains(
+                "wifi_mac_frame"
+        )) {
+            WifiLivePhyMode incomingMode =
+                    parseWifiLivePhyMode(
+                            envelope
+                    );
+
+            if (wifiLivePhyMode
+                    == WifiLivePhyMode.BIT_LEVEL_AUTO
+                    && incomingMode
+                    == WifiLivePhyMode.BIT_LEVEL_AUTO
+                    && envelope.contains(
+                    "wifi_mcs_index"
+            )) {
+                WifiMcs liveMcs =
+                        WifiMcsTable.byIndex(
+                                envelope.getInt(
+                                        "wifi_mcs_index"
+                                )
+                        );
+
+                WifiPhyGeneration liveGeneration =
+                        WifiPhyGeneration.fromProtocol(
+                                envelope.getString(
+                                        "signality_protocol"
+                                )
+                        );
+
+                lastWifiLivePhyDecision =
+                        WifiLivePhyEngine.evaluate(
+                                envelope.getByteArray(
+                                        "wifi_mac_frame"
+                                ),
+                                liveGeneration,
+                                liveMcs,
+                                lastPhyResult.snrDb(),
+                                WifiLivePhyMode.BIT_LEVEL_AUTO
+                        );
+
+                if (lastWifiLivePhyDecision.evaluated()
+                        && !lastWifiLivePhyDecision.delivered()) {
+                    return;
+                }
+            } else {
+                lastWifiLivePhyDecision =
+                        WifiLivePhyDecision.bypass(
+                                wifiLivePhyMode,
+                                lastPhyResult.snrDb(),
+                                "Detailed live PHY not enabled at both endpoints"
+                        );
+            }
+        }
+
         if (isWifiProfile()) {
             wifiMac.observeSnr(
                     networkProfile().protocol(),
@@ -1510,6 +1610,26 @@ public abstract class NetworkDeviceBlockEntity
         );
 
         setChanged();
+    }
+
+    private WifiLivePhyMode parseWifiLivePhyMode(
+            CompoundTag envelope
+    ) {
+        if (!envelope.contains(
+                "wifi_live_phy_mode"
+        )) {
+            return WifiLivePhyMode.ANALYTICAL;
+        }
+
+        try {
+            return WifiLivePhyMode.valueOf(
+                    envelope.getString(
+                            "wifi_live_phy_mode"
+                    )
+            );
+        } catch (Exception ignored) {
+            return WifiLivePhyMode.ANALYTICAL;
+        }
     }
 
     private void processWifiMacEnvelope(
@@ -2123,6 +2243,11 @@ public abstract class NetworkDeviceBlockEntity
                 mcs.index()
         );
 
+        payload.putString(
+                "wifi_live_phy_mode",
+                wifiLivePhyMode.name()
+        );
+
         ensureWifiPhyConfigured();
 
         WifiPhyConfiguration phyConfiguration =
@@ -2559,6 +2684,11 @@ public abstract class NetworkDeviceBlockEntity
                 antennaTag
         );
 
+        tag.putString(
+                "WifiLivePhyMode",
+                wifiLivePhyMode.name()
+        );
+
         tag.put(
                 "WifiMac",
                 wifiMac.save()
@@ -2680,6 +2810,22 @@ public abstract class NetworkDeviceBlockEntity
             }
         }
 
+        if (tag.contains(
+                "WifiLivePhyMode"
+        )) {
+            try {
+                wifiLivePhyMode =
+                        WifiLivePhyMode.valueOf(
+                                tag.getString(
+                                        "WifiLivePhyMode"
+                                )
+                        );
+            } catch (Exception ignored) {
+                wifiLivePhyMode =
+                        WifiLivePhyMode.ANALYTICAL;
+            }
+        }
+
         if (tag.contains("WifiMac")) {
             wifiMac.load(
                     tag.getCompound(
@@ -2715,5 +2861,12 @@ public abstract class NetworkDeviceBlockEntity
         normalizeNetworkProfile();
         lastPhyResult = null;
         lastRfChannelAssessment = null;
+        lastNetworkRealityAssessment = null;
+        lastWifiLivePhyDecision =
+                WifiLivePhyDecision.bypass(
+                        wifiLivePhyMode,
+                        Double.NaN,
+                        "Loaded"
+                );
     }
 }

@@ -9,6 +9,8 @@ import com.k1ngtle.vsia.signality.engineering.wifi.ldpc.WifiLdpcTestResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.ldpc.WifiLdpcTestSuite;
 import com.k1ngtle.vsia.signality.engineering.wifi.ldpc.WifiLdpcStandardTestResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.ldpc.WifiLdpcStandardTestSuite;
+import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyTestResult;
+import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyTestSuite;
 import com.mojang.brigadier.CommandDispatcher;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
@@ -109,6 +111,17 @@ public final class WifiW1Command {
                                                         )
                                         )
                         )
+                        .then(
+                                Commands.literal(
+                                                "live"
+                                        )
+                                        .executes(
+                                                context ->
+                                                        runLive(
+                                                                context.getSource()
+                                                        )
+                                        )
+                        )
         );
     }
 
@@ -154,6 +167,16 @@ public final class WifiW1Command {
         );
 
         runLdpcStandardTests(
+                source,
+                counts
+        );
+
+        header(
+                source,
+                "Wi-Fi W1.4 Selective Live PHY"
+        );
+
+        runLiveTests(
                 source,
                 counts
         );
@@ -244,6 +267,48 @@ public final class WifiW1Command {
         return counts.failed == 0
                 ? 1
                 : 0;
+    }
+
+    private static int runLive(
+            CommandSourceStack source
+    ) {
+        Counts counts =
+                new Counts();
+
+        header(
+                source,
+                "Wi-Fi W1.4 Selective Live PHY"
+        );
+
+        runLiveTests(
+                source,
+                counts
+        );
+
+        summary(
+                source,
+                counts
+        );
+
+        return counts.failed == 0
+                ? 1
+                : 0;
+    }
+
+    private static void runLiveTests(
+            CommandSourceStack source,
+            Counts counts
+    ) {
+        for (WifiLivePhyTestResult result
+                : WifiLivePhyTestSuite.runAll()) {
+            emit(
+                    source,
+                    result.id(),
+                    result.passed(),
+                    result.detail(),
+                    counts
+            );
+        }
     }
 
     private static int runLdpcStandard(
