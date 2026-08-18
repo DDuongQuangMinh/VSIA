@@ -3,6 +3,8 @@ package com.k1ngtle.vsia.signality.debug;
 import com.k1ngtle.vsia.Vsia;
 import com.k1ngtle.vsia.signality.engineering.wifi.baseband.WifiBasebandTestResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.baseband.WifiBasebandTestSuite;
+import com.k1ngtle.vsia.signality.engineering.wifi.baseband.WifiWaveformTestResult;
+import com.k1ngtle.vsia.signality.engineering.wifi.baseband.WifiWaveformTestSuite;
 import com.mojang.brigadier.CommandDispatcher;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
@@ -59,92 +61,234 @@ public final class WifiW1Command {
                                                         )
                                         )
                         )
+                        .then(
+                                Commands.literal(
+                                                "baseband"
+                                        )
+                                        .executes(
+                                                context ->
+                                                        runBaseband(
+                                                                context.getSource()
+                                                        )
+                                        )
+                        )
+                        .then(
+                                Commands.literal(
+                                                "waveform"
+                                        )
+                                        .executes(
+                                                context ->
+                                                        runWaveform(
+                                                                context.getSource()
+                                                        )
+                                        )
+                        )
         );
     }
 
     private static int runAll(
             CommandSourceStack source
     ) {
+        Counts counts =
+                new Counts();
+
+        header(
+                source,
+                "Wi-Fi W1.1 Baseband"
+        );
+
+        runBasebandTests(
+                source,
+                counts
+        );
+
+        header(
+                source,
+                "Wi-Fi W1.2 Waveform / Synchronization"
+        );
+
+        runWaveformTests(
+                source,
+                counts
+        );
+
+        summary(
+                source,
+                counts
+        );
+
+        return counts.failed == 0
+                ? 1
+                : 0;
+    }
+
+    private static int runBaseband(
+            CommandSourceStack source
+    ) {
+        Counts counts =
+                new Counts();
+
+        header(
+                source,
+                "Wi-Fi W1.1 Baseband"
+        );
+
+        runBasebandTests(
+                source,
+                counts
+        );
+
+        summary(
+                source,
+                counts
+        );
+
+        return counts.failed == 0
+                ? 1
+                : 0;
+    }
+
+    private static int runWaveform(
+            CommandSourceStack source
+    ) {
+        Counts counts =
+                new Counts();
+
+        header(
+                source,
+                "Wi-Fi W1.2 Waveform / Synchronization"
+        );
+
+        runWaveformTests(
+                source,
+                counts
+        );
+
+        summary(
+                source,
+                counts
+        );
+
+        return counts.failed == 0
+                ? 1
+                : 0;
+    }
+
+    private static void runBasebandTests(
+            CommandSourceStack source,
+            Counts counts
+    ) {
+        for (WifiBasebandTestResult result
+                : WifiBasebandTestSuite.runAll()) {
+            emit(
+                    source,
+                    result.id(),
+                    result.passed(),
+                    result.detail(),
+                    counts
+            );
+        }
+    }
+
+    private static void runWaveformTests(
+            CommandSourceStack source,
+            Counts counts
+    ) {
+        for (WifiWaveformTestResult result
+                : WifiWaveformTestSuite.runAll()) {
+            emit(
+                    source,
+                    result.id(),
+                    result.passed(),
+                    result.detail(),
+                    counts
+            );
+        }
+    }
+
+    private static void emit(
+            CommandSourceStack source,
+            String id,
+            boolean passed,
+            String detail,
+            Counts counts
+    ) {
+        if (passed) {
+            counts.passed++;
+
+            source.sendSuccess(
+                    () ->
+                            Component.literal(
+                                    "[PASS] "
+                                            + id
+                            ).withStyle(
+                                    ChatFormatting.GREEN
+                            ),
+                    false
+            );
+        } else {
+            counts.failed++;
+
+            source.sendFailure(
+                    Component.literal(
+                            "[FAIL] "
+                                    + id
+                    ).withStyle(
+                            ChatFormatting.RED
+                    )
+            );
+        }
+
         source.sendSuccess(
                 () ->
                         Component.literal(
-                                "Wi-Fi W1 Bit-Level PPDU / BCC Lab"
+                                "  "
+                                        + detail
+                        ).withStyle(
+                                ChatFormatting.DARK_GRAY
+                        ),
+                false
+        );
+    }
+
+    private static void header(
+            CommandSourceStack source,
+            String title
+    ) {
+        source.sendSuccess(
+                () ->
+                        Component.literal(
+                                title
                         ).withStyle(
                                 ChatFormatting.AQUA
                         ),
                 false
         );
+    }
 
-        int passed =
-                0;
-
-        int failed =
-                0;
-
-        for (WifiBasebandTestResult result
-                : WifiBasebandTestSuite.runAll()) {
-            if (result.passed()) {
-                passed++;
-
-                source.sendSuccess(
-                        () ->
-                                Component.literal(
-                                        "[PASS] "
-                                                + result.id()
-                                ).withStyle(
-                                        ChatFormatting.GREEN
-                                ),
-                        false
-                );
-            } else {
-                failed++;
-
-                source.sendFailure(
-                        Component.literal(
-                                "[FAIL] "
-                                        + result.id()
-                        ).withStyle(
-                                ChatFormatting.RED
-                        )
-                );
-            }
-
-            source.sendSuccess(
-                    () ->
-                            Component.literal(
-                                    "  "
-                                            + result.detail()
-                            ).withStyle(
-                                    ChatFormatting.DARK_GRAY
-                            ),
-                    false
-            );
-        }
-
-        int finalPassed =
-                passed;
-
-        int finalFailed =
-                failed;
-
+    private static void summary(
+            CommandSourceStack source,
+            Counts counts
+    ) {
         source.sendSuccess(
                 () ->
                         Component.literal(
                                 "Result: "
-                                        + finalPassed
+                                        + counts.passed
                                         + " passed, "
-                                        + finalFailed
+                                        + counts.failed
                                         + " failed"
                         ).withStyle(
-                                finalFailed == 0
+                                counts.failed == 0
                                         ? ChatFormatting.GREEN
                                         : ChatFormatting.RED
                         ),
                 false
         );
+    }
 
-        return failed == 0
-                ? 1
-                : 0;
+    private static final class Counts {
+        private int passed;
+        private int failed;
     }
 }

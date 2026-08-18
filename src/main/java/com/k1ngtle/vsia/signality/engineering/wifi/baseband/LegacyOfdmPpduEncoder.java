@@ -156,7 +156,8 @@ public final class LegacyOfdmPpduEncoder {
 
             frequencySymbols[symbol] =
                     LegacyOfdmSubcarrierMapper.map(
-                            constellation
+                            constellation,
+                            symbol + 1
                     );
         }
 

@@ -38,6 +38,16 @@ public final class LegacyOfdmSubcarrierMapper {
     public static Complex[] map(
             Complex[] dataSymbols
     ) {
+        return map(
+                dataSymbols,
+                0
+        );
+    }
+
+    public static Complex[] map(
+            Complex[] dataSymbols,
+            int symbolIndex
+    ) {
         if (dataSymbols.length
                 != DATA_SUBCARRIERS.length) {
             throw new IllegalArgumentException(
@@ -64,6 +74,11 @@ public final class LegacyOfdmSubcarrierMapper {
                     dataSymbols[i];
         }
 
+        int polarity =
+                LegacyPilotPolarity.forSymbol(
+                        symbolIndex
+                );
+
         for (int i = 0;
              i < PILOTS.length;
              i++) {
@@ -71,7 +86,8 @@ public final class LegacyOfdmSubcarrierMapper {
                     PILOTS[i]
             )] =
                     new Complex(
-                            PILOT_VALUES[i],
+                            PILOT_VALUES[i]
+                                    * polarity,
                             0.0
                     );
         }
