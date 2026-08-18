@@ -5,6 +5,7 @@ import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringSna
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringTestLinkResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketTraceEvent;
 import com.k1ngtle.vsia.signality.engineering.wifi.workflow.WifiEngineeringWorkflowSnapshot;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.WifiIpEngineeringSnapshot;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -95,6 +96,25 @@ public final class WifiEngineeringClientPacketHandler {
                         pos
                 )) {
             screen.acceptWorkflowSnapshot(
+                    snapshot
+            );
+        }
+    }
+
+    public static void handleIpSnapshot(
+            BlockPos pos,
+            WifiIpEngineeringSnapshot snapshot
+    ) {
+        Minecraft minecraft =
+                Minecraft.getInstance();
+
+        if (minecraft.screen
+                instanceof WifiEngineeringScreen screen
+                && screen.targetPos()
+                .equals(
+                        pos
+                )) {
+            screen.acceptIpSnapshot(
                     snapshot
             );
         }

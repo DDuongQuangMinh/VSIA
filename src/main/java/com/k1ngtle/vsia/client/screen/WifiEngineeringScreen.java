@@ -8,6 +8,8 @@ import com.k1ngtle.vsia.network.wifi.WifiPacketTraceRequestPacket;
 import com.k1ngtle.vsia.network.wifi.WifiPacketTraceClearPacket;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringWorkflowRequestPacket;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringWorkflowActionPacket;
+import com.k1ngtle.vsia.network.wifi.WifiIpEngineeringRequestPacket;
+import com.k1ngtle.vsia.network.wifi.WifiIpEngineeringActionPacket;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringHistory;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringSample;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringSnapshot;
@@ -18,6 +20,8 @@ import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketTraceEvent;
 import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketTraceFormatter;
 import com.k1ngtle.vsia.signality.engineering.wifi.workflow.WifiEngineeringWorkflowAction;
 import com.k1ngtle.vsia.signality.engineering.wifi.workflow.WifiEngineeringWorkflowSnapshot;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.WifiIpAction;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.WifiIpEngineeringSnapshot;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -63,6 +67,11 @@ public final class WifiEngineeringScreen
     private String workflowStatus =
             "Configure one endpoint as AP and another as STATION";
 
+    private WifiIpEngineeringSnapshot ipSnapshot;
+
+    private String ipStatus =
+            "Use DHCP or configure an IPv4 address, then ARP / Ping / UDP / HTTP";
+
     public WifiEngineeringScreen(
             BlockPos targetPos,
             WifiEngineeringSnapshot snapshot
@@ -91,6 +100,9 @@ public final class WifiEngineeringScreen
 
         int workflowY =
                 height - 54;
+
+        int ipY =
+                height - 78;
 
         modeButton =
                 addRenderableWidget(
@@ -190,6 +202,54 @@ public final class WifiEngineeringScreen
                                 20
                         )
                         .build()
+        );
+
+        addIpButton(
+                "DHCP",
+                12,
+                ipY,
+                68,
+                WifiIpAction.DHCP_DISCOVER
+        );
+
+        addIpButton(
+                "ARP",
+                86,
+                ipY,
+                60,
+                WifiIpAction.ARP_RESOLVE
+        );
+
+        addIpButton(
+                "Ping",
+                152,
+                ipY,
+                60,
+                WifiIpAction.ICMP_ECHO
+        );
+
+        addIpButton(
+                "UDP Echo",
+                218,
+                ipY,
+                82,
+                WifiIpAction.UDP_ECHO
+        );
+
+        addIpButton(
+                "HTTP GET",
+                306,
+                ipY,
+                82,
+                WifiIpAction.HTTP_GET
+        );
+
+        addIpButton(
+                "Clear IP",
+                394,
+                ipY,
+                76,
+                WifiIpAction.CLEAR_METRICS
         );
 
         addWorkflowButton(
@@ -333,6 +393,21 @@ public final class WifiEngineeringScreen
         }
     }
 
+    public void acceptIpSnapshot(
+            WifiIpEngineeringSnapshot value
+    ) {
+        ipSnapshot =
+                value;
+
+        if (value != null
+                && value.status() != null
+                && !value.status()
+                .isBlank()) {
+            ipStatus =
+                    value.status();
+        }
+    }
+
     @Override
     public void render(
             GuiGraphics graphics,
@@ -360,7 +435,7 @@ public final class WifiEngineeringScreen
                 left - 4,
                 top - 4,
                 left + panelWidth,
-                height - 66,
+                height - 90,
                 0xCC101820
         );
 
@@ -531,12 +606,21 @@ public final class WifiEngineeringScreen
                         )
                 );
 
+        y =
+                drawSection(
+                        graphics,
+                        left,
+                        y,
+                        "WIFI WORKFLOW",
+                        workflowLines()
+                );
+
         drawSection(
                 graphics,
                 left,
                 y,
-                "WIFI WORKFLOW",
-                workflowLines()
+                "IP / APPLICATION",
+                ipLines()
         );
 
         int chartLeft =
@@ -550,7 +634,7 @@ public final class WifiEngineeringScreen
                     top;
 
             int chartBottom =
-                    height - 68;
+                    height - 92;
 
             drawAnalyzer(
                     graphics,
@@ -1137,6 +1221,137 @@ public final class WifiEngineeringScreen
                 / 70;
     }
 
+    private void addIpButton(
+            String label,
+            int x,
+            int y,
+            int width,
+            WifiIpAction action
+    ) {
+        addRenderableWidget(
+                Button.builder(
+                                Component.literal(
+                                        label
+                                ),
+                                button ->
+                                        sendIpAction(
+                                                action
+                                        )
+                        )
+                        .bounds(
+                                x,
+                                y,
+                                width,
+                                20
+                        )
+                        .build()
+        );
+    }
+
+    private void sendIpAction(
+            WifiIpAction action
+    ) {
+        ipStatus =
+                "Requesting "
+                        + action
+                        + "...";
+
+        VsiaNetwork.sendToServer(
+                new WifiIpEngineeringActionPacket(
+                        targetPos,
+                        action
+                )
+        );
+    }
+
+    private List<String> ipLines() {
+        if (ipSnapshot == null) {
+            return List.of(
+                    "IPv4 n/a | peer n/a",
+                    "TX/RX n/a | loss n/a",
+                    "RTT n/a | jitter n/a | goodput n/a",
+                    truncate(
+                            ipStatus,
+                            64
+                    )
+            );
+        }
+
+        return List.of(
+                "IPv4 "
+                        + ipSnapshot.localIp()
+                        + " | peer "
+                        + (
+                        ipSnapshot.peerIp()
+                                .isBlank()
+                                ? "n/a"
+                                : ipSnapshot.peerIp()
+                ),
+                "Neighbor "
+                        + (
+                        ipSnapshot.peerMac()
+                                .isBlank()
+                                ? "n/a"
+                                : ipSnapshot.peerMac()
+                )
+                        + " | ARP entries "
+                        + ipSnapshot.neighborCount(),
+                "TX "
+                        + ipSnapshot.txPackets()
+                        + "/"
+                        + ipSnapshot.txBytes()
+                        + "B | RX "
+                        + ipSnapshot.rxPackets()
+                        + "/"
+                        + ipSnapshot.rxBytes()
+                        + "B | loss "
+                        + ipSnapshot.lostPackets(),
+                "RTT "
+                        + metric(
+                        ipSnapshot.lastRttMs(),
+                        " ms"
+                )
+                        + " | avg "
+                        + metric(
+                        ipSnapshot.averageRttMs(),
+                        " ms"
+                )
+                        + " | jitter "
+                        + metric(
+                        ipSnapshot.jitterMs(),
+                        " ms"
+                ),
+                "Goodput "
+                        + metric(
+                        ipSnapshot.goodputKbps(),
+                        " kbit/s"
+                )
+                        + " | "
+                        + truncate(
+                        ipStatus,
+                        44
+                )
+        );
+    }
+
+    private static String metric(
+            double value,
+            String suffix
+    ) {
+        if (!Double.isFinite(
+                value
+        )) {
+            return "n/a";
+        }
+
+        return String.format(
+                Locale.ROOT,
+                "%.3f%s",
+                value,
+                suffix
+        );
+    }
+
     private void addWorkflowButton(
             String label,
             int x,
@@ -1328,6 +1543,12 @@ public final class WifiEngineeringScreen
 
         VsiaNetwork.sendToServer(
                 new WifiEngineeringWorkflowRequestPacket(
+                        targetPos
+                )
+        );
+
+        VsiaNetwork.sendToServer(
+                new WifiIpEngineeringRequestPacket(
                         targetPos
                 )
         );

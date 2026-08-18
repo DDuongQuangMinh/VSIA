@@ -61,6 +61,8 @@ import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPuncturingPattern;
 import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyDecision;
 import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyEngine;
 import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyMode;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.WifiIpApplicationEngine;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.WifiIpFlowSnapshot;
 import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketDirection;
 import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketOutcome;
 import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketTraceBuffer;
@@ -143,6 +145,9 @@ public abstract class NetworkDeviceBlockEntity
 
     private final WifiPacketTraceBuffer wifiPacketTrace =
             new WifiPacketTraceBuffer();
+
+    private final WifiIpApplicationEngine wifiIpApplication =
+            new WifiIpApplicationEngine();
 
     private final CellularRanController cellularRan =
             new CellularRanController();
@@ -410,10 +415,6 @@ public abstract class NetworkDeviceBlockEntity
         return wifiMac.securityState();
     }
 
-    public String wifiSecurityDiagnostic() {
-        return wifiMac.lastSecurityDiagnostic();
-    }
-
     public int wifiMcsIndex() {
         return wifiMac.currentMcsIndex();
     }
@@ -493,7 +494,7 @@ public abstract class NetworkDeviceBlockEntity
         byte[] body =
                 new byte[
                         frameBytes
-                        ];
+                ];
 
         byte[] signature =
                 "VSIA-W1.6.4-LINK-TEST"
@@ -574,7 +575,7 @@ public abstract class NetworkDeviceBlockEntity
         byte[] out =
                 new byte[
                         6
-                        ];
+                ];
 
         if (normalized.length() != 12) {
             return out;
@@ -596,7 +597,7 @@ public abstract class NetworkDeviceBlockEntity
         } catch (Exception ignored) {
             return new byte[
                     6
-                    ];
+            ];
         }
 
         return out;
@@ -721,6 +722,204 @@ public abstract class NetworkDeviceBlockEntity
         return wifiMac.pendingDataTransmissions();
     }
 
+    public String wifiIpAddress() {
+        return ipAddress;
+    }
+
+    public String wifiDefaultGatewayMac() {
+        return defaultGatewayMac;
+    }
+
+    public int wifiIpNeighborCount() {
+        return wifiIpApplication
+                .neighbors()
+                .size();
+    }
+
+    public WifiIpFlowSnapshot wifiIpFlowSnapshot() {
+        long nowMicros =
+                level instanceof ServerLevel serverLevel
+                        ? NetworkTimebase.nowMicros(
+                        serverLevel
+                )
+                        : 0L;
+
+        return wifiIpApplication.snapshot(
+                ipAddress,
+                nowMicros
+        );
+    }
+
+    public void configureWifiIpPeer(
+            String peerIp,
+            String peerMac
+    ) {
+        wifiIpApplication.configurePeer(
+                peerIp,
+                peerMac
+        );
+    }
+
+    public void clearWifiIpMetrics() {
+        wifiIpApplication.clearMetrics();
+    }
+
+    public void setWifiIpStatus(
+            String status
+    ) {
+        wifiIpApplication.setStatus(
+                status
+        );
+    }
+
+    public boolean sendWifiArpRequest(
+            String targetIp
+    ) {
+        if (!wifiIpReady()
+                || !com.k1ngtle.vsia.signality.engineering.wifi.ip.Ipv4Address
+                .isUsableUnicast(
+                        targetIp
+                )) {
+            wifiIpApplication.setStatus(
+                    "ARP rejected: Wi-Fi is not associated/secured or peer IP is invalid"
+            );
+            return false;
+        }
+
+        transmitPacket(
+                wifiIpApplication.createArpRequest(
+                        macAddress,
+                        ipAddress,
+                        targetIp,
+                        NetworkTimebase.nowMicros(
+                                level()
+                        )
+                )
+        );
+
+        return true;
+    }
+
+    public boolean sendWifiIcmpEcho(
+            String targetMac,
+            String targetIp,
+            int payloadBytes
+    ) {
+        if (!wifiIpReady()
+                || !com.k1ngtle.vsia.signality.engineering.wifi.ip.Ipv4Address
+                .isUsableUnicast(
+                        targetIp
+                )) {
+            wifiIpApplication.setStatus(
+                    "ICMP rejected: Wi-Fi is not associated/secured or peer IP is invalid"
+            );
+            return false;
+        }
+
+        transmitPacket(
+                wifiIpApplication.createIcmpEcho(
+                        macAddress,
+                        ipAddress,
+                        targetMac,
+                        targetIp,
+                        payloadBytes,
+                        NetworkTimebase.nowMicros(
+                                level()
+                        )
+                )
+        );
+
+        return true;
+    }
+
+    public boolean sendWifiUdpEcho(
+            String targetMac,
+            String targetIp,
+            int payloadBytes
+    ) {
+        if (!wifiIpReady()
+                || !com.k1ngtle.vsia.signality.engineering.wifi.ip.Ipv4Address
+                .isUsableUnicast(
+                        targetIp
+                )) {
+            wifiIpApplication.setStatus(
+                    "UDP rejected: Wi-Fi is not associated/secured or peer IP is invalid"
+            );
+            return false;
+        }
+
+        transmitPacket(
+                wifiIpApplication.createUdpEcho(
+                        macAddress,
+                        ipAddress,
+                        targetMac,
+                        targetIp,
+                        payloadBytes,
+                        NetworkTimebase.nowMicros(
+                                level()
+                        )
+                )
+        );
+
+        return true;
+    }
+
+    public boolean sendWifiHttpGet(
+            String targetMac,
+            String targetIp,
+            String path
+    ) {
+        if (!wifiIpReady()
+                || !com.k1ngtle.vsia.signality.engineering.wifi.ip.Ipv4Address
+                .isUsableUnicast(
+                        targetIp
+                )) {
+            wifiIpApplication.setStatus(
+                    "HTTP rejected: Wi-Fi is not associated/secured or peer IP is invalid"
+            );
+            return false;
+        }
+
+        transmitPacket(
+                wifiIpApplication.createHttpGet(
+                        macAddress,
+                        ipAddress,
+                        targetMac,
+                        targetIp,
+                        path,
+                        NetworkTimebase.nowMicros(
+                                level()
+                        )
+                )
+        );
+
+        return true;
+    }
+
+    private boolean wifiIpReady() {
+        if (!isWifiProfile()) {
+            return false;
+        }
+
+        if (wifiMac.mode()
+                == WifiMode.STATION) {
+            return wifiMac.isAssociated()
+                    && wifiMac.isSecured();
+        }
+
+        if (wifiMac.mode()
+                == WifiMode.ACCESS_POINT) {
+            return !wifiMac.associatedStations()
+                    .isEmpty();
+        }
+
+        return false;
+    }
+
+    public String wifiSecurityDiagnostic() {
+        return wifiMac.lastSecurityDiagnostic();
+    }
+
     public boolean sendWifiEngineeringAssociatedData(
             int requestedBytes
     ) {
@@ -779,7 +978,7 @@ public abstract class NetworkDeviceBlockEntity
         byte[] payload =
                 new byte[
                         dataBytes
-                        ];
+                ];
 
         byte[] signature =
                 "VSIA-W1.8-ASSOCIATED-DATA"
@@ -2159,6 +2358,24 @@ public abstract class NetworkDeviceBlockEntity
     protected void processLayer4(
             OSINetworkPacket packet
     ) {
+        if (isWifiProfile()
+                && wifiMac.mode()
+                != WifiMode.LEGACY_DIRECT
+                && wifiIpApplication.handleIncoming(
+                macAddress,
+                ipAddress,
+                packet,
+                level instanceof ServerLevel serverLevel
+                        ? NetworkTimebase.nowMicros(
+                        serverLevel
+                )
+                        : 0L,
+                this::transmitPacket
+        )) {
+            setChanged();
+            return;
+        }
+
         if (packet.targetPort == 80) {
             handleWebRequest(packet);
         } else if (packet.targetPort == 53) {
@@ -2217,6 +2434,11 @@ public abstract class NetworkDeviceBlockEntity
             defaultGatewayMac =
                     packet.sourceMac;
 
+            wifiIpApplication.setStatus(
+                    "DHCP ACK received: "
+                            + ipAddress
+            );
+
             setChanged();
         }
     }
@@ -2242,6 +2464,10 @@ public abstract class NetworkDeviceBlockEntity
         packet.payload.putString(
                 "type",
                 "DISCOVER"
+        );
+
+        wifiIpApplication.setStatus(
+                "DHCP DISCOVER queued"
         );
 
         transmitPacket(packet);
