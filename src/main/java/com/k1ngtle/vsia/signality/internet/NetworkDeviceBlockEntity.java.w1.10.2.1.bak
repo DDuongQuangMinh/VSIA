@@ -2360,23 +2360,6 @@ public abstract class NetworkDeviceBlockEntity
                     );
                 }
 
-                wifiIpApplication.setStatus(
-                        "DHCP RAW RX "
-                                + rawDhcp.payload.getString(
-                                "type"
-                        )
-                                + " | xid "
-                                + Integer.toUnsignedString(
-                                rawDhcp.payload.getInt(
-                                        "xid"
-                                )
-                        )
-                                + " | link "
-                                + rawDhcp.sourceMac
-                                + " -> "
-                                + rawDhcp.targetMac
-                );
-
                 processLayer2(
                         rawDhcp
                 );

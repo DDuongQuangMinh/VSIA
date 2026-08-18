@@ -355,17 +355,29 @@ public final class DhcpRawLiveCarrierCodec {
         OSINetworkPacket logical =
                 new OSINetworkPacket();
 
-        logical.sourceMac =
-                request
-                        ? dhcp.clientMac()
-                        : body.getString(
+        String carrierSourceMac =
+                body.getString(
                         "src_mac"
                 );
 
+        String carrierTargetMac =
+                body.getString(
+                        "dst_mac"
+                );
+
+        logical.sourceMac =
+                carrierSourceMac == null
+                        || carrierSourceMac.isBlank()
+                        ? dhcp.clientMac()
+                        : carrierSourceMac;
+
         logical.targetMac =
-                request
+                carrierTargetMac == null
+                        || carrierTargetMac.isBlank()
+                        ? request
                         ? "FF:FF:FF:FF:FF:FF"
-                        : dhcp.clientMac();
+                        : dhcp.clientMac()
+                        : carrierTargetMac;
 
         logical.sourceIp =
                 ipv4.sourceAddress();
@@ -391,6 +403,21 @@ public final class DhcpRawLiveCarrierCodec {
         logical.payload.putString(
                 "type",
                 type.name()
+        );
+
+        logical.payload.putString(
+                "client_hardware_mac",
+                dhcp.clientMac()
+        );
+
+        logical.payload.putString(
+                "carrier_source_mac",
+                logical.sourceMac
+        );
+
+        logical.payload.putString(
+                "carrier_target_mac",
+                logical.targetMac
         );
 
         logical.payload.putInt(

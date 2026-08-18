@@ -20,7 +20,9 @@ public final class DhcpRawTestSuite {
                 magicCookieReject(),
                 udpPorts(),
                 llcSnapIpv4(),
-                doraTypes()
+                doraTypes(),
+                carrierRequestMacPreserved(),
+                carrierReplyMacPreserved()
         );
     }
 
@@ -100,6 +102,112 @@ public final class DhcpRawTestSuite {
                 DhcpMessageType.DISCOVER.code()==1&&DhcpMessageType.OFFER.code()==2
                         &&DhcpMessageType.REQUEST.code()==3&&DhcpMessageType.ACK.code()==5,
                 "DORA message type codes must be 1,2,3,5");
+    }
+
+    private static DhcpRawTestResult carrierRequestMacPreserved() {
+        OSINetworkPacket request =
+                logical(
+                        "DISCOVER",
+                        "3ade93b46caf",
+                        0x10203040,
+                        ""
+                );
+
+        OSINetworkPacket decoded =
+                DhcpRawLiveCarrierCodec.decode(
+                        DhcpRawLiveCarrierCodec.encode(
+                                request
+                        )
+                );
+
+        return result(
+                "wifi-w11021-request-link-mac",
+                "3ade93b46caf".equals(
+                        decoded.sourceMac
+                )
+                        && "3A:DE:93:B4:6C:AF".equals(
+                        decoded.payload.getString(
+                                "client_hardware_mac"
+                        )
+                ),
+                "DHCP decode must preserve VSIA compact Wi-Fi source MAC while retaining BOOTP chaddr separately"
+        );
+    }
+
+    private static DhcpRawTestResult carrierReplyMacPreserved() {
+        OSINetworkPacket offer =
+                logical(
+                        "OFFER",
+                        "3ade93b46caf",
+                        0x10203040,
+                        "192.168.1.100"
+                );
+
+        offer.sourceMac =
+                "c72ec34fc58c";
+
+        offer.targetMac =
+                "3ade93b46caf";
+
+        offer.sourceIp =
+                "192.168.1.2";
+
+        offer.sourcePort =
+                67;
+
+        offer.targetPort =
+                68;
+
+        offer.isResponse =
+                true;
+
+        offer.payload.putString(
+                "server_identifier",
+                "192.168.1.2"
+        );
+
+        offer.payload.putString(
+                "subnet_mask",
+                "255.255.255.0"
+        );
+
+        offer.payload.putString(
+                "router_ip",
+                "192.168.1.1"
+        );
+
+        offer.payload.putString(
+                "dns_server",
+                "192.168.1.2"
+        );
+
+        offer.payload.putInt(
+                "lease_seconds",
+                3600
+        );
+
+        OSINetworkPacket decoded =
+                DhcpRawLiveCarrierCodec.decode(
+                        DhcpRawLiveCarrierCodec.encode(
+                                offer
+                        )
+                );
+
+        return result(
+                "wifi-w11021-reply-link-mac",
+                "c72ec34fc58c".equals(
+                        decoded.sourceMac
+                )
+                        && "3ade93b46caf".equals(
+                        decoded.targetMac
+                )
+                        && "3A:DE:93:B4:6C:AF".equals(
+                        decoded.payload.getString(
+                                "client_hardware_mac"
+                        )
+                ),
+                "OFFER/ACK must route to the actual compact station MAC instead of the colon-formatted BOOTP chaddr"
+        );
     }
 
     private static OSINetworkPacket logical(String type,String mac,int xid,String assigned) {
