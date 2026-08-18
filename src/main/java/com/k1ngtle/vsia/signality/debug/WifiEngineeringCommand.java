@@ -4,10 +4,12 @@ import com.k1ngtle.vsia.Vsia;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringFormatter;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringProbe;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringSnapshot;
+import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringResolution;
+import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringResolvedTarget;
+import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringTargetResolver;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringTestResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringTestSuite;
 import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyMode;
-import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
 import com.mojang.brigadier.CommandDispatcher;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
@@ -15,7 +17,6 @@ import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -146,31 +147,19 @@ public final class WifiEngineeringCommand {
             CommandSourceStack source,
             BlockPos pos
     ) {
-        NetworkDeviceBlockEntity device =
-                deviceAt(
+        WifiEngineeringResolvedTarget target =
+                resolveTarget(
                         source,
                         pos
                 );
 
-        if (device == null) {
-            return 0;
-        }
-
-        if (!WifiEngineeringProbe.supports(
-                device
-        )) {
-            source.sendFailure(
-                    Component.literal(
-                            "Target network device is not using a Wi-Fi profile"
-                    )
-            );
-
+        if (target == null) {
             return 0;
         }
 
         WifiEngineeringSnapshot snapshot =
                 WifiEngineeringProbe.capture(
-                        device
+                        target.device()
                 );
 
         source.sendSuccess(
@@ -178,6 +167,16 @@ public final class WifiEngineeringCommand {
                         Component.literal(
                                 "Wi-Fi Engineering Probe @ "
                                         + pos.toShortString()
+                                        + (
+                                        target.direct()
+                                                ? ""
+                                                : " -> "
+                                                + target.devicePos()
+                                                .toShortString()
+                                                + " ("
+                                                + target.hops()
+                                                + " hop)"
+                                )
                         ).withStyle(
                                 ChatFormatting.AQUA
                         ),
@@ -207,31 +206,20 @@ public final class WifiEngineeringCommand {
             BlockPos pos,
             WifiLivePhyMode mode
     ) {
-        NetworkDeviceBlockEntity device =
-                deviceAt(
+        WifiEngineeringResolvedTarget target =
+                resolveTarget(
                         source,
                         pos
                 );
 
-        if (device == null) {
+        if (target == null) {
             return 0;
         }
 
-        if (!WifiEngineeringProbe.supports(
-                device
-        )) {
-            source.sendFailure(
-                    Component.literal(
-                            "Target network device is not using a Wi-Fi profile"
-                    )
-            );
-
-            return 0;
-        }
-
-        device.setWifiLivePhyMode(
-                mode
-        );
+        target.device()
+                .setWifiLivePhyMode(
+                        mode
+                );
 
         source.sendSuccess(
                 () ->
@@ -249,29 +237,27 @@ public final class WifiEngineeringCommand {
         return 1;
     }
 
-    private static NetworkDeviceBlockEntity deviceAt(
+    private static WifiEngineeringResolvedTarget resolveTarget(
             CommandSourceStack source,
             BlockPos pos
     ) {
-        BlockEntity blockEntity =
-                source.getLevel()
-                        .getBlockEntity(
-                                pos
-                        );
+        WifiEngineeringResolution resolution =
+                WifiEngineeringTargetResolver.resolve(
+                        source.getLevel(),
+                        pos
+                );
 
-        if (!(blockEntity
-                instanceof NetworkDeviceBlockEntity device)) {
+        if (!resolution.resolved()) {
             source.sendFailure(
                     Component.literal(
-                            "No VSIA NetworkDeviceBlockEntity at "
-                                    + pos.toShortString()
+                            resolution.failureDetail()
                     )
             );
 
             return null;
         }
 
-        return device;
+        return resolution.target();
     }
 
     private static int runTests(

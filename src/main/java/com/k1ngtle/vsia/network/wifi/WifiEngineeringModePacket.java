@@ -2,12 +2,12 @@ package com.k1ngtle.vsia.network.wifi;
 
 import com.k1ngtle.vsia.network.VsiaNetwork;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringProbe;
+import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringResolution;
+import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringTargetResolver;
 import com.k1ngtle.vsia.signality.engineering.wifi.live.WifiLivePhyMode;
-import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.util.function.Supplier;
@@ -74,30 +74,29 @@ public final class WifiEngineeringModePacket {
                         return;
                     }
 
-                    BlockEntity blockEntity =
-                            player.level()
-                                    .getBlockEntity(
-                                            pos
-                                    );
+                    WifiEngineeringResolution resolution =
+                            WifiEngineeringTargetResolver.resolve(
+                                    player.level(),
+                                    pos
+                            );
 
-                    if (!(blockEntity
-                            instanceof NetworkDeviceBlockEntity device)
-                            || !WifiEngineeringProbe.supports(
-                            device
-                    )) {
+                    if (!resolution.resolved()) {
                         return;
                     }
 
-                    device.setWifiLivePhyMode(
-                            mode
-                    );
+                    resolution.target()
+                            .device()
+                            .setWifiLivePhyMode(
+                                    mode
+                            );
 
                     VsiaNetwork.sendToPlayer(
                             player,
                             new WifiEngineeringSnapshotPacket(
                                     pos,
                                     WifiEngineeringProbe.capture(
-                                            device
+                                            resolution.target()
+                                                    .device()
                                     ),
                                     false
                             )

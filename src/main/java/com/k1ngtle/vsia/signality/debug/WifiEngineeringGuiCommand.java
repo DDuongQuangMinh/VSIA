@@ -6,7 +6,9 @@ import com.k1ngtle.vsia.network.wifi.WifiEngineeringSnapshotPacket;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringGuiTestResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringGuiTestSuite;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringProbe;
-import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
+import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringResolution;
+import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringResolvedTarget;
+import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringTargetResolver;
 import com.mojang.brigadier.CommandDispatcher;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
@@ -15,7 +17,6 @@ import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -108,35 +109,51 @@ public final class WifiEngineeringGuiCommand {
             return 0;
         }
 
-        BlockEntity blockEntity =
-                source.getLevel()
-                        .getBlockEntity(
-                                pos
-                        );
+        WifiEngineeringResolution resolution =
+                WifiEngineeringTargetResolver.resolve(
+                        source.getLevel(),
+                        pos
+                );
 
-        if (!(blockEntity
-                instanceof NetworkDeviceBlockEntity device)
-                || !WifiEngineeringProbe.supports(
-                device
-        )) {
+        if (!resolution.resolved()) {
             source.sendFailure(
                     Component.literal(
-                            "Target is not a VSIA Wi-Fi network device"
+                            resolution.failureDetail()
                     )
             );
 
             return 0;
         }
 
+        WifiEngineeringResolvedTarget target =
+                resolution.target();
+
         VsiaNetwork.sendToPlayer(
                 player,
                 new WifiEngineeringSnapshotPacket(
                         pos,
                         WifiEngineeringProbe.capture(
-                                device
+                                target.device()
                         ),
                         true
                 )
+        );
+
+        source.sendSuccess(
+                () ->
+                        Component.literal(
+                                target.direct()
+                                        ? "Opened Wi-Fi engineering analyzer for direct device "
+                                                + target.devicePos()
+                                                .toShortString()
+                                        : "Opened Wi-Fi engineering analyzer via "
+                                                + target.hops()
+                                                + " infrastructure hop(s): "
+                                                + target.routeDescription()
+                        ).withStyle(
+                                ChatFormatting.AQUA
+                        ),
+                false
         );
 
         return 1;
