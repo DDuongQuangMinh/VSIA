@@ -25,8 +25,12 @@ public final class WifiMacController {
     public static final int FC_BEACON = 0x0080;
     public static final int FC_AUTH = 0x00B0;
     public static final int FC_DATA = 0x0008;
+    public static final int FC_RTS = 0x00B4;
+    public static final int FC_CTS = 0x00C4;
     public static final int FC_ACK = 0x00D4;
 
+    public static final int FC_TO_DS = 0x0100;
+    public static final int FC_FROM_DS = 0x0200;
     public static final int FC_RETRY = 0x0800;
 
     public static final String BROADCAST =
@@ -34,7 +38,12 @@ public final class WifiMacController {
 
     private static final int MAX_RETRIES = 4;
 
-    private static final long ACK_TIMEOUT_TICKS = 4L;
+    private enum PendingStage {
+        WAIT_AIFS,
+        BACKOFF,
+        WAIT_CTS,
+        WAIT_ACK
+    }
 
     private record PendingTransmission(
             int sequence,
@@ -46,8 +55,10 @@ public final class WifiMacController {
             WifiAccessCategory category,
             Sender sender,
             int attempt,
-            long deadlineTick,
-            boolean waitingForMedium
+            PendingStage stage,
+            long nextActionMicros,
+            int backoffSlots,
+            boolean useRts
     ) {
     }
 
@@ -67,6 +78,12 @@ public final class WifiMacController {
             new EdcaController(
                     random
             );
+
+    private WifiMacTimingProfile timing =
+            WifiMacTimingProfile.ofdmDefault();
+
+    private final WifiNavState nav =
+            new WifiNavState();
 
     private final Map<String, WifiNetworkRecord> discovered =
             new LinkedHashMap<>();
@@ -151,6 +168,16 @@ public final class WifiMacController {
         return pendingTransmissions.size();
     }
 
+    public WifiMacTimingProfile timingProfile() {
+        return timing;
+    }
+
+    public long navRemainingMicros() {
+        return nav.remainingMicros(
+                WifiMacTimingScheduler.nowMicros()
+        );
+    }
+
     public boolean isAssociated() {
         return mode == WifiMode.STATION
                 && stationState == WifiStationState.ASSOCIATED;
@@ -179,6 +206,11 @@ public final class WifiMacController {
     ) {
         lastObservedSnrDb =
                 snrDb;
+
+        timing =
+                WifiMacTimingProfile.forProtocol(
+                        protocol
+                );
 
         currentMcsIndex =
                 WifiMcsTable
@@ -413,7 +445,7 @@ public final class WifiMacController {
                     );
 
             return transmitWithRetry(
-                    FC_DATA,
+                    FC_DATA | FC_TO_DS,
                     selectedBssid,
                     ownMac,
                     selectedBssid,
@@ -446,7 +478,7 @@ public final class WifiMacController {
                     );
 
             return transmitWithRetry(
-                    FC_DATA,
+                    FC_DATA | FC_FROM_DS,
                     targetMac,
                     ownMac,
                     ownMac,
@@ -471,25 +503,105 @@ public final class WifiMacController {
                         frame.address1()
                 );
 
-        if (!macEquals(
-                receiver,
-                ownMac
-        )
-                && !macEquals(
-                receiver,
-                BROADCAST
-        )) {
-            return null;
+        boolean addressedToUs =
+                macEquals(
+                        receiver,
+                        ownMac
+                );
+
+        boolean broadcast =
+                macEquals(
+                        receiver,
+                        BROADCAST
+                );
+
+        if (!addressedToUs
+                && !broadcast
+                && frame.durationId() > 0) {
+            nav.observe(
+                    WifiMacTimingScheduler.nowMicros(),
+                    frame.durationId()
+            );
         }
 
         int fc =
                 frame.frameControl()
                         & 0x00FC;
 
-        CompoundTag body =
-                decode(
-                        frame.payload()
+        if (!addressedToUs
+                && !broadcast) {
+            return null;
+        }
+
+        if (fc == (FC_RTS & 0x00FC)) {
+            if (addressedToUs) {
+                sendCts(
+                        ownMac,
+                        frame,
+                        sender
                 );
+            }
+
+            return null;
+        }
+
+        if (fc == (FC_CTS & 0x00FC)) {
+            PendingTransmission pending =
+                    oldestPendingInStage(
+                            PendingStage.WAIT_CTS
+                    );
+
+            if (pending != null) {
+                sendPendingDataAfterCts(
+                        pending
+                );
+            }
+
+            return null;
+        }
+
+        if (fc == (FC_ACK & 0x00FC)) {
+            PendingTransmission pending =
+                    oldestPendingInStage(
+                            PendingStage.WAIT_ACK
+                    );
+
+            if (pending != null) {
+                lastAckedSequence =
+                        pending.sequence();
+
+                pendingTransmissions.remove(
+                        pending.sequence()
+                );
+
+                edca.onSuccess(
+                        pending.category()
+                );
+            }
+
+            return null;
+        }
+
+        CompoundTag body;
+
+        try {
+            if (WifiManagementCodec.isManagementSubtype(
+                    frame.frameControl()
+            )) {
+                body =
+                        WifiManagementCodec.decodeBody(
+                                frame.frameControl(),
+                                frame.payload()
+                        );
+            } else {
+                body =
+                        decode(
+                                frame.payload()
+                        );
+            }
+        } catch (Exception ignored) {
+            return null;
+        }
 
         if (fc == (FC_BEACON & 0x00FC)
                 || fc
@@ -621,24 +733,6 @@ public final class WifiMacController {
             );
         }
 
-        if (fc == (FC_ACK & 0x00FC)) {
-            lastAckedSequence =
-                    body.getInt(
-                            "acked_sequence"
-                    );
-
-            PendingTransmission pending =
-                    pendingTransmissions.remove(
-                            lastAckedSequence
-                    );
-
-            if (pending != null) {
-                edca.onSuccess(
-                        pending.category()
-                );
-            }
-        }
-
         return null;
     }
 
@@ -654,6 +748,14 @@ public final class WifiMacController {
         int sequence =
                 sequenceNumber++ & 0x0FFF;
 
+        int effectiveFrameControl =
+                body.getBoolean(
+                        "protected"
+                )
+                        ? frameControl
+                        | 0x4000
+                        : frameControl;
+
         if (macEquals(
                 address1,
                 BROADCAST
@@ -664,7 +766,7 @@ public final class WifiMacController {
 
             sender.send(
                     frame(
-                            frameControl,
+                            effectiveFrameControl,
                             address1,
                             address2,
                             address3,
@@ -680,10 +782,29 @@ public final class WifiMacController {
             return true;
         }
 
+        int bodyBytes =
+                encode(
+                        body
+                ).length;
+
+        boolean useRts =
+                bodyBytes
+                        >= timing.rtsThresholdBytes();
+
+        int backoffSlots =
+                random.nextInt(
+                        edca.contentionWindow(
+                                category
+                        ) + 1
+                );
+
+        long now =
+                WifiMacTimingScheduler.nowMicros();
+
         PendingTransmission pending =
                 new PendingTransmission(
                         sequence,
-                        frameControl,
+                        effectiveFrameControl,
                         address1,
                         address2,
                         address3,
@@ -691,9 +812,13 @@ public final class WifiMacController {
                         category,
                         sender,
                         0,
-                        WifiMacTimingScheduler.now()
-                                + ACK_TIMEOUT_TICKS,
-                        sender.mediumBusy()
+                        PendingStage.WAIT_AIFS,
+                        now
+                                + timing.aifsUs(
+                                category
+                        ),
+                        backoffSlots,
+                        useRts
                 );
 
         pendingTransmissions.put(
@@ -705,17 +830,11 @@ public final class WifiMacController {
                 this
         );
 
-        if (!pending.waitingForMedium()) {
-            sendPendingAttempt(
-                    pending
-            );
-        }
-
         return true;
     }
 
     boolean onTimingTick(
-            long currentTick
+            long currentMicros
     ) {
         if (pendingTransmissions.isEmpty()) {
             return false;
@@ -728,134 +847,320 @@ public final class WifiMacController {
                                 PendingTransmission[]::new
                         );
 
-        for (PendingTransmission pending : snapshot) {
+        for (PendingTransmission snapshotPending : snapshot) {
             PendingTransmission current =
                     pendingTransmissions.get(
-                            pending.sequence()
+                            snapshotPending.sequence()
                     );
 
             if (current == null) {
                 continue;
             }
 
-            if (current.waitingForMedium()) {
-                if (current.sender()
-                        .mediumBusy()) {
-                    pendingTransmissions.put(
-                            current.sequence(),
-                            new PendingTransmission(
-                                    current.sequence(),
-                                    current.frameControl(),
-                                    current.address1(),
-                                    current.address2(),
-                                    current.address3(),
-                                    current.body(),
-                                    current.category(),
-                                    current.sender(),
-                                    current.attempt(),
-                                    currentTick + 1L,
-                                    true
-                            )
-                    );
-
-                    continue;
-                }
-
-                PendingTransmission ready =
-                        new PendingTransmission(
-                                current.sequence(),
-                                current.frameControl(),
-                                current.address1(),
-                                current.address2(),
-                                current.address3(),
-                                current.body(),
-                                current.category(),
-                                current.sender(),
-                                current.attempt(),
-                                currentTick
-                                        + ACK_TIMEOUT_TICKS,
-                                false
+            switch (current.stage()) {
+                case WAIT_AIFS ->
+                        processAifs(
+                                current,
+                                currentMicros
                         );
 
-                pendingTransmissions.put(
-                        ready.sequence(),
-                        ready
-                );
+                case BACKOFF ->
+                        processBackoff(
+                                current,
+                                currentMicros
+                        );
 
-                sendPendingAttempt(
-                        ready
-                );
-
-                continue;
-            }
-
-            if (currentTick
-                    < current.deadlineTick()) {
-                continue;
-            }
-
-            edca.onFailure(
-                    current.category()
-            );
-
-            if (current.attempt()
-                    >= MAX_RETRIES) {
-                pendingTransmissions.remove(
-                        current.sequence()
-                );
-
-                continue;
-            }
-
-            int nextAttempt =
-                    current.attempt() + 1;
-
-            boolean mediumBusy =
-                    current.sender()
-                            .mediumBusy();
-
-            PendingTransmission retry =
-                    new PendingTransmission(
-                            current.sequence(),
-                            current.frameControl(),
-                            current.address1(),
-                            current.address2(),
-                            current.address3(),
-                            current.body(),
-                            current.category(),
-                            current.sender(),
-                            nextAttempt,
-                            currentTick
-                                    + (
-                                    mediumBusy
-                                            ? 1L
-                                            : ACK_TIMEOUT_TICKS
-                            ),
-                            mediumBusy
-                    );
-
-            pendingTransmissions.put(
-                    retry.sequence(),
-                    retry
-            );
-
-            if (!mediumBusy) {
-                sendPendingAttempt(
-                        retry
-                );
+                case WAIT_CTS,
+                     WAIT_ACK ->
+                        processResponseTimeout(
+                                current,
+                                currentMicros
+                        );
             }
         }
 
         return !pendingTransmissions.isEmpty();
     }
 
-    private void sendPendingAttempt(
-            PendingTransmission pending
+    private void processAifs(
+            PendingTransmission pending,
+            long nowMicros
     ) {
-        edca.acquireLogicalMedium(
+        if (mediumUnavailable(
+                pending,
+                nowMicros
+        )) {
+            pendingTransmissions.put(
+                    pending.sequence(),
+                    copyPending(
+                            pending,
+                            PendingStage.WAIT_AIFS,
+                            nowMicros
+                                    + timing.aifsUs(
+                                    pending.category()
+                            ),
+                            pending.backoffSlots()
+                    )
+            );
+
+            return;
+        }
+
+        if (nowMicros
+                < pending.nextActionMicros()) {
+            return;
+        }
+
+        if (pending.backoffSlots()
+                <= 0) {
+            sendPendingAttempt(
+                    pending
+            );
+
+            return;
+        }
+
+        PendingTransmission backoff =
+                copyPending(
+                        pending,
+                        PendingStage.BACKOFF,
+                        nowMicros
+                                + timing.slotTimeUs(),
+                        pending.backoffSlots()
+                );
+
+        pendingTransmissions.put(
+                backoff.sequence(),
+                backoff
+        );
+    }
+
+    private void processBackoff(
+            PendingTransmission pending,
+            long nowMicros
+    ) {
+        if (mediumUnavailable(
+                pending,
+                nowMicros
+        )) {
+            pendingTransmissions.put(
+                    pending.sequence(),
+                    copyPending(
+                            pending,
+                            PendingStage.WAIT_AIFS,
+                            nowMicros
+                                    + timing.aifsUs(
+                                    pending.category()
+                            ),
+                            pending.backoffSlots()
+                    )
+            );
+
+            return;
+        }
+
+        if (nowMicros
+                < pending.nextActionMicros()) {
+            return;
+        }
+
+        long elapsed =
+                nowMicros
+                        - pending.nextActionMicros();
+
+        int elapsedSlots =
+                1
+                        + (int) (
+                        elapsed
+                                / Math.max(
+                                1,
+                                timing.slotTimeUs()
+                        )
+                );
+
+        int remaining =
+                Math.max(
+                        0,
+                        pending.backoffSlots()
+                                - elapsedSlots
+                );
+
+        if (remaining == 0) {
+            sendPendingAttempt(
+                    copyPending(
+                            pending,
+                            PendingStage.BACKOFF,
+                            nowMicros,
+                            0
+                    )
+            );
+
+            return;
+        }
+
+        pendingTransmissions.put(
+                pending.sequence(),
+                copyPending(
+                        pending,
+                        PendingStage.BACKOFF,
+                        pending.nextActionMicros()
+                                + (
+                                (long) elapsedSlots
+                                        * timing.slotTimeUs()
+                        ),
+                        remaining
+                )
+        );
+    }
+
+    private void processResponseTimeout(
+            PendingTransmission pending,
+            long nowMicros
+    ) {
+        if (nowMicros
+                < pending.nextActionMicros()) {
+            return;
+        }
+
+        edca.onFailure(
                 pending.category()
         );
 
+        if (pending.attempt()
+                >= MAX_RETRIES) {
+            pendingTransmissions.remove(
+                    pending.sequence()
+            );
+
+            return;
+        }
+
+        int nextAttempt =
+                pending.attempt() + 1;
+
+        int nextBackoff =
+                random.nextInt(
+                        edca.contentionWindow(
+                                pending.category()
+                        ) + 1
+                );
+
+        PendingTransmission retry =
+                new PendingTransmission(
+                        pending.sequence(),
+                        pending.frameControl(),
+                        pending.address1(),
+                        pending.address2(),
+                        pending.address3(),
+                        pending.body(),
+                        pending.category(),
+                        pending.sender(),
+                        nextAttempt,
+                        PendingStage.WAIT_AIFS,
+                        nowMicros
+                                + timing.aifsUs(
+                                pending.category()
+                        ),
+                        nextBackoff,
+                        pending.useRts()
+                );
+
+        pendingTransmissions.put(
+                retry.sequence(),
+                retry
+        );
+    }
+
+    private void sendPendingAttempt(
+            PendingTransmission pending
+    ) {
+        if (pending.useRts()) {
+            sendRts(
+                    pending
+            );
+
+            return;
+        }
+
+        sendPendingData(
+                pending
+        );
+    }
+
+    private void sendRts(
+            PendingTransmission pending
+    ) {
+        WifiMacFrame rts =
+                new WifiMacFrame(
+                        FC_RTS,
+                        WifiDurationCalculator.rtsDurationUs(
+                                timing
+                        ),
+                        parseMac(
+                                pending.address1()
+                        ),
+                        parseMac(
+                                pending.address2()
+                        ),
+                        new byte[6],
+                        0,
+                        new byte[0]
+                );
+
+        pending.sender()
+                .send(
+                        rts
+                );
+
+        long deadline =
+                WifiMacTimingScheduler
+                        .quantizedResponseDeadlineMicros(
+                                WifiMacTimingScheduler.nowMicros(),
+                                timing.ctsTimeoutUs()
+                        );
+
+        pendingTransmissions.put(
+                pending.sequence(),
+                new PendingTransmission(
+                        pending.sequence(),
+                        pending.frameControl(),
+                        pending.address1(),
+                        pending.address2(),
+                        pending.address3(),
+                        pending.body(),
+                        pending.category(),
+                        pending.sender(),
+                        pending.attempt(),
+                        PendingStage.WAIT_CTS,
+                        deadline,
+                        pending.backoffSlots(),
+                        pending.useRts()
+                )
+        );
+    }
+
+    private void sendPendingDataAfterCts(
+            PendingTransmission pending
+    ) {
+        PendingTransmission current =
+                pendingTransmissions.get(
+                        pending.sequence()
+                );
+
+        if (current == null
+                || current.stage()
+                != PendingStage.WAIT_CTS) {
+            return;
+        }
+
+        sendPendingData(
+                current
+        );
+    }
+
+    private void sendPendingData(
+            PendingTransmission pending
+    ) {
         int control =
                 pending.attempt() == 0
                         ? pending.frameControl()
@@ -863,7 +1168,7 @@ public final class WifiMacController {
                         | FC_RETRY;
 
         WifiMacFrame frame =
-                frame(
+                dataFrame(
                         control,
                         pending.address1(),
                         pending.address2(),
@@ -876,6 +1181,104 @@ public final class WifiMacController {
                 .send(
                         frame
                 );
+
+        long deadline =
+                WifiMacTimingScheduler
+                        .quantizedResponseDeadlineMicros(
+                                WifiMacTimingScheduler.nowMicros(),
+                                timing.ackTimeoutUs()
+                        );
+
+        pendingTransmissions.put(
+                pending.sequence(),
+                new PendingTransmission(
+                        pending.sequence(),
+                        pending.frameControl(),
+                        pending.address1(),
+                        pending.address2(),
+                        pending.address3(),
+                        pending.body(),
+                        pending.category(),
+                        pending.sender(),
+                        pending.attempt(),
+                        PendingStage.WAIT_ACK,
+                        deadline,
+                        pending.backoffSlots(),
+                        pending.useRts()
+                )
+        );
+    }
+
+    private boolean mediumUnavailable(
+            PendingTransmission pending,
+            long nowMicros
+    ) {
+        return pending.sender()
+                .mediumBusy()
+                || nav.active(
+                nowMicros
+        )
+                || hasOutstandingExchangeOtherThan(
+                pending.sequence()
+        );
+    }
+
+    private boolean hasOutstandingExchangeOtherThan(
+            int sequence
+    ) {
+        for (PendingTransmission candidate
+                : pendingTransmissions.values()) {
+            if (candidate.sequence()
+                    == sequence) {
+                continue;
+            }
+
+            if (candidate.stage()
+                    == PendingStage.WAIT_CTS
+                    || candidate.stage()
+                    == PendingStage.WAIT_ACK) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private PendingTransmission copyPending(
+            PendingTransmission source,
+            PendingStage stage,
+            long nextActionMicros,
+            int backoffSlots
+    ) {
+        return new PendingTransmission(
+                source.sequence(),
+                source.frameControl(),
+                source.address1(),
+                source.address2(),
+                source.address3(),
+                source.body(),
+                source.category(),
+                source.sender(),
+                source.attempt(),
+                stage,
+                nextActionMicros,
+                backoffSlots,
+                source.useRts()
+        );
+    }
+
+    private PendingTransmission oldestPendingInStage(
+            PendingStage stage
+    ) {
+        for (PendingTransmission pending
+                : pendingTransmissions.values()) {
+            if (pending.stage()
+                    == stage) {
+                return pending;
+            }
+        }
+
+        return null;
     }
 
     private void handleAdvertisement(
@@ -1720,28 +2123,39 @@ public final class WifiMacController {
             WifiMacFrame received,
             Sender sender
     ) {
-        CompoundTag ack =
-                new CompoundTag();
-
-        ack.putInt(
-                "acked_sequence",
-                (received.sequenceControl()
-                        >>> 4)
-                        & 0x0FFF
+        sender.send(
+                new WifiMacFrame(
+                        FC_ACK,
+                        0,
+                        received.address2(),
+                        new byte[6],
+                        new byte[6],
+                        0,
+                        new byte[0]
+                )
         );
+    }
+
+    private void sendCts(
+            String ownMac,
+            WifiMacFrame receivedRts,
+            Sender sender
+    ) {
+        int remainingDuration =
+                WifiDurationCalculator.ctsDurationUs(
+                        receivedRts.durationId(),
+                        timing
+                );
 
         sender.send(
-                newFrame(
-                        FC_ACK,
-                        formatMac(
-                                received.address2()
-                        ),
-                        ownMac,
-                        mode
-                                == WifiMode.ACCESS_POINT
-                                ? ownMac
-                                : selectedBssid,
-                        ack
+                new WifiMacFrame(
+                        FC_CTS,
+                        remainingDuration,
+                        receivedRts.address2(),
+                        new byte[6],
+                        new byte[6],
+                        0,
+                        new byte[0]
                 )
         );
     }
@@ -1805,9 +2219,49 @@ public final class WifiMacController {
             int sequence,
             CompoundTag body
     ) {
+        byte[] payload =
+                WifiManagementCodec.isManagementSubtype(
+                        frameControl
+                )
+                        ? WifiManagementCodec.encodeBody(
+                        frameControl,
+                        body
+                )
+                        : encode(
+                        body
+                );
+
         return new WifiMacFrame(
                 frameControl,
                 0,
+                parseMac(
+                        address1
+                ),
+                parseMac(
+                        address2
+                ),
+                parseMac(
+                        address3
+                ),
+                (sequence & 0x0FFF)
+                        << 4,
+                payload
+        );
+    }
+
+    private WifiMacFrame dataFrame(
+            int frameControl,
+            String address1,
+            String address2,
+            String address3,
+            int sequence,
+            CompoundTag body
+    ) {
+        return new WifiMacFrame(
+                frameControl,
+                WifiDurationCalculator.dataDurationUs(
+                        timing
+                ),
                 parseMac(
                         address1
                 ),
@@ -1837,6 +2291,7 @@ public final class WifiMacController {
     private void resetStation() {
         pendingTransmissions.clear();
         lastDeliveredSequenceBySender.clear();
+        nav.clear();
 
         WifiMacTimingScheduler.untrack(
                 this

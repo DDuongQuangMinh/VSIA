@@ -13,10 +13,16 @@ public final class ConformanceStatusRegistry {
                             "Deterministic equation tests exist; not a protocol conformance claim."
                     ),
                     new ComponentConformanceStatus(
-                            "Wi-Fi MAC",
-                            ImplementationLevel.SIMULATION,
+                            "Wi-Fi MAC wire format",
+                            ImplementationLevel.CONFORMANCE_PREP,
                             "ieee-802.11-2024",
-                            "Management/data framing and timers remain simplified."
+                            "Subtype-specific legacy headers, little-endian fields, FCS validation and selected management fixed fields/IEs are deterministic; not all 802.11 frame variants are implemented."
+                    ),
+                    new ComponentConformanceStatus(
+                            "Wi-Fi MAC channel access",
+                            ImplementationLevel.CONFORMANCE_PREP,
+                            "ieee-802.11-2024",
+                            "AIFS/backoff/NAV/RTS/CTS concepts now run on a virtual microsecond clock, but RF delivery remains quantized to Minecraft server ticks."
                     ),
                     new ComponentConformanceStatus(
                             "Wi-Fi EHT model",

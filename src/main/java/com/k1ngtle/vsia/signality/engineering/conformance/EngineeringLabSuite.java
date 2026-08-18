@@ -11,6 +11,8 @@ import com.k1ngtle.vsia.signality.engineering.channel.RfAntennaPattern;
 import com.k1ngtle.vsia.signality.engineering.channel.RfAntennaState;
 import com.k1ngtle.vsia.signality.engineering.channel.RfPolarization;
 import net.minecraft.world.phys.Vec3;
+import com.k1ngtle.vsia.signality.engineering.wifi.WifiMacWireTestResult;
+import com.k1ngtle.vsia.signality.engineering.wifi.WifiMacWireTestSuite;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -264,6 +266,16 @@ public final class EngineeringLabSuite {
                 ) == 0.0,
                 "Zero radial velocity must produce zero Doppler shift"
         );
+
+        for (WifiMacWireTestResult wifi
+                : WifiMacWireTestSuite.runAll()) {
+            add(
+                    results,
+                    wifi.id(),
+                    wifi.passed(),
+                    wifi.detail()
+            );
+        }
 
         for (KnownAnswerResult kat
                 : KnownAnswerSuite.runAll()) {

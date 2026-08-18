@@ -5,18 +5,25 @@ import java.util.IdentityHashMap;
 import java.util.Set;
 
 public final class WifiMacTimingScheduler {
+    public static final long SERVER_TICK_MICROS =
+            50_000L;
+
     private static final Set<WifiMacController> TRACKED =
             Collections.newSetFromMap(
                     new IdentityHashMap<>()
             );
 
-    private static long currentTick;
+    private static long currentMicros;
 
     private WifiMacTimingScheduler() {
     }
 
     public static synchronized long now() {
-        return currentTick;
+        return currentMicros;
+    }
+
+    public static synchronized long nowMicros() {
+        return currentMicros;
     }
 
     public static synchronized void track(
@@ -36,13 +43,19 @@ public final class WifiMacTimingScheduler {
     }
 
     public static void tick(
-            long tick
+            long serverTick
     ) {
+        long endMicros =
+                Math.multiplyExact(
+                        serverTick,
+                        SERVER_TICK_MICROS
+                );
+
         WifiMacController[] snapshot;
 
         synchronized (WifiMacTimingScheduler.class) {
-            currentTick =
-                    tick;
+            currentMicros =
+                    endMicros;
 
             snapshot =
                     TRACKED.toArray(
@@ -53,7 +66,7 @@ public final class WifiMacTimingScheduler {
         for (WifiMacController controller : snapshot) {
             boolean stillPending =
                     controller.onTimingTick(
-                            tick
+                            endMicros
                     );
 
             if (!stillPending) {
@@ -64,9 +77,24 @@ public final class WifiMacTimingScheduler {
         }
     }
 
+    public static long quantizedResponseDeadlineMicros(
+            long nowMicros,
+            int protocolTimeoutMicros
+    ) {
+        long minimum =
+                SERVER_TICK_MICROS
+                        * 3L;
+
+        return nowMicros
+                + Math.max(
+                minimum,
+                protocolTimeoutMicros
+        );
+    }
+
     public static synchronized void clear() {
         TRACKED.clear();
-        currentTick =
+        currentMicros =
                 0L;
     }
 }
