@@ -3,6 +3,7 @@ package com.k1ngtle.vsia.signality.engineering.conformance;
 import com.k1ngtle.vsia.signality.engineering.math.RfMath;
 import com.k1ngtle.vsia.signality.engineering.channel.DopplerModel;
 import com.k1ngtle.vsia.signality.engineering.channel.SpectralOverlap;
+import com.k1ngtle.vsia.signality.engineering.channel.TemporalOverlap;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -133,6 +134,34 @@ public final class EngineeringLabSuite {
                         20.0E6
                 ) == 0.0,
                 "Separated channels must have zero spectral overlap"
+        );
+
+        add(
+                results,
+                "channel-temporal-overlap-full",
+                Math.abs(
+                        TemporalOverlap.fractionOfDesired(
+                                10L,
+                                14L,
+                                10L,
+                                14L
+                        ) - 1.0
+                ) < 1.0E-12,
+                "Identical airtime windows must overlap by 100%"
+        );
+
+        add(
+                results,
+                "channel-temporal-overlap-partial",
+                Math.abs(
+                        TemporalOverlap.fractionOfDesired(
+                                10L,
+                                14L,
+                                14L,
+                                20L
+                        ) - 0.2
+                ) < 1.0E-12,
+                "One overlapping tick out of five desired ticks must equal 20%"
         );
 
         add(

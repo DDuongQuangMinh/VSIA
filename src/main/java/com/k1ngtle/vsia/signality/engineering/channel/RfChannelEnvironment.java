@@ -108,7 +108,7 @@ public final class RfChannelEnvironment {
                     continue;
                 }
 
-                double overlap =
+                double spectralOverlap =
                         RfChannelSettings.ENABLE_SPECTRAL_OVERLAP
                                 ? SpectralOverlap.fractionOfReceiverBandwidth(
                                 receiverCenterFrequencyHz,
@@ -125,6 +125,26 @@ public final class RfChannelEnvironment {
                                         ? 1.0
                                         : 0.0
                         );
+
+                double temporalOverlap =
+                        desired == null
+                                ? (
+                                interferer.activeAt(
+                                        tick
+                                )
+                                        ? 1.0
+                                        : 0.0
+                        )
+                                : TemporalOverlap.fractionOfDesired(
+                                desired.startTick(),
+                                desired.endTick(),
+                                interferer.startTick(),
+                                interferer.endTick()
+                        );
+
+                double overlap =
+                        spectralOverlap
+                                * temporalOverlap;
 
                 if (overlap <= 0.0) {
                     continue;

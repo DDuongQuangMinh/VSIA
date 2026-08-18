@@ -6,6 +6,13 @@ import com.k1ngtle.vsia.signality.api.signal.SignalBand;
 import com.k1ngtle.vsia.signality.api.signal.SignalPacket;
 import com.k1ngtle.vsia.signality.core.signal.SignalBus;
 import com.k1ngtle.vsia.signality.engineering.EngineeringPhyEngine;
+import com.k1ngtle.vsia.signality.engineering.channel.ActiveRfTransmission;
+import com.k1ngtle.vsia.signality.engineering.channel.RfChannelAssessment;
+import com.k1ngtle.vsia.signality.engineering.channel.RfChannelSettings;
+import com.k1ngtle.vsia.signality.engineering.channel.RfChannelEnvironment;
+import com.k1ngtle.vsia.signality.engineering.channel.RfDiscreteEventScheduler;
+import com.k1ngtle.vsia.signality.engineering.channel.RfMediumState;
+import com.k1ngtle.vsia.signality.engineering.channel.ScheduledRfTransmission;
 import com.k1ngtle.vsia.signality.engineering.cellular.CellRecord;
 import com.k1ngtle.vsia.signality.engineering.cellular.CellularMode;
 import com.k1ngtle.vsia.signality.engineering.cellular.CellularRanController;
@@ -75,6 +82,8 @@ public abstract class NetworkDeviceBlockEntity
                     .defaultFrequencyHz();
 
     private PhyResult lastPhyResult;
+
+    private RfChannelAssessment lastRfChannelAssessment;
 
     private final WifiMacController wifiMac =
             new WifiMacController();
@@ -189,6 +198,39 @@ public abstract class NetworkDeviceBlockEntity
 
     public PhyResult lastPhyResult() {
         return lastPhyResult;
+    }
+
+    public RfChannelAssessment lastRfChannelAssessment() {
+        return lastRfChannelAssessment;
+    }
+
+    public RfMediumState senseRfMedium(
+            double busyThresholdDbm
+    ) {
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return new RfMediumState(
+                    0.0,
+                    Double.NEGATIVE_INFINITY,
+                    0,
+                    false
+            );
+        }
+
+        return RfDiscreteEventScheduler.sense(
+                serverLevel,
+                positionWorld(),
+                activeFrequencyHz,
+                tuningBandwidthHz(),
+                busyThresholdDbm
+        );
+    }
+
+    public boolean isRfMediumBusy(
+            double busyThresholdDbm
+    ) {
+        return senseRfMedium(
+                busyThresholdDbm
+        ).busy();
     }
 
     public PhyProfile currentPhyProfile() {
@@ -369,7 +411,7 @@ public abstract class NetworkDeviceBlockEntity
 
             wifiMac.startScan(
                     macAddress,
-                    this::transmitWifiFrame
+                    wifiSender()
             );
         }
 
@@ -407,7 +449,7 @@ public abstract class NetworkDeviceBlockEntity
                 wifiMac.connect(
                         macAddress,
                         ssid,
-                        this::transmitWifiFrame
+                        wifiSender()
                 );
 
         setChanged();
@@ -424,7 +466,7 @@ public abstract class NetworkDeviceBlockEntity
                 macAddress,
                 networkProfile().id().toString(),
                 activeFrequencyHz,
-                this::transmitWifiFrame
+                wifiSender()
         );
 
         return true;
@@ -766,6 +808,7 @@ public abstract class NetworkDeviceBlockEntity
                 profile.defaultFrequencyHz();
 
         lastPhyResult = null;
+        lastRfChannelAssessment = null;
 
         if (profile.kind() != NetworkKind.WIFI) {
             wifiMac.useLegacyDirectMode();
@@ -790,6 +833,7 @@ public abstract class NetworkDeviceBlockEntity
 
         activeFrequencyHz = frequencyHz;
         lastPhyResult = null;
+        lastRfChannelAssessment = null;
         setChanged();
         return true;
     }
@@ -917,11 +961,44 @@ public abstract class NetworkDeviceBlockEntity
                                 * 8L
                 );
 
+        double phyEvaluationPowerWatts =
+                receivedPowerWatts;
+
+        lastRfChannelAssessment =
+                null;
+
+        if (envelope.hasUUID(
+                "rf_tx_id"
+        )
+                && level
+                instanceof ServerLevel serverLevel) {
+
+            lastRfChannelAssessment =
+                    RfChannelEnvironment.assess(
+                            serverLevel,
+                            signalId,
+                            envelope.getUUID(
+                                    "rf_tx_id"
+                            ),
+                            positionWorld(),
+                            receivedPowerWatts,
+                            signal.frequencyHz(),
+                            receiveProfile.bandwidthHz(),
+                            receiveProfile.receiverNoiseFigureDb()
+                    );
+
+            phyEvaluationPowerWatts =
+                    RfChannelEnvironment
+                            .equivalentSignalPowerForSinr(
+                                    lastRfChannelAssessment
+                            );
+        }
+
         lastPhyResult =
                 EngineeringPhyEngine
                         .evaluateReceivedFrame(
                                 receiveProfile,
-                                receivedPowerWatts,
+                                phyEvaluationPowerWatts,
                                 frameBits
                         );
 
@@ -1094,7 +1171,7 @@ public abstract class NetworkDeviceBlockEntity
                         frame,
                         networkProfile().id().toString(),
                         activeFrequencyHz,
-                        this::transmitWifiFrame
+                        wifiSender()
                 );
 
         if (data != null
@@ -1108,6 +1185,17 @@ public abstract class NetworkDeviceBlockEntity
                             )
                     )
             );
+        }
+
+        PduSession session =
+                cellularRan.pduSession();
+
+        if (session != null
+                && session.active()
+                && !session.ipAddress()
+                .isBlank()) {
+            ipAddress =
+                    session.ipAddress();
         }
 
         setChanged();
@@ -1409,7 +1497,7 @@ public abstract class NetworkDeviceBlockEntity
                     packet.targetMac,
                     body,
                     classifyAccessCategory(packet),
-                    this::transmitWifiFrame
+                    wifiSender()
             );
 
             return;
@@ -1606,6 +1694,27 @@ public abstract class NetworkDeviceBlockEntity
         }
     }
 
+    private WifiMacController.Sender wifiSender() {
+        return new WifiMacController.Sender() {
+            @Override
+            public void send(
+                    WifiMacFrame frame
+            ) {
+                transmitWifiFrame(
+                        frame
+                );
+            }
+
+            @Override
+            public boolean mediumBusy() {
+                return isRfMediumBusy(
+                        RfChannelSettings
+                                .WIFI_ENERGY_DETECT_THRESHOLD_DBM
+                );
+            }
+        };
+    }
+
     private void transmitWifiFrame(
             WifiMacFrame frame
     ) {
@@ -1706,6 +1815,14 @@ public abstract class NetworkDeviceBlockEntity
             CompoundTag rawPayload,
             double transmitFrequencyHz
     ) {
+        UUID rfTransmissionId =
+                UUID.randomUUID();
+
+        rawPayload.putUUID(
+                "rf_tx_id",
+                rfTransmissionId
+        );
+
         byte[] payloadBytes;
 
         try {
@@ -1742,9 +1859,57 @@ public abstract class NetworkDeviceBlockEntity
 
         if (level
                 instanceof ServerLevel serverLevel) {
-            SignalBus.broadcast(
-                    outgoing,
-                    serverLevel
+
+            long currentTick =
+                    serverLevel.getGameTime();
+
+            long payloadBits =
+                    Math.max(
+                            1L,
+                            (long) payloadBytes.length
+                                    * 8L
+                    );
+
+            long airtimeTicks =
+                    RfChannelEnvironment
+                            .estimateAirtimeTicks(
+                                    payloadBits,
+                                    profile.bandwidthHz()
+                            );
+
+            long startTick =
+                    currentTick
+                            + Math.max(
+                            1L,
+                            RfChannelSettings
+                                    .MIN_EVENT_LATENCY_TICKS
+                    );
+
+            ActiveRfTransmission metadata =
+                    new ActiveRfTransmission(
+                            rfTransmissionId,
+                            signalId,
+                            serverLevel.dimension()
+                                    .location()
+                                    .toString(),
+                            positionWorld(),
+                            transmitFrequencyHz,
+                            profile.bandwidthHz(),
+                            profile.transmitPowerWatts(),
+                            profile.antennaGain(),
+                            startTick,
+                            startTick
+                                    + airtimeTicks
+                                    - 1L,
+                            payloadBits
+                    );
+
+            RfDiscreteEventScheduler.schedule(
+                    new ScheduledRfTransmission(
+                            metadata,
+                            outgoing,
+                            serverLevel
+                    )
             );
         }
     }
@@ -1891,5 +2056,6 @@ public abstract class NetworkDeviceBlockEntity
 
         normalizeNetworkProfile();
         lastPhyResult = null;
+        lastRfChannelAssessment = null;
     }
 }

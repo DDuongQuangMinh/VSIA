@@ -8,6 +8,9 @@ import com.k1ngtle.vsia.signality.debug.DebugVisualization;
 import com.k1ngtle.vsia.signality.debug.RadarBeaconBlockEntity;
 import com.k1ngtle.vsia.signality.debug.SignalityCommand;
 import com.k1ngtle.vsia.signality.debug.SignalityTestCommand;
+import com.k1ngtle.vsia.signality.engineering.channel.RfDiscreteEventScheduler;
+import com.k1ngtle.vsia.signality.engineering.channel.RfTransmissionRegistry;
+import com.k1ngtle.vsia.signality.engineering.wifi.WifiMacTimingScheduler;
 import com.k1ngtle.vsia.signality.debug.SignalityLabCommand;
 import com.k1ngtle.vsia.signality.engineering.vm.ProtocolProgramReloadListener;
 import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmScheduler;
@@ -146,6 +149,9 @@ public final class Signality {
    ) {
       RadarScanScheduler.stop();
       ProtocolVmScheduler.clear();
+      RfDiscreteEventScheduler.clear();
+      RfTransmissionRegistry.clear();
+      WifiMacTimingScheduler.clear();
    }
 
    @SubscribeEvent
@@ -185,6 +191,14 @@ public final class Signality {
                  .getAllLevels()) {
 
             try {
+               RfDiscreteEventScheduler.tick(
+                       level
+               );
+
+               WifiMacTimingScheduler.tick(
+                       level.getGameTime()
+               );
+
                RadarScanScheduler.onServerTick(
                        level
                );

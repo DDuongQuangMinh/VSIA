@@ -18,4 +18,8 @@ public final class RfChannelSettings {
     public static double MATERIAL_RAY_MIN_STEP_BLOCKS = 0.50;
 
     public static int FADING_TIME_BIN_TICKS = 5;
+
+    public static long MIN_EVENT_LATENCY_TICKS = 1L;
+
+    public static double WIFI_ENERGY_DETECT_THRESHOLD_DBM = -82.0;
 }
