@@ -78,19 +78,6 @@ public final class WifiIpApplicationEngine {
         );
     }
 
-    public String neighborMac(
-            String ip
-    ) {
-        WifiIpNeighbor neighbor =
-                neighbors.get(
-                        ip
-                );
-
-        return neighbor == null
-                ? ""
-                : neighbor.macAddress();
-    }
-
     public WifiIpFlowSnapshot snapshot(
             String localIp,
             long nowMicros
