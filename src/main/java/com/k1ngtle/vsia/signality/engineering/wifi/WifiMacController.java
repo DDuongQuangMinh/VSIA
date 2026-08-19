@@ -166,6 +166,40 @@ public final class WifiMacController {
         );
     }
 
+    public void rememberKnownNetwork(
+            WifiNetworkRecord network
+    ) {
+        requireStation();
+
+        if (network == null
+                || network.ssid() == null
+                || network.ssid().isBlank()
+                || network.bssid() == null
+                || network.bssid().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Known Wi-Fi network is incomplete"
+            );
+        }
+
+        discovered.put(
+                normalizeMac(
+                        network.bssid()
+                ),
+                network
+        );
+
+        if (stationState
+                == WifiStationState.DISCONNECTED
+                || stationState
+                == WifiStationState.SCANNING) {
+            stationState =
+                    WifiStationState.SCANNING;
+        }
+
+        lastSecurityDiagnostic =
+                "KNOWN_AP_PROVISIONED";
+    }
+
     public Set<String> associatedStations() {
         return Collections.unmodifiableSet(
                 associated

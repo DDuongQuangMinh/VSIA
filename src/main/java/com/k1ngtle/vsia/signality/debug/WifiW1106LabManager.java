@@ -26,17 +26,14 @@ public final class WifiW1106LabManager {
     public static final String SSID =
             "VSIA-W1106-LAB";
 
-    private static final int MAX_STAGE_RETRIES =
+    private static final int MAX_ASSOCIATION_RETRIES =
             5;
 
-    private static final long SHORT_WAIT =
-            10L;
-
-    private static final long DISCOVERY_WAIT =
-            40L;
-
-    private static final long ASSOCIATION_WAIT =
+    private static final long CONNECT_SETTLE_TICKS =
             80L;
+
+    private static final long RETRY_WAIT_TICKS =
+            20L;
 
     private static final Map<UUID, LabJob> JOBS =
             new LinkedHashMap<>();
@@ -188,48 +185,35 @@ public final class WifiW1106LabManager {
                                 server
                         );
 
-                case CLIENT_SCAN ->
-                        clientScan(
+                case CLIENT_CONNECT ->
+                        connectClient(
+                                minecraftServer,
                                 level,
                                 job,
                                 client,
                                 router
                         );
 
-                case CLIENT_DISCOVERY_CHECK ->
-                        clientDiscoveryCheck(
+                case CLIENT_VERIFY ->
+                        verifyClient(
+                                minecraftServer,
                                 level,
                                 job,
                                 client,
                                 router
                         );
 
-                case CLIENT_ASSOCIATION_CHECK ->
-                        clientAssociationCheck(
-                                level,
-                                job,
-                                client,
-                                router
-                        );
-
-                case SERVER_SCAN ->
-                        serverScan(
+                case SERVER_CONNECT ->
+                        connectServer(
+                                minecraftServer,
                                 level,
                                 job,
                                 server,
                                 router
                         );
 
-                case SERVER_DISCOVERY_CHECK ->
-                        serverDiscoveryCheck(
-                                level,
-                                job,
-                                server,
-                                router
-                        );
-
-                case SERVER_ASSOCIATION_CHECK ->
-                        serverAssociationCheck(
+                case SERVER_VERIFY ->
+                        verifyServer(
                                 minecraftServer,
                                 level,
                                 job,
@@ -249,9 +233,16 @@ public final class WifiW1106LabManager {
             NetworkDeviceBlockEntity router,
             NetworkDeviceBlockEntity server
     ) {
-        router.configureWifiAccessPoint(
+        if (!router.configureWifiAccessPoint(
                 SSID
-        );
+        )) {
+            fail(
+                    minecraftServer,
+                    job,
+                    "router could not enter AP mode"
+            );
+            return;
+        }
 
         router.configureWifiStaticIpv4(
                 "192.168.1.1",
@@ -275,8 +266,15 @@ public final class WifiW1106LabManager {
                 true
         );
 
-        client.configureWifiStation();
-        server.configureWifiStation();
+        if (!client.configureWifiStation()
+                || !server.configureWifiStation()) {
+            fail(
+                    minecraftServer,
+                    job,
+                    "client/server could not enter STATION mode"
+            );
+            return;
+        }
 
         client.configureWifiStaticIpv4(
                 "192.168.1.100",
@@ -302,7 +300,7 @@ public final class WifiW1106LabManager {
             fail(
                     minecraftServer,
                     job,
-                    "channel/profile mismatch at "
+                    "Wi-Fi channel/profile mismatch at "
                             + formatFrequency(
                             frequency
                     )
@@ -310,20 +308,18 @@ public final class WifiW1106LabManager {
             return;
         }
 
-        router.sendWifiBeacon();
-
         update(
                 job.next(
-                        Phase.CLIENT_SCAN,
+                        Phase.CLIENT_CONNECT,
                         0,
                         level.getGameTime()
-                                + SHORT_WAIT,
+                                + RETRY_WAIT_TICKS,
                         "CONFIGURED"
                                 + " | channel="
                                 + formatFrequency(
                                 frequency
                         )
-                                + " | next=CLIENT_SCAN"
+                                + " | discovery=PROVISIONED"
                 )
         );
 
@@ -335,98 +331,44 @@ public final class WifiW1106LabManager {
                         + formatFrequency(
                         frequency
                 )
-                        + " | starting staggered client discovery"
+                        + " | deterministic AP provisioning enabled"
         );
     }
 
-    private static void clientScan(
+    private static void connectClient(
+            MinecraftServer minecraftServer,
             ServerLevel level,
             LabJob job,
             NetworkDeviceBlockEntity client,
             NetworkDeviceBlockEntity router
     ) {
-        double frequency =
-                router.activeFrequencyHz();
-
-        client.configureWifiActiveFrequency(
-                frequency
-        );
-
-        router.sendWifiBeacon();
-
-        client.scanWifi();
-
-        client.configureWifiActiveFrequency(
-                frequency
-        );
-
-        router.sendWifiBeacon();
+        if (!provisionAndConnect(
+                client,
+                router
+        )) {
+            retryOrFail(
+                    minecraftServer,
+                    level,
+                    job,
+                    Phase.CLIENT_CONNECT,
+                    "client provisioning/connect failed"
+            );
+            return;
+        }
 
         update(
                 job.next(
-                        Phase.CLIENT_DISCOVERY_CHECK,
+                        Phase.CLIENT_VERIFY,
                         job.retries(),
                         level.getGameTime()
-                                + DISCOVERY_WAIT,
-                        "CLIENT_SCANNING"
-                                + " | channel="
-                                + formatFrequency(
-                                frequency
-                        )
-                )
-        );
-    }
-
-    private static void clientDiscoveryCheck(
-            ServerLevel level,
-            LabJob job,
-            NetworkDeviceBlockEntity client,
-            NetworkDeviceBlockEntity router
-    ) {
-        boolean saw =
-                sawLabAp(
-                        client
-                );
-
-        if (!saw) {
-            retryStage(
-                    level,
-                    job,
-                    router,
-                    Phase.CLIENT_SCAN,
-                    "client did not discover AP"
-            );
-            return;
-        }
-
-        boolean started =
-                client.connectWifi(
-                        SSID
-                );
-
-        if (!started) {
-            retryStage(
-                    level,
-                    job,
-                    router,
-                    Phase.CLIENT_SCAN,
-                    "client discovered AP but connectWifi returned false"
-            );
-            return;
-        }
-
-        update(
-                job.next(
-                        Phase.CLIENT_ASSOCIATION_CHECK,
-                        0,
-                        level.getGameTime()
-                                + ASSOCIATION_WAIT,
+                                + CONNECT_SETTLE_TICKS,
                         "CLIENT_CONNECTING"
                 )
         );
     }
 
-    private static void clientAssociationCheck(
+    private static void verifyClient(
+            MinecraftServer minecraftServer,
             ServerLevel level,
             LabJob job,
             NetworkDeviceBlockEntity client,
@@ -435,122 +377,66 @@ public final class WifiW1106LabManager {
         if (!stationReady(
                 client
         )) {
-            retryStage(
+            retryOrFail(
+                    minecraftServer,
                     level,
                     job,
-                    router,
-                    Phase.CLIENT_SCAN,
+                    Phase.CLIENT_CONNECT,
                     "client association incomplete"
                             + " | state="
                             + client.wifiStationState()
                             + "/"
                             + client.wifiSecurityState()
+                            + " | diag="
+                            + client.wifiSecurityDiagnostic()
             );
             return;
         }
 
-        router.sendWifiBeacon();
-
         update(
                 job.next(
-                        Phase.SERVER_SCAN,
+                        Phase.SERVER_CONNECT,
                         0,
                         level.getGameTime()
-                                + SHORT_WAIT,
+                                + RETRY_WAIT_TICKS,
                         "CLIENT_READY"
-                                + " | next=SERVER_SCAN"
                 )
         );
     }
 
-    private static void serverScan(
+    private static void connectServer(
+            MinecraftServer minecraftServer,
             ServerLevel level,
             LabJob job,
             NetworkDeviceBlockEntity server,
             NetworkDeviceBlockEntity router
     ) {
-        double frequency =
-                router.activeFrequencyHz();
-
-        server.configureWifiActiveFrequency(
-                frequency
-        );
-
-        router.sendWifiBeacon();
-
-        server.scanWifi();
-
-        server.configureWifiActiveFrequency(
-                frequency
-        );
-
-        router.sendWifiBeacon();
+        if (!provisionAndConnect(
+                server,
+                router
+        )) {
+            retryOrFail(
+                    minecraftServer,
+                    level,
+                    job,
+                    Phase.SERVER_CONNECT,
+                    "server provisioning/connect failed"
+            );
+            return;
+        }
 
         update(
                 job.next(
-                        Phase.SERVER_DISCOVERY_CHECK,
+                        Phase.SERVER_VERIFY,
                         job.retries(),
                         level.getGameTime()
-                                + DISCOVERY_WAIT,
-                        "SERVER_SCANNING"
-                                + " | channel="
-                                + formatFrequency(
-                                frequency
-                        )
-                )
-        );
-    }
-
-    private static void serverDiscoveryCheck(
-            ServerLevel level,
-            LabJob job,
-            NetworkDeviceBlockEntity server,
-            NetworkDeviceBlockEntity router
-    ) {
-        boolean saw =
-                sawLabAp(
-                        server
-                );
-
-        if (!saw) {
-            retryStage(
-                    level,
-                    job,
-                    router,
-                    Phase.SERVER_SCAN,
-                    "server did not discover AP"
-            );
-            return;
-        }
-
-        boolean started =
-                server.connectWifi(
-                        SSID
-                );
-
-        if (!started) {
-            retryStage(
-                    level,
-                    job,
-                    router,
-                    Phase.SERVER_SCAN,
-                    "server discovered AP but connectWifi returned false"
-            );
-            return;
-        }
-
-        update(
-                job.next(
-                        Phase.SERVER_ASSOCIATION_CHECK,
-                        0,
-                        level.getGameTime()
-                                + ASSOCIATION_WAIT,
+                                + CONNECT_SETTLE_TICKS,
                         "SERVER_CONNECTING"
                 )
         );
     }
 
-    private static void serverAssociationCheck(
+    private static void verifyServer(
             MinecraftServer minecraftServer,
             ServerLevel level,
             LabJob job,
@@ -561,16 +447,18 @@ public final class WifiW1106LabManager {
         if (!stationReady(
                 server
         )) {
-            retryStage(
+            retryOrFail(
+                    minecraftServer,
                     level,
                     job,
-                    router,
-                    Phase.SERVER_SCAN,
+                    Phase.SERVER_CONNECT,
                     "server association incomplete"
                             + " | state="
                             + server.wifiStationState()
                             + "/"
                             + server.wifiSecurityState()
+                            + " | diag="
+                            + server.wifiSecurityDiagnostic()
             );
             return;
         }
@@ -578,17 +466,17 @@ public final class WifiW1106LabManager {
         if (!stationReady(
                 client
         )) {
-            retryStage(
+            retryOrFail(
+                    minecraftServer,
                     level,
                     job,
-                    router,
-                    Phase.CLIENT_SCAN,
-                    "client lost association while server was joining"
+                    Phase.CLIENT_CONNECT,
+                    "client lost association while server joined"
             );
             return;
         }
 
-        String message =
+        String result =
                 "W1.10.6 lab READY"
                         + " | client 192.168.1.100"
                         + " | router 192.168.1.1/192.168.2.1"
@@ -596,11 +484,13 @@ public final class WifiW1106LabManager {
                         + " | channel="
                         + formatFrequency(
                         router.activeFrequencyHz()
-                );
+                )
+                        + " | discovery=PROVISIONED"
+                        + " | association=LIVE";
 
         LAST_STATUS.put(
                 job.owner(),
-                message
+                result
         );
 
         JOBS.remove(
@@ -610,69 +500,73 @@ public final class WifiW1106LabManager {
         send(
                 minecraftServer,
                 job.owner(),
-                message
+                result
         );
     }
 
-    private static void retryStage(
-            ServerLevel level,
-            LabJob job,
-            NetworkDeviceBlockEntity router,
-            Phase retryPhase,
-            String reason
+    private static boolean provisionAndConnect(
+            NetworkDeviceBlockEntity station,
+            NetworkDeviceBlockEntity router
     ) {
-        int nextRetry =
-                job.retries() + 1;
+        double frequency =
+                router.activeFrequencyHz();
 
-        if (nextRetry
-                > MAX_STAGE_RETRIES) {
-            MinecraftServer minecraftServer =
-                    ServerLifecycleHooks.getCurrentServer();
-
-            if (minecraftServer != null) {
-                fail(
-                        minecraftServer,
-                        job,
-                        reason
-                                + " | stage="
-                                + retryPhase
-                                + " | retries="
-                                + job.retries()
+        boolean provisioned =
+                station.provisionWifiKnownAccessPoint(
+                        SSID,
+                        router.wifiMacAddress(),
+                        router.wifiNetworkSecurityProfile(),
+                        router.wifiNetworkProfileName(),
+                        frequency
                 );
-            }
 
-            return;
+        if (!provisioned) {
+            return false;
         }
 
         router.sendWifiBeacon();
 
+        return station.connectWifi(
+                SSID
+        );
+    }
+
+    private static void retryOrFail(
+            MinecraftServer minecraftServer,
+            ServerLevel level,
+            LabJob job,
+            Phase retryPhase,
+            String reason
+    ) {
+        int retry =
+                job.retries() + 1;
+
+        if (retry
+                > MAX_ASSOCIATION_RETRIES) {
+            fail(
+                    minecraftServer,
+                    job,
+                    reason
+                            + " | retries="
+                            + job.retries()
+            );
+            return;
+        }
+
         update(
                 job.next(
                         retryPhase,
-                        nextRetry,
+                        retry,
                         level.getGameTime()
-                                + SHORT_WAIT,
+                                + RETRY_WAIT_TICKS,
                         "RETRY "
-                                + nextRetry
+                                + retry
                                 + "/"
-                                + MAX_STAGE_RETRIES
+                                + MAX_ASSOCIATION_RETRIES
                                 + " | "
                                 + reason
                 )
         );
-    }
-
-    private static boolean sawLabAp(
-            NetworkDeviceBlockEntity device
-    ) {
-        return device.discoveredWifiNetworks()
-                .stream()
-                .anyMatch(
-                        network ->
-                                SSID.equals(
-                                        network.ssid()
-                                )
-                );
     }
 
     private static boolean stationReady(
@@ -790,12 +684,10 @@ public final class WifiW1106LabManager {
 
     private enum Phase {
         CONFIGURE,
-        CLIENT_SCAN,
-        CLIENT_DISCOVERY_CHECK,
-        CLIENT_ASSOCIATION_CHECK,
-        SERVER_SCAN,
-        SERVER_DISCOVERY_CHECK,
-        SERVER_ASSOCIATION_CHECK
+        CLIENT_CONNECT,
+        CLIENT_VERIFY,
+        SERVER_CONNECT,
+        SERVER_VERIFY
     }
 
     private record LabJob(
@@ -812,7 +704,7 @@ public final class WifiW1106LabManager {
         private LabJob next(
                 Phase nextPhase,
                 int nextRetries,
-                long tick,
+                long nextActionTick,
                 String nextStatus
         ) {
             return new LabJob(
@@ -823,7 +715,7 @@ public final class WifiW1106LabManager {
                     serverPos,
                     nextPhase,
                     nextRetries,
-                    tick,
+                    nextActionTick,
                     nextStatus
             );
         }

@@ -925,6 +925,59 @@ public abstract class NetworkDeviceBlockEntity
     public Collection<WifiNetworkRecord> discoveredWifiNetworks() {
         return wifiMac.discoveredNetworks();
     }
+
+    public String wifiNetworkSecurityProfile() {
+        return networkProfile().security();
+    }
+
+    public String wifiNetworkProfileName() {
+        return networkProfile().id().toString();
+    }
+
+    public boolean provisionWifiKnownAccessPoint(
+            String ssid,
+            String bssid,
+            String security,
+            String profileName,
+            double frequencyHz
+    ) {
+        if (!isWifiProfile()
+                || wifiMac.mode()
+                != WifiMode.STATION
+                || ssid == null
+                || ssid.isBlank()
+                || bssid == null
+                || bssid.isBlank()
+                || !networkProfile().supportsFrequency(
+                frequencyHz
+        )) {
+            return false;
+        }
+
+        activeFrequencyHz =
+                frequencyHz;
+
+        wifiMac.rememberKnownNetwork(
+                new WifiNetworkRecord(
+                        ssid,
+                        bssid,
+                        security == null
+                                || security.isBlank()
+                                ? "signality:open"
+                                : security,
+                        profileName == null
+                                || profileName.isBlank()
+                                ? networkProfile().id().toString()
+                                : profileName,
+                        frequencyHz,
+                        System.nanoTime()
+                )
+        );
+
+        setChanged();
+
+        return true;
+    }
     public String wifiMacAddress() {
         return macAddress;
     }
