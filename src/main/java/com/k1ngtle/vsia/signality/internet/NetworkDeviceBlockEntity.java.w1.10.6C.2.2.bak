@@ -481,28 +481,6 @@ public abstract class NetworkDeviceBlockEntity
         return activeFrequencyHz;
     }
 
-    public boolean configureWifiActiveFrequency(
-            double frequencyHz
-    ) {
-        if (!isWifiProfile()
-                || !Double.isFinite(
-                frequencyHz
-        )
-                || !networkProfile()
-                .supportsFrequency(
-                        frequencyHz
-                )) {
-            return false;
-        }
-
-        activeFrequencyHz =
-                frequencyHz;
-
-        setChanged();
-
-        return true;
-    }
-
     public PhyResult lastPhyResult() {
         return lastPhyResult;
     }
