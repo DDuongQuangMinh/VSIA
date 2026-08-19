@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "vsia:block/rt_ac68u_router", "y": 180 },
+    "facing=east":  { "model": "vsia:block/rt_ac68u_router", "y": 90 },
+    "facing=south": { "model": "vsia:block/rt_ac68u_router" },
+    "facing=west":  { "model": "vsia:block/rt_ac68u_router", "y": 270 }
+  }
+}

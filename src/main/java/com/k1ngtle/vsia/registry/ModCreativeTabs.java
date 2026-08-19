@@ -91,6 +91,7 @@ public class ModCreativeTabs {
                                 output.accept(SignalityBlocks.STORAGE_SERVER_ITEM.get());
                                 output.accept(SignalityBlocks.NETWORK_SWITCH_ITEM.get());
                                 output.accept(SignalityBlocks.FIREWALL_ITEM.get());
+                                output.accept(SignalityBlocks.RT_AC68U_ROUTER_ITEM.get());
                                 output.accept(SignalityBlocks.NETWORK_CABLE.get());
                             })
                             .build()

@@ -75,6 +75,13 @@ import com.k1ngtle.vsia.signality.engineering.wifi.ip.routing.Ipv4Prefix;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.routing.Ipv4RouteDecision;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.routing.Ipv4RouteKind;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.routing.Ipv4RoutingTable;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterEngine;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterForwardAction;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterForwardDecision;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterInterface;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterPacket;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterRoute;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.live.IcmpRawLiveCarrierCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveController;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveScheduler;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveSnapshot;
@@ -137,6 +144,21 @@ public abstract class NetworkDeviceBlockEntity
 
     private final Map<String, java.util.List<OSINetworkPacket>>
             wifiPendingIpv4ByNextHop =
+            new java.util.LinkedHashMap<>();
+
+    private final RouterEngine wifiLiveRouter =
+            new RouterEngine();
+
+    private boolean wifiLiveRouterEnabled;
+
+    private static final int WIFI_ROUTER_PENDING_PER_NEXT_HOP =
+            8;
+
+    private static final int WIFI_ROUTER_PENDING_TOTAL =
+            64;
+
+    private final Map<String, java.util.List<OSINetworkPacket>>
+            wifiRouterPendingByNextHop =
             new java.util.LinkedHashMap<>();
 
     private ResourceLocation networkProfileId =
@@ -1115,6 +1137,204 @@ public abstract class NetworkDeviceBlockEntity
         }
     }
 
+    public boolean configureWifiStaticIpv4(
+            String address,
+            String subnetMask,
+            String defaultGatewayIp
+    ) {
+        if (!Ipv4Prefix.isUsableUnicast(
+                address
+        )) {
+            wifiIpApplication.setStatus(
+                    "Static IPv4 rejected: invalid address"
+            );
+            return false;
+        }
+
+        try {
+            Ipv4Prefix.prefixLengthFromMask(
+                    subnetMask
+            );
+        } catch (IllegalArgumentException exception) {
+            wifiIpApplication.setStatus(
+                    "Static IPv4 rejected: invalid subnet mask"
+            );
+            return false;
+        }
+
+        String gateway =
+                defaultGatewayIp == null
+                        ? ""
+                        : defaultGatewayIp.trim();
+
+        if (!gateway.isBlank()
+                && !Ipv4Prefix.isUsableUnicast(
+                gateway
+        )) {
+            wifiIpApplication.setStatus(
+                    "Static IPv4 rejected: invalid gateway"
+            );
+            return false;
+        }
+
+        ipAddress =
+                address;
+
+        wifiSubnetMask =
+                subnetMask;
+
+        wifiDefaultGatewayIp =
+                gateway;
+
+        defaultGatewayMac =
+                "";
+
+        wifiPendingIpv4ByNextHop.clear();
+
+        wifiIpApplication.setStatus(
+                "Static IPv4 "
+                        + ipAddress
+                        + "/"
+                        + Ipv4Prefix.prefixLengthFromMask(
+                        wifiSubnetMask
+                )
+                        + " gateway "
+                        + (
+                        gateway.isBlank()
+                                ? "none"
+                                : gateway
+                )
+        );
+
+        setChanged();
+        return true;
+    }
+
+    public void setWifiLiveRouterEnabled(
+            boolean enabled
+    ) {
+        wifiLiveRouterEnabled =
+                enabled;
+
+        wifiRouterPendingByNextHop.clear();
+
+        if (enabled) {
+            wifiTcpExecutionMode =
+                    ExecutionMode.CONFORMANCE;
+
+            wifiIpApplication.setStatus(
+                    "Live IPv4 router ENABLED"
+            );
+        } else {
+            wifiIpApplication.setStatus(
+                    "Live IPv4 router DISABLED"
+            );
+        }
+
+        setChanged();
+    }
+
+    public boolean wifiLiveRouterEnabled() {
+        return wifiLiveRouterEnabled;
+    }
+
+    public boolean configureWifiLiveRouterInterface(
+            String name,
+            String address,
+            int prefixLength
+    ) {
+        try {
+            wifiLiveRouter.putInterface(
+                    new RouterInterface(
+                            name,
+                            address,
+                            prefixLength,
+                            macAddress,
+                            true
+                    )
+            );
+        } catch (IllegalArgumentException exception) {
+            wifiIpApplication.setStatus(
+                    "Router interface rejected: "
+                            + exception.getMessage()
+            );
+            return false;
+        }
+
+        wifiIpApplication.setStatus(
+                "Router interface "
+                        + name
+                        + " "
+                        + address
+                        + "/"
+                        + prefixLength
+        );
+
+        setChanged();
+        return true;
+    }
+
+    public boolean addWifiLiveRouterRoute(
+            String network,
+            int prefixLength,
+            String nextHop,
+            String egressInterface,
+            int metric
+    ) {
+        try {
+            wifiLiveRouter.addRoute(
+                    new RouterRoute(
+                            network,
+                            prefixLength,
+                            nextHop,
+                            egressInterface,
+                            metric,
+                            "STATIC"
+                    )
+            );
+        } catch (IllegalArgumentException exception) {
+            wifiIpApplication.setStatus(
+                    "Router route rejected: "
+                            + exception.getMessage()
+            );
+            return false;
+        }
+
+        wifiIpApplication.setStatus(
+                "Router route "
+                        + network
+                        + "/"
+                        + prefixLength
+                        + " via "
+                        + (
+                        nextHop == null
+                                || nextHop.isBlank()
+                                ? "on-link"
+                                : nextHop
+                )
+                        + " dev "
+                        + egressInterface
+        );
+
+        setChanged();
+        return true;
+    }
+
+    public java.util.List<RouterRoute> wifiLiveRouterRoutes() {
+        return wifiLiveRouter.routes();
+    }
+
+    public boolean startWifiRoutedTcpHttpGet(
+            String targetIp,
+            String path
+    ) {
+        return startWifiTcpHttpGet(
+                "FF:FF:FF:FF:FF:FF",
+                targetIp,
+                path
+        );
+    }
+
     public boolean sendWifiDnsAQuery(
             String domain
     ) {
@@ -1546,6 +1766,7 @@ public abstract class NetworkDeviceBlockEntity
         wifiRawDhcpPeers.clear();
         wifiRawDnsPeers.clear();
         wifiPendingIpv4ByNextHop.clear();
+        wifiRouterPendingByNextHop.clear();
     }
 
     public boolean sendWifiEngineeringAssociatedData(
@@ -2811,6 +3032,22 @@ public abstract class NetworkDeviceBlockEntity
         }
 
         if (data != null
+                && IcmpRawLiveCarrierCodec.isRawCarrier(
+                data
+        )) {
+            try {
+                processLayer2(
+                        IcmpRawLiveCarrierCodec.decode(
+                                data
+                        )
+                );
+            } catch (Exception exception) {
+                wifiIpApplication.setStatus(
+                        "RAW ICMP drop: "
+                                + exception.getMessage()
+                );
+            }
+        } else if (data != null
                 && DnsRawLiveCarrierCodec.isRawDnsCarrier(
                 data
         )) {
@@ -3081,6 +3318,15 @@ public abstract class NetworkDeviceBlockEntity
                         "FF:FF:FF:FF:FF:FF"
                 );
 
+        if (wifiLiveRouterEnabled
+                && handleWifiRouterLayer2(
+                packet,
+                addressed,
+                broadcast
+        )) {
+            return;
+        }
+
         if (addressed || broadcast) {
             processLayer3(packet);
         }
@@ -3107,6 +3353,43 @@ public abstract class NetworkDeviceBlockEntity
     protected void processLayer4(
             OSINetworkPacket packet
     ) {
+        if ("ICMP".equalsIgnoreCase(
+                packet.applicationProtocol
+        )
+                && packet.isResponse
+                && (
+                "TIME_EXCEEDED".equalsIgnoreCase(
+                        packet.payload.getString(
+                                "type"
+                        )
+                )
+                        || "DESTINATION_UNREACHABLE".equalsIgnoreCase(
+                        packet.payload.getString(
+                                "type"
+                        )
+                )
+        )) {
+            wifiIpApplication.setStatus(
+                    "ICMP "
+                            + packet.payload.getString(
+                            "type"
+                    )
+                            + " type="
+                            + packet.payload.getInt(
+                            "icmp_type"
+                    )
+                            + " code="
+                            + packet.payload.getInt(
+                            "icmp_code"
+                    )
+                            + " from "
+                            + packet.sourceIp
+            );
+
+            setChanged();
+            return;
+        }
+
         if (isWifiProfile()
                 && wifiMac.mode()
                 != WifiMode.LEGACY_DIRECT
@@ -3543,6 +3826,27 @@ public abstract class NetworkDeviceBlockEntity
             return;
         }
 
+        if (wifiTcpExecutionMode
+                == ExecutionMode.CONFORMANCE
+                && IcmpRawLiveCarrierCodec.canEncode(
+                packet
+        )) {
+            CompoundTag body =
+                    IcmpRawLiveCarrierCodec.encode(
+                            packet
+                    );
+
+            wifiMac.sendData(
+                    macAddress,
+                    packet.targetMac,
+                    body,
+                    WifiAccessCategory.BEST_EFFORT,
+                    wifiSender()
+            );
+
+            return;
+        }
+
         if (shouldUseRawWifiDnsCarrier(
                 packet
         )) {
@@ -3771,9 +4075,519 @@ public abstract class NetworkDeviceBlockEntity
         broadcastPayload(payload);
     }
 
+    private boolean handleWifiRouterLayer2(
+            OSINetworkPacket packet,
+            boolean addressed,
+            boolean broadcast
+    ) {
+        if (packet == null) {
+            return false;
+        }
+
+        if ("ARP".equalsIgnoreCase(
+                packet.applicationProtocol
+        )
+                && (
+                addressed
+                        || broadcast
+        )) {
+            return handleWifiRouterArp(
+                    packet
+            );
+        }
+
+        if (!addressed
+                || !Ipv4Prefix.isUsableUnicast(
+                packet.targetIp
+        )) {
+            return false;
+        }
+
+        RouterInterface local =
+                wifiLiveRouter.interfaceForLocalIp(
+                        packet.targetIp
+                );
+
+        if (local != null) {
+            if (packet.targetIp.equals(
+                    ipAddress
+            )) {
+                return false;
+            }
+
+            wifiIpApplication.setStatus(
+                    "Router local delivery "
+                            + packet.targetIp
+                            + " on "
+                            + local.name()
+            );
+
+            return true;
+        }
+
+        RouterInterface ingress =
+                wifiLiveRouter.interfaceForSourceNetwork(
+                        packet.sourceIp
+                );
+
+        String ingressName =
+                ingress == null
+                        ? ""
+                        : ingress.name();
+
+        if (ingress != null
+                && packet.sourceMac != null
+                && !packet.sourceMac.isBlank()
+                && Ipv4Prefix.isUsableUnicast(
+                packet.sourceIp
+        )) {
+            wifiLiveRouter.neighbors()
+                    .learn(
+                            ingress.name(),
+                            packet.sourceIp,
+                            packet.sourceMac
+                    );
+        }
+
+        RouterForwardDecision decision =
+                wifiLiveRouter.evaluate(
+                        ingressName,
+                        new RouterPacket(
+                                packet.sourceIp,
+                                packet.targetIp,
+                                packet.ttl,
+                                packet.ipProtocol,
+                                new byte[0]
+                        )
+                );
+
+        packet.payload.putString(
+                "router_ingress_interface",
+                ingressName
+        );
+
+        packet.payload.putString(
+                "router_forward_action",
+                decision.action().name()
+        );
+
+        switch (decision.action()) {
+            case FORWARD -> {
+                forwardWifiRouterPacket(
+                        packet,
+                        decision
+                );
+                return true;
+            }
+
+            case ARP_REQUIRED -> {
+                if (!queueWifiRouterPacket(
+                        decision.egressInterface(),
+                        decision.nextHopIp(),
+                        packet
+                )) {
+                    wifiIpApplication.setStatus(
+                            "Router queue full for "
+                                    + decision.nextHopIp()
+                    );
+                    return true;
+                }
+
+                sendWifiRouterArpRequest(
+                        decision.egressInterface(),
+                        decision.nextHopIp()
+                );
+
+                wifiIpApplication.setStatus(
+                        "Router ARP pending "
+                                + decision.nextHopIp()
+                                + " dev "
+                                + decision.egressInterface()
+                );
+
+                return true;
+            }
+
+            case ICMP_TIME_EXCEEDED,
+                 ICMP_DESTINATION_UNREACHABLE -> {
+                emitWifiRouterIcmpError(
+                        packet,
+                        decision
+                );
+                return true;
+            }
+
+            case DROP -> {
+                wifiIpApplication.setStatus(
+                        "Router drop: "
+                                + decision.detail()
+                );
+                return true;
+            }
+
+            case LOCAL_DELIVERY -> {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean handleWifiRouterArp(
+            OSINetworkPacket packet
+    ) {
+        String targetIp =
+                packet.payload.getString(
+                        "target_ip"
+                );
+
+        RouterInterface local =
+                wifiLiveRouter.interfaceForLocalIp(
+                        targetIp
+                );
+
+        if (local == null) {
+            return false;
+        }
+
+        String senderIp =
+                packet.payload.getString(
+                        "sender_ip"
+                );
+
+        String senderMac =
+                packet.payload.getString(
+                        "sender_mac"
+                );
+
+        RouterInterface senderInterface =
+                wifiLiveRouter.interfaceForSourceNetwork(
+                        senderIp
+                );
+
+        if (senderInterface != null
+                && !senderMac.isBlank()) {
+            wifiLiveRouter.neighbors()
+                    .learn(
+                            senderInterface.name(),
+                            senderIp,
+                            senderMac
+                    );
+
+            flushWifiRouterPending(
+                    senderInterface.name(),
+                    senderIp,
+                    senderMac
+            );
+        }
+
+        wifiIpApplication.handleIncoming(
+                macAddress,
+                local.ipv4Address(),
+                packet,
+                level instanceof ServerLevel serverLevel
+                        ? NetworkTimebase.nowMicros(
+                        serverLevel
+                )
+                        : 0L,
+                this::transmitPacket
+        );
+
+        return true;
+    }
+
+    private void forwardWifiRouterPacket(
+            OSINetworkPacket packet,
+            RouterForwardDecision decision
+    ) {
+        packet.ttl =
+                decision.outgoingTtl();
+
+        packet.sourceMac =
+                macAddress;
+
+        packet.targetMac =
+                decision.nextHopMac();
+
+        packet.payload.putBoolean(
+                "router_egress_bypass",
+                true
+        );
+
+        packet.payload.putString(
+                "router_egress_interface",
+                decision.egressInterface()
+        );
+
+        packet.payload.putString(
+                "router_next_hop_ip",
+                decision.nextHopIp()
+        );
+
+        wifiIpApplication.setStatus(
+                decision.detail()
+        );
+
+        transmitPacket(
+                packet
+        );
+    }
+
+    private boolean queueWifiRouterPacket(
+            String interfaceName,
+            String nextHopIp,
+            OSINetworkPacket packet
+    ) {
+        int total =
+                wifiRouterPendingByNextHop
+                        .values()
+                        .stream()
+                        .mapToInt(
+                                java.util.List::size
+                        )
+                        .sum();
+
+        if (total
+                >= WIFI_ROUTER_PENDING_TOTAL) {
+            return false;
+        }
+
+        String key =
+                interfaceName
+                        + "|"
+                        + nextHopIp;
+
+        java.util.List<OSINetworkPacket> queue =
+                wifiRouterPendingByNextHop
+                        .computeIfAbsent(
+                                key,
+                                ignored ->
+                                        new java.util.ArrayList<>()
+                        );
+
+        if (queue.size()
+                >= WIFI_ROUTER_PENDING_PER_NEXT_HOP) {
+            return false;
+        }
+
+        queue.add(
+                packet
+        );
+
+        return true;
+    }
+
+    private void flushWifiRouterPending(
+            String interfaceName,
+            String nextHopIp,
+            String nextHopMac
+    ) {
+        String key =
+                interfaceName
+                        + "|"
+                        + nextHopIp;
+
+        java.util.List<OSINetworkPacket> pending =
+                wifiRouterPendingByNextHop.remove(
+                        key
+                );
+
+        if (pending == null) {
+            return;
+        }
+
+        for (OSINetworkPacket packet
+                : pending) {
+            RouterForwardDecision decision =
+                    wifiLiveRouter.evaluate(
+                            wifiLiveRouter
+                                    .interfaceForSourceNetwork(
+                                            packet.sourceIp
+                                    ) == null
+                                    ? ""
+                                    : wifiLiveRouter
+                                    .interfaceForSourceNetwork(
+                                            packet.sourceIp
+                                    )
+                                    .name(),
+                            new RouterPacket(
+                                    packet.sourceIp,
+                                    packet.targetIp,
+                                    packet.ttl,
+                                    packet.ipProtocol,
+                                    new byte[0]
+                            )
+                    );
+
+            if (decision.action()
+                    == RouterForwardAction.FORWARD) {
+                forwardWifiRouterPacket(
+                        packet,
+                        decision
+                );
+            }
+        }
+    }
+
+    private void sendWifiRouterArpRequest(
+            String interfaceName,
+            String nextHopIp
+    ) {
+        RouterInterface egress =
+                wifiLiveRouter.interfaceByName(
+                        interfaceName
+                );
+
+        if (egress == null) {
+            return;
+        }
+
+        transmitPacket(
+                wifiIpApplication.createArpRequest(
+                        macAddress,
+                        egress.ipv4Address(),
+                        nextHopIp,
+                        level instanceof ServerLevel serverLevel
+                                ? NetworkTimebase.nowMicros(
+                                serverLevel
+                        )
+                                : 0L
+                )
+        );
+    }
+
+    private void emitWifiRouterIcmpError(
+            OSINetworkPacket original,
+            RouterForwardDecision decision
+    ) {
+        RouterInterface ingress =
+                wifiLiveRouter.interfaceForSourceNetwork(
+                        original.sourceIp
+                );
+
+        if (ingress == null
+                || original.sourceMac == null
+                || original.sourceMac.isBlank()) {
+            wifiIpApplication.setStatus(
+                    "Router ICMP error could not return to source"
+            );
+            return;
+        }
+
+        OSINetworkPacket error =
+                new OSINetworkPacket();
+
+        error.sourceMac =
+                macAddress;
+
+        error.targetMac =
+                original.sourceMac;
+
+        error.sourceIp =
+                ingress.ipv4Address();
+
+        error.targetIp =
+                original.sourceIp;
+
+        error.ttl =
+                64;
+
+        error.ipProtocol =
+                1;
+
+        error.applicationProtocol =
+                "ICMP";
+
+        error.isResponse =
+                true;
+
+        error.payload.putString(
+                "type",
+                decision.action()
+                        == RouterForwardAction.ICMP_TIME_EXCEEDED
+                        ? "TIME_EXCEEDED"
+                        : "DESTINATION_UNREACHABLE"
+        );
+
+        error.payload.putInt(
+                "icmp_type",
+                decision.icmpType()
+        );
+
+        error.payload.putInt(
+                "icmp_code",
+                decision.icmpCode()
+        );
+
+        error.payload.putInt(
+                "icmp_error_id",
+                (
+                        int
+                ) (
+                System.nanoTime()
+                        & 0xFFFFL
+        )
+        );
+
+        error.payload.putString(
+                "quoted_source_ip",
+                original.sourceIp
+        );
+
+        error.payload.putString(
+                "quoted_target_ip",
+                original.targetIp
+        );
+
+        error.payload.putInt(
+                "quoted_protocol",
+                original.ipProtocol
+        );
+
+        error.payload.putInt(
+                "quoted_ttl",
+                original.ttl
+        );
+
+        error.payload.putInt(
+                "quoted_source_port",
+                original.sourcePort
+        );
+
+        error.payload.putInt(
+                "quoted_target_port",
+                original.targetPort
+        );
+
+        error.payload.putBoolean(
+                "router_egress_bypass",
+                true
+        );
+
+        wifiIpApplication.setStatus(
+                "Router ICMP "
+                        + error.payload.getString(
+                        "type"
+                )
+                        + " to "
+                        + original.sourceIp
+        );
+
+        transmitPacket(
+                error
+        );
+    }
+
     private boolean prepareWifiIpv4NextHop(
             OSINetworkPacket packet
     ) {
+        if (packet != null
+                && packet.payload.getBoolean(
+                "router_egress_bypass"
+        )) {
+            return false;
+        }
+
         if (packet == null
                 || !isWifiProfile()
                 || wifiMac.mode()

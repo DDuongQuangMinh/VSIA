@@ -13,15 +13,12 @@ public record RouterInterface(
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Router interface name is empty");
         }
-
         if (!Ipv4Prefix.isUsableUnicast(ipv4Address)) {
             throw new IllegalArgumentException("Invalid router interface IPv4");
         }
-
         if (prefixLength < 0 || prefixLength > 32) {
             throw new IllegalArgumentException("Invalid router prefix length");
         }
-
         macAddress = macAddress == null ? "" : macAddress;
     }
 

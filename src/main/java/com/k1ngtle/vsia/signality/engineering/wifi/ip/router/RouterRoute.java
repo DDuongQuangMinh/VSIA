@@ -15,10 +15,7 @@ public record RouterRoute(
         nextHop = nextHop == null ? "" : nextHop;
         egressInterface = egressInterface == null ? "" : egressInterface;
         source = source == null ? "" : source;
-
-        if (metric < 0) {
-            throw new IllegalArgumentException("metric");
-        }
+        if (metric < 0) throw new IllegalArgumentException("metric");
     }
 
     public boolean matches(String destination) {

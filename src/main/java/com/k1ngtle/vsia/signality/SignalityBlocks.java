@@ -28,6 +28,9 @@ import com.k1ngtle.vsia.signality.internet.server.ServerRackItem;
 import com.k1ngtle.vsia.signality.internet.server.StorageServerBlock;
 import com.k1ngtle.vsia.signality.internet.server.StorageServerBlockEntity;
 import com.k1ngtle.vsia.signality.internet.server.StorageServerItem;
+import com.k1ngtle.vsia.signality.internet.router.RtAc68uRouterBlock;
+import com.k1ngtle.vsia.signality.internet.router.RtAc68uRouterBlockEntity;
+import com.k1ngtle.vsia.signality.internet.router.RtAc68uRouterItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
@@ -148,6 +151,32 @@ public class SignalityBlocks {
             () -> BlockEntityType.Builder.of(
                     FirewallBlockEntity::new,
                     FIREWALL.get()
+            ).build(null)
+    );
+
+    public static final RegistryObject<Block> RT_AC68U_ROUTER = BLOCKS.register(
+            "rt_ac68u_router",
+            () -> new RtAc68uRouterBlock(
+                    BlockBehaviour.Properties.of()
+                            .mapColor(MapColor.METAL)
+                            .strength(2.5F, 6.0F)
+                            .noOcclusion()
+            )
+    );
+
+    public static final RegistryObject<Item> RT_AC68U_ROUTER_ITEM = ITEMS.register(
+            "rt_ac68u_router",
+            () -> new RtAc68uRouterItem(
+                    RT_AC68U_ROUTER.get(),
+                    new Item.Properties()
+            )
+    );
+
+    public static final RegistryObject<BlockEntityType<RtAc68uRouterBlockEntity>> RT_AC68U_ROUTER_BE = BLOCK_ENTITIES.register(
+            "rt_ac68u_router",
+            () -> BlockEntityType.Builder.of(
+                    RtAc68uRouterBlockEntity::new,
+                    RT_AC68U_ROUTER.get()
             ).build(null)
     );
 
