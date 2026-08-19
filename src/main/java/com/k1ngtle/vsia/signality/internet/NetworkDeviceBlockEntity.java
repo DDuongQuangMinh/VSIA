@@ -161,6 +161,12 @@ public abstract class NetworkDeviceBlockEntity
             wifiRouterPendingByNextHop =
             new java.util.LinkedHashMap<>();
 
+    private static final int WIFI_ROUTER_DIAGNOSTIC_LIMIT =
+            32;
+
+    private final java.util.ArrayDeque<String> wifiRouterDiagnostics =
+            new java.util.ArrayDeque<>();
+
     private ResourceLocation networkProfileId =
             NetworkProfileRegistry.DEFAULT_PROFILE_ID;
 
@@ -1217,6 +1223,7 @@ public abstract class NetworkDeviceBlockEntity
                 enabled;
 
         wifiRouterPendingByNextHop.clear();
+        wifiRouterDiagnostics.clear();
 
         if (enabled) {
             wifiTcpExecutionMode =
@@ -1322,6 +1329,26 @@ public abstract class NetworkDeviceBlockEntity
 
     public java.util.List<RouterRoute> wifiLiveRouterRoutes() {
         return wifiLiveRouter.routes();
+    }
+
+    public java.util.List<String> wifiLiveRouterDiagnosticLines() {
+        return java.util.List.copyOf(wifiRouterDiagnostics);
+    }
+
+    public void clearWifiLiveRouterDiagnostics() {
+        wifiRouterDiagnostics.clear();
+    }
+
+    private void traceWifiRouter(String line) {
+        if (line == null || line.isBlank()) {
+            return;
+        }
+
+        while (wifiRouterDiagnostics.size() >= WIFI_ROUTER_DIAGNOSTIC_LIMIT) {
+            wifiRouterDiagnostics.removeFirst();
+        }
+
+        wifiRouterDiagnostics.addLast(line);
     }
 
     public boolean startWifiRoutedTcpHttpGet(
@@ -4135,6 +4162,17 @@ public abstract class NetworkDeviceBlockEntity
                         ? ""
                         : ingress.name();
 
+        traceWifiRouter(
+                "RX TRANSIT "
+                        + packet.sourceIp
+                        + " -> "
+                        + packet.targetIp
+                        + " ingress="
+                        + (ingressName.isBlank() ? "unknown" : ingressName)
+                        + " ttl="
+                        + packet.ttl
+        );
+
         if (ingress != null
                 && packet.sourceMac != null
                 && !packet.sourceMac.isBlank()
@@ -4171,6 +4209,15 @@ public abstract class NetworkDeviceBlockEntity
                 decision.action().name()
         );
 
+        traceWifiRouter(
+                "ROUTE action="
+                        + decision.action().name()
+                        + " egress="
+                        + (decision.egressInterface().isBlank() ? "none" : decision.egressInterface())
+                        + " next-hop="
+                        + (decision.nextHopIp().isBlank() ? "none" : decision.nextHopIp())
+        );
+
         switch (decision.action()) {
             case FORWARD -> {
                 forwardWifiRouterPacket(
@@ -4181,6 +4228,30 @@ public abstract class NetworkDeviceBlockEntity
             }
 
             case ARP_REQUIRED -> {
+                packet.payload.putString(
+                        "router_pending_egress_interface",
+                        decision.egressInterface()
+                );
+                packet.payload.putString(
+                        "router_pending_next_hop_ip",
+                        decision.nextHopIp()
+                );
+                packet.payload.putInt(
+                        "router_pending_outgoing_ttl",
+                        decision.outgoingTtl()
+                );
+
+                traceWifiRouter(
+                        "ARP REQUIRED "
+                                + decision.nextHopIp()
+                                + " dev="
+                                + decision.egressInterface()
+                                + " ttl="
+                                + packet.ttl
+                                + "->"
+                                + decision.outgoingTtl()
+                );
+
                 if (!queueWifiRouterPacket(
                         decision.egressInterface(),
                         decision.nextHopIp(),
@@ -4210,6 +4281,17 @@ public abstract class NetworkDeviceBlockEntity
 
             case ICMP_TIME_EXCEEDED,
                  ICMP_DESTINATION_UNREACHABLE -> {
+                traceWifiRouter(
+                        "ICMP "
+                                + decision.action().name()
+                                + " for "
+                                + packet.sourceIp
+                                + " -> "
+                                + packet.targetIp
+                                + " detail="
+                                + decision.detail()
+                );
+
                 emitWifiRouterIcmpError(
                         packet,
                         decision
@@ -4274,6 +4356,15 @@ public abstract class NetworkDeviceBlockEntity
                             senderMac
                     );
 
+            traceWifiRouter(
+                    "ARP LEARNED "
+                            + senderIp
+                            + " -> "
+                            + senderMac
+                            + " dev="
+                            + senderInterface.name()
+            );
+
             flushWifiRouterPending(
                     senderInterface.name(),
                     senderIp,
@@ -4328,9 +4419,24 @@ public abstract class NetworkDeviceBlockEntity
                 decision.detail()
         );
 
-        transmitPacket(
-                packet
+        traceWifiRouter(
+                "FORWARDED "
+                        + packet.sourceIp
+                        + " -> "
+                        + packet.targetIp
+                        + " dev="
+                        + decision.egressInterface()
+                        + " next-hop="
+                        + decision.nextHopIp()
+                        + " mac="
+                        + decision.nextHopMac()
+                        + " ttl="
+                        + decision.incomingTtl()
+                        + "->"
+                        + decision.outgoingTtl()
         );
+
+        transmitPacket(packet);
     }
 
     private boolean queueWifiRouterPacket(
@@ -4370,8 +4476,17 @@ public abstract class NetworkDeviceBlockEntity
             return false;
         }
 
-        queue.add(
-                packet
+        queue.add(packet);
+
+        traceWifiRouter(
+                "QUEUE "
+                        + packet.sourceIp
+                        + " -> "
+                        + packet.targetIp
+                        + " key="
+                        + key
+                        + " depth="
+                        + queue.size()
         );
 
         return true;
@@ -4383,49 +4498,92 @@ public abstract class NetworkDeviceBlockEntity
             String nextHopMac
     ) {
         String key =
-                interfaceName
-                        + "|"
-                        + nextHopIp;
+                interfaceName + "|" + nextHopIp;
 
         java.util.List<OSINetworkPacket> pending =
-                wifiRouterPendingByNextHop.remove(
-                        key
-                );
+                wifiRouterPendingByNextHop.remove(key);
 
-        if (pending == null) {
+        if (pending == null || pending.isEmpty()) {
+            traceWifiRouter("ARP LEARNED no queued packet key=" + key);
             return;
         }
 
-        for (OSINetworkPacket packet
-                : pending) {
-            RouterForwardDecision decision =
-                    wifiLiveRouter.evaluate(
-                            wifiLiveRouter
-                                    .interfaceForSourceNetwork(
-                                            packet.sourceIp
-                                    ) == null
-                                    ? ""
-                                    : wifiLiveRouter
-                                    .interfaceForSourceNetwork(
-                                            packet.sourceIp
-                                    )
-                                    .name(),
-                            new RouterPacket(
-                                    packet.sourceIp,
-                                    packet.targetIp,
-                                    packet.ttl,
-                                    packet.ipProtocol,
-                                    new byte[0]
-                            )
-                    );
+        for (OSINetworkPacket packet : pending) {
+            String frozenInterface =
+                    packet.payload.getString("router_pending_egress_interface");
+            String frozenNextHop =
+                    packet.payload.getString("router_pending_next_hop_ip");
+            int frozenTtl =
+                    packet.payload.getInt("router_pending_outgoing_ttl");
 
-            if (decision.action()
-                    == RouterForwardAction.FORWARD) {
-                forwardWifiRouterPacket(
-                        packet,
-                        decision
+            if (!interfaceName.equals(frozenInterface)
+                    || !nextHopIp.equals(frozenNextHop)
+                    || frozenTtl <= 0) {
+                traceWifiRouter(
+                        "QUEUE DROP stale plan "
+                                + packet.sourceIp
+                                + " -> "
+                                + packet.targetIp
+                                + " frozen="
+                                + frozenInterface
+                                + "|"
+                                + frozenNextHop
+                                + " ttl="
+                                + frozenTtl
                 );
+                continue;
             }
+
+            int incomingTtl = packet.ttl;
+
+            packet.ttl = frozenTtl;
+            packet.sourceMac = macAddress;
+            packet.targetMac = nextHopMac;
+
+            packet.payload.putBoolean("router_egress_bypass", true);
+            packet.payload.putString("router_egress_interface", frozenInterface);
+            packet.payload.putString("router_next_hop_ip", frozenNextHop);
+
+            packet.payload.remove("router_pending_egress_interface");
+            packet.payload.remove("router_pending_next_hop_ip");
+            packet.payload.remove("router_pending_outgoing_ttl");
+
+            traceWifiRouter(
+                    "QUEUE RESUME "
+                            + packet.sourceIp
+                            + " -> "
+                            + packet.targetIp
+                            + " dev="
+                            + frozenInterface
+                            + " next-hop="
+                            + frozenNextHop
+                            + " mac="
+                            + nextHopMac
+                            + " ttl="
+                            + incomingTtl
+                            + "->"
+                            + frozenTtl
+            );
+
+            wifiIpApplication.setStatus(
+                    "Router queue resume "
+                            + packet.targetIp
+                            + " via "
+                            + frozenNextHop
+                            + " dev "
+                            + frozenInterface
+            );
+
+            transmitPacket(packet);
+
+            traceWifiRouter(
+                    "FORWARDED RESUMED "
+                            + packet.sourceIp
+                            + " -> "
+                            + packet.targetIp
+                            + " dev="
+                            + frozenInterface
+            );
         }
     }
 
@@ -4743,9 +4901,7 @@ public abstract class NetworkDeviceBlockEntity
             return false;
         }
 
-        queue.add(
-                packet
-        );
+        queue.add(packet);
 
         return true;
     }
