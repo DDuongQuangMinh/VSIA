@@ -926,6 +926,77 @@ public abstract class NetworkDeviceBlockEntity
         return wifiMac.discoveredNetworks();
     }
 
+    public boolean provisionWifiLabAccessPoint(
+            String ssid
+    ) {
+        if (!isWifiProfile()
+                || ssid == null
+                || ssid.isBlank()) {
+            return false;
+        }
+
+        wifiMac.provisionLabAccessPoint(
+                ssid
+        );
+
+        setChanged();
+
+        return true;
+    }
+
+    public boolean provisionWifiLabStationLink(
+            String ssid,
+            String apMac,
+            double frequencyHz
+    ) {
+        if (!isWifiProfile()
+                || ssid == null
+                || ssid.isBlank()
+                || apMac == null
+                || apMac.isBlank()
+                || !networkProfile().supportsFrequency(
+                frequencyHz
+        )) {
+            return false;
+        }
+
+        wifiMac.configureStation();
+
+        activeFrequencyHz =
+                frequencyHz;
+
+        wifiMac.provisionLabStationLink(
+                ssid,
+                apMac
+        );
+
+        setChanged();
+
+        return true;
+    }
+
+    public boolean provisionWifiLabAssociatedStation(
+            String stationMac
+    ) {
+        if (!isWifiProfile()
+                || stationMac == null
+                || stationMac.isBlank()) {
+            return false;
+        }
+
+        try {
+            wifiMac.provisionLabAssociatedStation(
+                    stationMac
+            );
+
+            setChanged();
+
+            return true;
+        } catch (IllegalStateException ignored) {
+            return false;
+        }
+    }
+
     public String wifiNetworkSecurityProfile() {
         return networkProfile().security();
     }

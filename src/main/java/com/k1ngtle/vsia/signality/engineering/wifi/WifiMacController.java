@@ -234,6 +234,85 @@ public final class WifiMacController {
                 && securityState == WifiSecurityState.SECURED;
     }
 
+    public void provisionLabAccessPoint(
+            String ssid
+    ) {
+        configureAccessPoint(
+                ssid,
+                "signality:open",
+                ""
+        );
+
+        lastSecurityDiagnostic =
+                "LAB_AP_PROVISIONED_OPEN";
+    }
+
+    public void provisionLabStationLink(
+            String ssid,
+            String bssid
+    ) {
+        requireStation();
+
+        if (ssid == null
+                || ssid.isBlank()
+                || bssid == null
+                || bssid.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Lab station link requires SSID and BSSID"
+            );
+        }
+
+        selectedSsid =
+                ssid;
+
+        selectedBssid =
+                normalizeMac(
+                        bssid
+                );
+
+        selectedSecurity =
+                "signality:open";
+
+        stationState =
+                WifiStationState.ASSOCIATED;
+
+        securityState =
+                WifiSecurityState.OPEN;
+
+        lastSecurityDiagnostic =
+                "LAB_STATION_LINK_PROVISIONED";
+    }
+
+    public void provisionLabAssociatedStation(
+            String stationMac
+    ) {
+        if (mode != WifiMode.ACCESS_POINT) {
+            throw new IllegalStateException(
+                    "Lab AP association requires ACCESS_POINT mode"
+            );
+        }
+
+        String normalized =
+                normalizeMac(
+                        stationMac
+                );
+
+        authenticated.add(
+                normalized
+        );
+
+        associated.add(
+                normalized
+        );
+
+        securedStations.remove(
+                normalized
+        );
+
+        lastSecurityDiagnostic =
+                "LAB_AP_STATION_PROVISIONED";
+    }
+
     public double lastObservedSnrDb() {
         return lastObservedSnrDb;
     }
