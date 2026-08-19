@@ -30,7 +30,9 @@ public final class ArpRawTestSuite {
                 liveCarrierRoundTrip(),
                 wrongEtherTypeRejected(),
                 malformedAddressFormatRejected(),
-                macNormalization()
+                macNormalization(),
+                carrierRequestMacPreserved(),
+                carrierReplyMacPreserved()
         );
     }
 
@@ -309,6 +311,122 @@ public final class ArpRawTestSuite {
                         "00:11:22:33:44:55"
                 ),
                 "VSIA compact MAC IDs and conventional colon/hyphen MAC notation must map to the same 48-bit address bytes"
+        );
+    }
+
+
+    private static ArpRawTestResult carrierRequestMacPreserved() {
+        OSINetworkPacket request =
+                logicalRequest();
+
+        request.sourceMac =
+                "3ade93b46caf";
+
+        request.payload.putString(
+                "sender_mac",
+                request.sourceMac
+        );
+
+        CompoundTag body =
+                ArpRawLiveCarrierCodec.encode(
+                        request
+                );
+
+        OSINetworkPacket decoded =
+                ArpRawLiveCarrierCodec.decode(
+                        body
+                );
+
+        return result(
+                "wifi-w1104-arp-request-link-mac",
+                "3ade93b46caf".equals(
+                        decoded.sourceMac
+                )
+                        && "3ade93b46caf".equals(
+                        decoded.payload.getString(
+                                "sender_mac"
+                        )
+                )
+                        && "3A:DE:93:B4:6C:AF".equals(
+                        decoded.payload.getString(
+                                "arp_sender_hardware_mac"
+                        )
+                ),
+                "ARP decode must preserve the compact VSIA link MAC while retaining the protocol-formatted SHA separately"
+        );
+    }
+
+    private static ArpRawTestResult carrierReplyMacPreserved() {
+        OSINetworkPacket reply =
+                new OSINetworkPacket();
+
+        reply.sourceMac =
+                "c72ec34fc58c";
+
+        reply.targetMac =
+                "3ade93b46caf";
+
+        reply.sourceIp =
+                "192.168.1.2";
+
+        reply.targetIp =
+                "192.168.1.101";
+
+        reply.applicationProtocol =
+                "ARP";
+
+        reply.isResponse =
+                true;
+
+        reply.payload.putString(
+                "operation",
+                "REPLY"
+        );
+
+        reply.payload.putString(
+                "sender_ip",
+                reply.sourceIp
+        );
+
+        reply.payload.putString(
+                "sender_mac",
+                reply.sourceMac
+        );
+
+        reply.payload.putString(
+                "target_ip",
+                reply.targetIp
+        );
+
+        CompoundTag body =
+                ArpRawLiveCarrierCodec.encode(
+                        reply
+                );
+
+        OSINetworkPacket decoded =
+                ArpRawLiveCarrierCodec.decode(
+                        body
+                );
+
+        return result(
+                "wifi-w1104-arp-reply-link-mac",
+                "c72ec34fc58c".equals(
+                        decoded.sourceMac
+                )
+                        && "3ade93b46caf".equals(
+                        decoded.targetMac
+                )
+                        && "c72ec34fc58c".equals(
+                        decoded.payload.getString(
+                                "sender_mac"
+                        )
+                )
+                        && "C7:2E:C3:4F:C5:8C".equals(
+                        decoded.payload.getString(
+                                "arp_sender_hardware_mac"
+                        )
+                ),
+                "ARP reply must route to the actual compact station MAC rather than the colon-formatted ARP THA"
         );
     }
 

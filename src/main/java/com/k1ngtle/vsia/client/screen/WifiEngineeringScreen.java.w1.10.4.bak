@@ -317,20 +317,8 @@ public final class WifiEngineeringScreen
                 );
 
         addIpButton(
-                "Auto Web",
-                OUTER_MARGIN,
-                tcpY,
-                tcpWidth,
-                WifiIpAction.RAW_HTTP_WORKFLOW
-        );
-
-        addIpButton(
                 "TCP HTTP",
-                OUTER_MARGIN
-                        + (
-                        tcpWidth
-                                + tcpGap
-                ),
+                OUTER_MARGIN,
                 tcpY,
                 tcpWidth,
                 WifiIpAction.TCP_HTTP_GET
@@ -339,6 +327,18 @@ public final class WifiEngineeringScreen
         addIpButton(
                 "TCP Close",
                 OUTER_MARGIN
+                        + (
+                        tcpWidth
+                                + tcpGap
+                ),
+                tcpY,
+                tcpWidth,
+                WifiIpAction.TCP_CLOSE
+        );
+
+        addIpButton(
+                "HTTP Direct",
+                OUTER_MARGIN
                         + 2
                         * (
                         tcpWidth
@@ -346,7 +346,7 @@ public final class WifiEngineeringScreen
                 ),
                 tcpY,
                 tcpWidth,
-                WifiIpAction.TCP_CLOSE
+                WifiIpAction.HTTP_GET
         );
 
         addIpButton(

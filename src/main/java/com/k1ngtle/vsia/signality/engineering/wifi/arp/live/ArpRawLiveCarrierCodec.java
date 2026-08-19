@@ -168,14 +168,30 @@ public final class ArpRawLiveCarrierCodec {
         OSINetworkPacket logical =
                 new OSINetworkPacket();
 
+        String carrierSourceMac =
+                body.getString(
+                        "src_mac"
+                );
+
+        String carrierTargetMac =
+                body.getString(
+                        "dst_mac"
+                );
+
         logical.sourceMac =
-                arp.senderMac();
+                carrierSourceMac == null
+                        || carrierSourceMac.isBlank()
+                        ? arp.senderMac()
+                        : carrierSourceMac;
 
         logical.targetMac =
-                arp.operation()
+                carrierTargetMac == null
+                        || carrierTargetMac.isBlank()
+                        ? arp.operation()
                         == ArpOperation.REQUEST
                         ? "FF:FF:FF:FF:FF:FF"
-                        : arp.targetMac();
+                        : arp.targetMac()
+                        : carrierTargetMac;
 
         logical.sourceIp =
                 arp.senderIp();
@@ -206,12 +222,32 @@ public final class ArpRawLiveCarrierCodec {
 
         logical.payload.putString(
                 "sender_mac",
-                arp.senderMac()
+                logical.sourceMac
         );
 
         logical.payload.putString(
                 "target_ip",
                 arp.targetIp()
+        );
+
+        logical.payload.putString(
+                "arp_sender_hardware_mac",
+                arp.senderMac()
+        );
+
+        logical.payload.putString(
+                "arp_target_hardware_mac",
+                arp.targetMac()
+        );
+
+        logical.payload.putString(
+                "carrier_source_mac",
+                logical.sourceMac
+        );
+
+        logical.payload.putString(
+                "carrier_target_mac",
+                logical.targetMac
         );
 
         logical.payload.putLong(

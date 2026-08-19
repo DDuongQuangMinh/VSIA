@@ -68,9 +68,6 @@ import com.k1ngtle.vsia.signality.engineering.wifi.arp.live.ArpRawLiveCarrierCod
 import com.k1ngtle.vsia.signality.engineering.wifi.dhcp.DhcpClientState;
 import com.k1ngtle.vsia.signality.engineering.wifi.dhcp.live.DhcpRawLiveCarrierCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.dns.live.DnsRawLiveCarrierCodec;
-import com.k1ngtle.vsia.signality.engineering.wifi.ip.workflow.WifiRawIpWorkflowActions;
-import com.k1ngtle.vsia.signality.engineering.wifi.ip.workflow.WifiRawIpWorkflowController;
-import com.k1ngtle.vsia.signality.engineering.wifi.ip.workflow.WifiRawIpWorkflowSnapshot;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveController;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveScheduler;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveSnapshot;
@@ -187,71 +184,6 @@ public abstract class NetworkDeviceBlockEntity
 
     private String wifiDnsLastAnswer = "";
 
-    private final WifiRawIpWorkflowController wifiRawIpWorkflow =
-            new WifiRawIpWorkflowController();
-
-    private final WifiRawIpWorkflowActions wifiRawIpWorkflowActions =
-            new WifiRawIpWorkflowActions() {
-                @Override
-                public boolean startDhcp() {
-                    requestDynamicIp();
-                    return true;
-                }
-
-                @Override
-                public boolean arp(
-                        String targetIp
-                ) {
-                    return sendWifiArpRequest(
-                            targetIp
-                    );
-                }
-
-                @Override
-                public boolean dnsA(
-                        String hostname,
-                        String dnsServerIp,
-                        String dnsServerMac
-                ) {
-                    configureWifiIpPeer(
-                            dnsServerIp,
-                            dnsServerMac
-                    );
-
-                    return sendWifiDnsAQuery(
-                            hostname
-                    );
-                }
-
-                @Override
-                public boolean tcpHttp(
-                        String hostname,
-                        String targetIp,
-                        String targetMac,
-                        String path
-                ) {
-                    configureWifiIpPeer(
-                            targetIp,
-                            targetMac
-                    );
-
-                    return startWifiTcpHttpGet(
-                            targetMac,
-                            targetIp,
-                            path
-                    );
-                }
-
-                @Override
-                public void status(
-                        String status
-                ) {
-                    wifiIpApplication.setStatus(
-                            status
-                    );
-                }
-            };
-
     private DhcpClientState wifiDhcpClientState =
             DhcpClientState.IDLE;
 
@@ -260,8 +192,6 @@ public abstract class NetworkDeviceBlockEntity
     private String wifiDhcpOfferedIp = "";
 
     private String wifiDhcpServerIdentifier = "";
-
-    private String wifiDhcpDnsServerIp = "";
 
     private final CellularRanController cellularRan =
             new CellularRanController();
@@ -332,19 +262,11 @@ public abstract class NetworkDeviceBlockEntity
                     signalId,
                     () -> {
                         if (level instanceof ServerLevel serverLevel) {
-                            long nowMicros =
+                            wifiTcpLive.tick(
                                     NetworkTimebase.nowMicros(
                                             serverLevel
-                                    );
-
-                            wifiTcpLive.tick(
-                                    nowMicros,
+                                    ),
                                     this::transmitPacket
-                            );
-
-                            wifiRawIpWorkflow.tick(
-                                    nowMicros,
-                                    wifiRawIpWorkflowActions
                             );
                         }
                     }
@@ -1127,54 +1049,6 @@ public abstract class NetworkDeviceBlockEntity
         return wifiDnsLastAnswer;
     }
 
-    public WifiRawIpWorkflowSnapshot wifiRawIpWorkflowSnapshot() {
-        return wifiRawIpWorkflow.snapshot();
-    }
-
-    public boolean startWifiRawHttpWorkflow(
-            String hostname,
-            String path
-    ) {
-        if (!wifiIpReady()) {
-            wifiIpApplication.setStatus(
-                    "RAW HTTP rejected: Wi-Fi is not associated/secured"
-            );
-            return false;
-        }
-
-        if (wifiTcpExecutionMode
-                != ExecutionMode.CONFORMANCE) {
-            setWifiTcpExecutionMode(
-                    ExecutionMode.CONFORMANCE
-            );
-        }
-
-        wifiTcpLive.clear();
-        wifiRawIpWorkflow.clear(
-                null
-        );
-
-        long nowMicros =
-                level instanceof ServerLevel serverLevel
-                        ? NetworkTimebase.nowMicros(
-                        serverLevel
-                )
-                        : 0L;
-
-        return wifiRawIpWorkflow.start(
-                hostname,
-                path,
-                nowMicros,
-                wifiRawIpWorkflowActions
-        );
-    }
-
-    public void clearWifiRawIpWorkflow() {
-        wifiRawIpWorkflow.clear(
-                wifiRawIpWorkflowActions
-        );
-    }
-
     private void handleWifiDnsResponse(
             OSINetworkPacket packet
     ) {
@@ -1210,18 +1084,6 @@ public abstract class NetworkDeviceBlockEntity
                             + domain
             );
 
-            wifiRawIpWorkflow.onDnsResponse(
-                    domain,
-                    "",
-                    rcode,
-                    level instanceof ServerLevel serverLevel
-                            ? NetworkTimebase.nowMicros(
-                            serverLevel
-                    )
-                            : 0L,
-                    wifiRawIpWorkflowActions
-            );
-
             return;
         }
 
@@ -1249,18 +1111,6 @@ public abstract class NetworkDeviceBlockEntity
                         "ttl"
                 )
                         + "s"
-        );
-
-        wifiRawIpWorkflow.onDnsResponse(
-                domain,
-                answer,
-                rcode,
-                level instanceof ServerLevel serverLevel
-                        ? NetworkTimebase.nowMicros(
-                        serverLevel
-                )
-                        : 0L,
-                wifiRawIpWorkflowActions
         );
     }
 
@@ -1346,11 +1196,6 @@ public abstract class NetworkDeviceBlockEntity
         wifiTcpLive.clear();
         wifiRawTcpSessions.clear();
         wifiRawArpPeers.clear();
-        wifiRawDhcpPeers.clear();
-        wifiRawDnsPeers.clear();
-        wifiRawIpWorkflow.clear(
-                null
-        );
 
         wifiIpApplication.setStatus(
                 "TCP carrier mode "
@@ -1432,8 +1277,6 @@ public abstract class NetworkDeviceBlockEntity
         wifiTcpLive.clear();
         wifiRawTcpSessions.clear();
         wifiRawArpPeers.clear();
-        wifiRawDhcpPeers.clear();
-        wifiRawDnsPeers.clear();
     }
 
     public boolean sendWifiEngineeringAssociatedData(
@@ -3044,30 +2887,6 @@ public abstract class NetworkDeviceBlockEntity
                         : 0L,
                 this::transmitPacket
         )) {
-            if ("ARP".equalsIgnoreCase(
-                    packet.applicationProtocol
-            )
-                    && "REPLY".equalsIgnoreCase(
-                    packet.payload.getString(
-                            "operation"
-                    )
-            )) {
-                wifiRawIpWorkflow.onArpResolved(
-                        packet.payload.getString(
-                                "sender_ip"
-                        ),
-                        packet.payload.getString(
-                                "sender_mac"
-                        ),
-                        level instanceof ServerLevel serverLevel
-                                ? NetworkTimebase.nowMicros(
-                                serverLevel
-                        )
-                                : 0L,
-                        wifiRawIpWorkflowActions
-                );
-            }
-
             setChanged();
             return;
         }
@@ -3097,23 +2916,6 @@ public abstract class NetworkDeviceBlockEntity
         processLayer4(
                 application
         );
-
-        if (application.isResponse
-                && "HTTP".equalsIgnoreCase(
-                application.applicationProtocol
-        )) {
-            wifiRawIpWorkflow.onHttpResponse(
-                    application.payload.getInt(
-                            "status"
-                    ),
-                    level instanceof ServerLevel serverLevel
-                            ? NetworkTimebase.nowMicros(
-                            serverLevel
-                    )
-                            : 0L,
-                    wifiRawIpWorkflowActions
-            );
-        }
     }
 
     protected void handleWebRequest(
@@ -3248,28 +3050,12 @@ public abstract class NetworkDeviceBlockEntity
             defaultGatewayMac =
                     packet.sourceMac;
 
-            wifiDhcpDnsServerIp =
-                    packet.payload.getString(
-                            "dns_server"
-                    );
-
             wifiDhcpClientState =
                     DhcpClientState.BOUND;
 
             wifiIpApplication.setStatus(
                     "DHCP DORA complete: "
                             + ipAddress
-            );
-
-            wifiRawIpWorkflow.onDhcpAck(
-                    ipAddress,
-                    wifiDhcpDnsServerIp,
-                    level instanceof ServerLevel serverLevel
-                            ? NetworkTimebase.nowMicros(
-                            serverLevel
-                    )
-                            : 0L,
-                    wifiRawIpWorkflowActions
             );
 
             setChanged();
@@ -3284,10 +3070,6 @@ public abstract class NetworkDeviceBlockEntity
 
             wifiIpApplication.setStatus(
                     "DHCP NAK received"
-            );
-
-            wifiRawIpWorkflow.onDhcpNak(
-                    wifiRawIpWorkflowActions
             );
         }
     }
@@ -3307,7 +3089,6 @@ public abstract class NetworkDeviceBlockEntity
 
         wifiDhcpOfferedIp = "";
         wifiDhcpServerIdentifier = "";
-        wifiDhcpDnsServerIp = "";
 
         OSINetworkPacket packet =
                 new OSINetworkPacket();
