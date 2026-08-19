@@ -39,7 +39,8 @@ public final class RtAc68uRouterBlockEntity
     public void onLoad() {
         super.onLoad();
 
-        if (level instanceof ServerLevel) {
+        if (level instanceof ServerLevel
+                && !wifiRouterHasConfiguration()) {
             applyRouterDefaults();
         }
     }

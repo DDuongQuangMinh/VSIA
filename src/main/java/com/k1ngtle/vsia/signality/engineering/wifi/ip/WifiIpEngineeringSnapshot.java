@@ -1,5 +1,7 @@
 package com.k1ngtle.vsia.signality.engineering.wifi.ip;
 
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterEngineeringSnapshot;
+
 public record WifiIpEngineeringSnapshot(
         String localIp,
         String localMac,
@@ -26,6 +28,7 @@ public record WifiIpEngineeringSnapshot(
         double tcpRtoMs,
         int tcpRetransmissions,
         String tcpStatus,
-        String status
+        String status,
+        RouterEngineeringSnapshot router
 ) {
 }

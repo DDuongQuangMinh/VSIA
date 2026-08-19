@@ -81,6 +81,8 @@ import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterForwardDecisi
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterInterface;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterPacket;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterRoute;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterEngineeringSnapshot;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterPersistenceCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.live.IcmpRawLiveCarrierCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveController;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveScheduler;
@@ -1329,6 +1331,125 @@ public abstract class NetworkDeviceBlockEntity
 
     public java.util.List<RouterRoute> wifiLiveRouterRoutes() {
         return wifiLiveRouter.routes();
+    }
+
+    public boolean wifiRouterHasConfiguration() {
+        return !wifiLiveRouter.interfaces().isEmpty()
+                || !wifiLiveRouter.staticRoutes().isEmpty();
+    }
+
+    public RouterEngineeringSnapshot wifiRouterEngineeringSnapshot() {
+        java.util.List<String> interfaces =
+                wifiLiveRouter.interfaces()
+                        .stream()
+                        .map(
+                                iface ->
+                                        iface.name()
+                                                + " "
+                                                + iface.ipv4Address()
+                                                + "/"
+                                                + iface.prefixLength()
+                                                + " "
+                                                + (
+                                                iface.enabled()
+                                                        ? "UP"
+                                                        : "DOWN"
+                                        )
+                        )
+                        .toList();
+
+        java.util.List<String> routes =
+                wifiLiveRouter.routes()
+                        .stream()
+                        .map(
+                                route ->
+                                        route.network()
+                                                + "/"
+                                                + route.prefixLength()
+                                                + " "
+                                                + (
+                                                route.connected()
+                                                        ? "on-link"
+                                                        : "via "
+                                                        + route.nextHop()
+                                        )
+                                                + " dev "
+                                                + route.egressInterface()
+                                                + " metric "
+                                                + route.metric()
+                                                + " "
+                                                + route.source()
+                        )
+                        .toList();
+
+        return new RouterEngineeringSnapshot(
+                wifiLiveRouterEnabled,
+                interfaces,
+                routes,
+                wifiLiveRouter.neighbors().size(),
+                java.util.List.copyOf(
+                        wifiRouterDiagnostics
+                )
+        );
+    }
+
+    public boolean sendWifiTtlProbe(
+            String targetIp,
+            int ttl
+    ) {
+        if (!wifiIpReady()
+                || !Ipv4Prefix.isUsableUnicast(
+                targetIp
+        )
+                || ttl < 1
+                || ttl > 255) {
+            return false;
+        }
+
+        long nowMicros =
+                level instanceof ServerLevel serverLevel
+                        ? NetworkTimebase.nowMicros(
+                        serverLevel
+                )
+                        : 0L;
+
+        OSINetworkPacket packet =
+                wifiIpApplication.createIcmpEcho(
+                        macAddress,
+                        ipAddress,
+                        "FF:FF:FF:FF:FF:FF",
+                        targetIp,
+                        32,
+                        nowMicros
+                );
+
+        packet.ttl =
+                ttl;
+
+        packet.payload.putBoolean(
+                "ttl_probe",
+                true
+        );
+
+        packet.payload.putInt(
+                "ttl_probe_initial_ttl",
+                ttl
+        );
+
+        wifiIpApplication.setStatus(
+                "TTL probe "
+                        + targetIp
+                        + " ttl="
+                        + ttl
+        );
+
+        transmitPacket(
+                packet
+        );
+
+        setChanged();
+
+        return true;
     }
 
     public java.util.List<String> wifiLiveRouterDiagnosticLines() {
@@ -5988,6 +6109,24 @@ public abstract class NetworkDeviceBlockEntity
                 wifiTcpExecutionMode.name()
         );
 
+        tag.putString(
+                "WifiSubnetMask",
+                wifiSubnetMask
+        );
+
+        tag.putString(
+                "WifiDefaultGatewayIp",
+                wifiDefaultGatewayIp
+        );
+
+        tag.put(
+                "WifiLiveRouter",
+                RouterPersistenceCodec.encode(
+                        wifiLiveRouter,
+                        wifiLiveRouterEnabled
+                )
+        );
+
         tag.put(
                 "WifiMac",
                 wifiMac.save()
@@ -6123,6 +6262,56 @@ public abstract class NetworkDeviceBlockEntity
                 wifiLivePhyMode =
                         WifiLivePhyMode.ANALYTICAL;
             }
+        }
+
+        if (tag.contains(
+                "WifiSubnetMask"
+        )) {
+            String loadedMask =
+                    tag.getString(
+                            "WifiSubnetMask"
+                    );
+
+            try {
+                Ipv4Prefix.prefixLengthFromMask(
+                        loadedMask
+                );
+
+                wifiSubnetMask =
+                        loadedMask;
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+
+        if (tag.contains(
+                "WifiDefaultGatewayIp"
+        )) {
+            String loadedGateway =
+                    tag.getString(
+                            "WifiDefaultGatewayIp"
+                    );
+
+            wifiDefaultGatewayIp =
+                    Ipv4Prefix.isUsableUnicast(
+                            loadedGateway
+                    )
+                            ? loadedGateway
+                            : "";
+        }
+
+        if (tag.contains(
+                "WifiLiveRouter"
+        )) {
+            wifiLiveRouterEnabled =
+                    RouterPersistenceCodec.decode(
+                            tag.getCompound(
+                                    "WifiLiveRouter"
+                            ),
+                            wifiLiveRouter
+                    );
+
+            wifiRouterPendingByNextHop.clear();
+            wifiRouterDiagnostics.clear();
         }
 
         if (tag.contains(

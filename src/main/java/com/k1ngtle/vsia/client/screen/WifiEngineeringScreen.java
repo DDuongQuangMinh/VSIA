@@ -941,6 +941,23 @@ public final class WifiEngineeringScreen
                         ipLines()
                 );
 
+        if (ipSnapshot != null
+                && ipSnapshot.router() != null
+                && (
+                ipSnapshot.router().enabled()
+                        || !ipSnapshot.router().interfaces().isEmpty()
+                        || !ipSnapshot.router().routes().isEmpty()
+        )) {
+            y =
+                    drawSection(
+                            graphics,
+                            left,
+                            y,
+                            "ROUTER",
+                            routerLines()
+                    );
+        }
+
         graphics.disableScissor();
 
         leftContentHeight =
@@ -1981,6 +1998,65 @@ public final class WifiEngineeringScreen
         );
     }
 
+    private List<String> routerLines() {
+        if (ipSnapshot == null
+                || ipSnapshot.router() == null) {
+            return List.of(
+                    "Forwarding n/a"
+            );
+        }
+
+        var router =
+                ipSnapshot.router();
+
+        List<String> lines =
+                new ArrayList<>();
+
+        lines.add(
+                "Forwarding "
+                        + (router.enabled() ? "ON" : "OFF")
+                        + " | interfaces "
+                        + router.interfaces().size()
+                        + " | routes "
+                        + router.routes().size()
+                        + " | neighbors "
+                        + router.neighborCount()
+        );
+
+        router.interfaces().stream()
+                .limit(4)
+                .forEach(value ->
+                        lines.add(
+                                "IF "
+                                        + truncate(value, 64)
+                        )
+                );
+
+        router.routes().stream()
+                .limit(5)
+                .forEach(value ->
+                        lines.add(
+                                "RT "
+                                        + truncate(value, 64)
+                        )
+                );
+
+        router.diagnostics().stream()
+                .skip(
+                        Math.max(
+                                0,
+                                router.diagnostics().size() - 3
+                        )
+                )
+                .forEach(value ->
+                        lines.add(
+                                "DBG "
+                                        + truncate(value, 64)
+                        )
+                );
+
+        return List.copyOf(lines);
+    }
     private List<String> workflowLines() {
         if (workflowSnapshot == null) {
             return List.of(

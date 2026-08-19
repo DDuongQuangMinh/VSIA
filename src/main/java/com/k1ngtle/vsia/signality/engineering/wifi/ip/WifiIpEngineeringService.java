@@ -54,7 +54,8 @@ public final class WifiIpEngineeringService {
                 tcp.rtoMs(),
                 tcp.retransmissions(),
                 tcp.status(),
-                flow.lastStatus()
+                flow.lastStatus(),
+                device.wifiRouterEngineeringSnapshot()
         );
     }
 
@@ -71,9 +72,8 @@ public final class WifiIpEngineeringService {
         if (action == WifiIpAction.CLEAR_METRICS) {
             device.clearWifiIpMetrics();
             device.clearWifiTcpLive();
-            return snapshot(
-                    device
-            );
+
+            return snapshot(device);
         }
 
         NetworkDeviceBlockEntity peer =
@@ -86,9 +86,7 @@ public final class WifiIpEngineeringService {
                     "No associated Wi-Fi peer found"
             );
 
-            return snapshot(
-                    device
-            );
+            return snapshot(device);
         }
 
         device.configureWifiIpPeer(
@@ -140,8 +138,6 @@ public final class WifiIpEngineeringService {
             }
         }
 
-        return snapshot(
-                device
-        );
+        return snapshot(device);
     }
 }
