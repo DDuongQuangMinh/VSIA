@@ -370,6 +370,8 @@ public abstract class NetworkDeviceBlockEntity
         if (level != null && !level.isClientSide) {
             normalizeNetworkProfile();
 
+            restorePersistedWifiHostRouting();
+
             SignalBus.registerReceiver(this);
             SignalBus.registerTransmitter(this);
 
@@ -1393,10 +1395,40 @@ public abstract class NetworkDeviceBlockEntity
         );
     }
 
+    private void restorePersistedWifiHostRouting() {
+        if (!Ipv4Prefix.isUsableUnicast(
+                ipAddress
+        )) {
+            return;
+        }
+
+        if (wifiSubnetMask == null
+                || wifiSubnetMask.isBlank()) {
+            return;
+        }
+
+        try {
+            Ipv4Prefix.prefixLengthFromMask(
+                    wifiSubnetMask
+            );
+        } catch (IllegalArgumentException ignored) {
+            return;
+        }
+
+        configureWifiStaticIpv4(
+                ipAddress,
+                wifiSubnetMask,
+                wifiDefaultGatewayIp == null
+                        ? ""
+                        : wifiDefaultGatewayIp
+        );
+    }
     public boolean sendWifiTtlProbe(
             String targetIp,
             int ttl
     ) {
+        restorePersistedWifiHostRouting();
+
         if (!wifiIpReady()
                 || !Ipv4Prefix.isUsableUnicast(
                 targetIp
