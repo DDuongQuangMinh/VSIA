@@ -1478,6 +1478,15 @@ public abstract class NetworkDeviceBlockEntity
         return true;
     }
 
+    public void resetWifiLiveRouterConfiguration() {
+        wifiLiveRouter.clearConfiguration();
+        wifiRouterPendingByNextHop.clear();
+        wifiRouterDiagnostics.clear();
+        wifiLiveRouterEnabled =
+                false;
+
+        setChanged();
+    }
     public java.util.List<RouterRoute> wifiLiveRouterRoutes() {
         return wifiLiveRouter.routes();
     }
@@ -4453,8 +4462,8 @@ public abstract class NetworkDeviceBlockEntity
         }
 
         RouterInterface ingress =
-                wifiLiveRouter.interfaceForSourceNetwork(
-                        packet.sourceIp
+                resolveWifiRouterIngress(
+                        packet
                 );
 
         String ingressName =
@@ -5095,13 +5104,63 @@ public abstract class NetworkDeviceBlockEntity
         );
     }
 
+    private RouterInterface resolveWifiRouterIngress(
+            OSINetworkPacket packet
+    ) {
+        if (packet == null) {
+            return null;
+        }
+
+        RouterInterface bySourceNetwork =
+                wifiLiveRouter.interfaceForSourceNetwork(
+                        packet.sourceIp
+                );
+
+        if (bySourceNetwork != null) {
+            return bySourceNetwork;
+        }
+
+        if (packet.sourceMac == null
+                || packet.sourceMac.isBlank()) {
+            return null;
+        }
+
+        String interfaceName =
+                wifiLiveRouter.neighbors()
+                        .interfaceForMac(
+                                packet.sourceMac
+                        );
+
+        if (interfaceName.isBlank()) {
+            return null;
+        }
+
+        RouterInterface byPreviousHop =
+                wifiLiveRouter.interfaceByName(
+                        interfaceName
+                );
+
+        if (byPreviousHop != null) {
+            traceWifiRouter(
+                    "INGRESS L2_FALLBACK"
+                            + " src-ip="
+                            + packet.sourceIp
+                            + " src-mac="
+                            + packet.sourceMac
+                            + " dev="
+                            + interfaceName
+            );
+        }
+
+        return byPreviousHop;
+    }
     private void emitWifiRouterIcmpError(
             OSINetworkPacket original,
             RouterForwardDecision decision
     ) {
         RouterInterface ingress =
-                wifiLiveRouter.interfaceForSourceNetwork(
-                        original.sourceIp
+                resolveWifiRouterIngress(
+                        original
                 );
 
         if (ingress == null
