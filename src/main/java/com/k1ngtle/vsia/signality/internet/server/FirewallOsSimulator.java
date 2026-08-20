@@ -5,6 +5,7 @@ import com.k1ngtle.vsia.signality.engineering.firewall.FirewallDecision;
 import com.k1ngtle.vsia.signality.engineering.firewall.FirewallPacketView;
 import com.k1ngtle.vsia.signality.engineering.firewall.FirewallW116Adapter;
 import com.k1ngtle.vsia.signality.engineering.firewall.StatefulFirewallEngine;
+import com.k1ngtle.vsia.signality.engineering.firewall.ConntrackState;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
@@ -165,6 +166,11 @@ public class FirewallOsSimulator {
     private String w116LastDecision =
             "W1.16 STATEFUL FIREWALL READY";
 
+    private boolean w116Nat44Configured = false;
+    private String w116Nat44PublicIp = "";
+    private String w1161LastPipelineStatus = "READY";
+    private String w1161LastEgressPort = "";
+
 
     public final List<String> asaCommands = new ArrayList<>();
     public final List<String> cliLines = new ArrayList<>();
@@ -292,9 +298,10 @@ public class FirewallOsSimulator {
 
 
     public void w116EnableNat44(String publicIpv4) {
-        w116Firewall.enableNat44(
-                publicIpv4
-        );
+        w116Nat44Configured = true;
+        w116Nat44PublicIp = publicIpv4;
+
+        w116Firewall.enableNat44(publicIpv4);
 
         w116LastDecision =
                 "W1.16 NAT44/PAT public="
@@ -306,6 +313,9 @@ public class FirewallOsSimulator {
     }
 
     public void w116DisableNat44() {
+        w116Nat44Configured = false;
+        w116Nat44PublicIp = "";
+
         w116Firewall.disableNat44();
 
         w116LastDecision =
@@ -320,8 +330,16 @@ public class FirewallOsSimulator {
         w116Firewall =
                 StatefulFirewallEngine.permissiveCompatibilityEngine();
 
+        if (w116Nat44Configured
+                && !w116Nat44PublicIp.isBlank()) {
+            w116Firewall.enableNat44(w116Nat44PublicIp);
+        }
+
         w116LastDecision =
                 "W1.16 STATEFUL FIREWALL RESET";
+
+        w1161LastPipelineStatus = "READY";
+        w1161LastEgressPort = "";
 
         if (onStateChange != null) {
             onStateChange.run();
@@ -386,6 +404,305 @@ public class FirewallOsSimulator {
         }
 
         return packet;
+    }
+
+    public String w1161LookupEgressInterface(
+            String targetIp
+    ) {
+        return lookupRoute(
+                targetIp
+        );
+    }
+
+    public boolean w1161InterfaceUp(
+            String interfaceName
+    ) {
+        PortConfig config =
+                portConfigs.get(
+                        interfaceName
+                );
+
+        return config != null
+                && config.up
+                && !config.nameif.isEmpty();
+    }
+
+    public void w1161RefreshRib() {
+        recalculateRIB();
+        lastRoutingCalculation = System.currentTimeMillis();
+    }
+
+    public String w1161LastPipelineStatus() {
+        return w1161LastPipelineStatus;
+    }
+
+    public String w1161LastEgressInterface() {
+        return w1161LastEgressPort;
+    }
+
+    public int w1161ConntrackCount() {
+        return w116Firewall.conntrack().size();
+    }
+
+    public int w1161NatCount() {
+        return w116Firewall.nat44().size();
+    }
+
+    public boolean w1161NatConfigured() {
+        return w116Nat44Configured;
+    }
+
+    public String w1161NatPublicIp() {
+        return w116Nat44PublicIp;
+    }
+
+    public OSINetworkPacket w1161FilterAndRoutePacket(
+            OSINetworkPacket packet,
+            String ingressPortName
+    ) {
+        w1161LastEgressPort = "";
+
+        if (packet == null) {
+            w1161LastPipelineStatus = "DROP_INVALID_PACKET";
+            return null;
+        }
+
+        if (!isBooted) {
+            w1161LastPipelineStatus = "DROP_NOT_BOOTED";
+            return null;
+        }
+
+        PortConfig ingressPort = portConfigs.get(ingressPortName);
+
+        if (ingressPort == null) {
+            w1161LastPipelineStatus =
+                    "DROP_UNKNOWN_INGRESS ingress=" + ingressPortName;
+            return null;
+        }
+
+        if (!ingressPort.up) {
+            w1161LastPipelineStatus =
+                    "DROP_INGRESS_DOWN ingress=" + ingressPortName;
+            return null;
+        }
+
+        if (ingressPort.nameif == null || ingressPort.nameif.isBlank()) {
+            w1161LastPipelineStatus =
+                    "DROP_INGRESS_NO_NAMEIF ingress=" + ingressPortName;
+            return null;
+        }
+
+        w1161RefreshRib();
+
+        String preNatEgress = lookupRoute(packet.targetIp);
+
+        if (preNatEgress == null) {
+            w1161LastPipelineStatus =
+                    "DROP_NO_ROUTE dst=" + packet.targetIp;
+            return null;
+        }
+
+        PortConfig preNatEgressPort = portConfigs.get(preNatEgress);
+
+        if (preNatEgressPort == null) {
+            w1161LastPipelineStatus =
+                    "DROP_BAD_EGRESS egress=" + preNatEgress;
+            return null;
+        }
+
+        if (!preNatEgressPort.up) {
+            w1161LastPipelineStatus =
+                    "DROP_EGRESS_DOWN egress=" + preNatEgress;
+            return null;
+        }
+
+        if (preNatEgressPort.nameif == null
+                || preNatEgressPort.nameif.isBlank()) {
+            w1161LastPipelineStatus =
+                    "DROP_EGRESS_NO_NAMEIF egress=" + preNatEgress;
+            return null;
+        }
+
+        if (w116Nat44Configured && !w116Nat44PublicIp.isBlank()) {
+            w116Firewall.enableNat44(w116Nat44PublicIp);
+        }
+
+        FirewallPacketView packetView =
+                FirewallW116Adapter.packetView(
+                        packet,
+                        ingressPortName,
+                        preNatEgress
+                );
+
+        FirewallDecision decision =
+                w116Firewall.inspect(
+                        packetView,
+                        Math.max(0, packet.ipPacketLength),
+                        System.currentTimeMillis()
+                );
+
+        w116LastDecision =
+                decision.action()
+                        + " "
+                        + decision.state()
+                        + " rule="
+                        + decision.ruleName()
+                        + " reason="
+                        + decision.reason();
+
+        if (!decision.allowed()) {
+            w1161LastPipelineStatus =
+                    "DROP_W116_POLICY ingress="
+                            + ingressPortName
+                            + " state="
+                            + decision.state()
+                            + " reason="
+                            + decision.reason();
+
+            if (onStateChange != null) {
+                onStateChange.run();
+            }
+
+            return null;
+        }
+
+        FirewallW116Adapter.applyNat(packet, decision);
+
+        w1161RefreshRib();
+
+        String finalEgress = lookupRoute(packet.targetIp);
+
+        if (finalEgress == null) {
+            w1161LastPipelineStatus =
+                    "DROP_NO_ROUTE_POST_NAT dst="
+                            + packet.targetIp;
+            return null;
+        }
+
+        if (finalEgress.equals(ingressPortName)) {
+            w1161LastPipelineStatus =
+                    "DROP_SAME_INTERFACE ingress="
+                            + ingressPortName
+                            + " egress="
+                            + finalEgress;
+            return null;
+        }
+
+        PortConfig finalEgressPort = portConfigs.get(finalEgress);
+
+        if (finalEgressPort == null) {
+            w1161LastPipelineStatus =
+                    "DROP_BAD_EGRESS egress=" + finalEgress;
+            return null;
+        }
+
+        if (!finalEgressPort.up) {
+            w1161LastPipelineStatus =
+                    "DROP_EGRESS_DOWN egress=" + finalEgress;
+            return null;
+        }
+
+        if (finalEgressPort.nameif == null
+                || finalEgressPort.nameif.isBlank()) {
+            w1161LastPipelineStatus =
+                    "DROP_EGRESS_NO_NAMEIF egress=" + finalEgress;
+            return null;
+        }
+
+        if (!w1161LegacyPolicyAllows(
+                packet,
+                ingressPort,
+                finalEgressPort,
+                decision
+        )) {
+            w1161LastPipelineStatus =
+                    "DROP_LEGACY_POLICY ingress="
+                            + ingressPort.nameif
+                            + " egress="
+                            + finalEgressPort.nameif
+                            + " state="
+                            + decision.state();
+            return null;
+        }
+
+        w1161LastEgressPort = finalEgress;
+
+        String natKind =
+                decision.natMapping() == null
+                        ? "NONE"
+                        : decision.reverseNat()
+                        ? "DNAT"
+                        : "SNAT";
+
+        w1161LastPipelineStatus =
+                "FORWARD "
+                        + ingressPortName
+                        + " -> "
+                        + finalEgress
+                        + " state="
+                        + decision.state()
+                        + " nat="
+                        + natKind
+                        + " src="
+                        + packet.sourceIp
+                        + ":"
+                        + packet.sourcePort
+                        + " dst="
+                        + packet.targetIp
+                        + ":"
+                        + packet.targetPort;
+
+        if (onStateChange != null) {
+            onStateChange.run();
+        }
+
+        return packet;
+    }
+
+    private boolean w1161LegacyPolicyAllows(
+            OSINetworkPacket packet,
+            PortConfig ingressPort,
+            PortConfig egressPort,
+            FirewallDecision decision
+    ) {
+        if (decision.reverseNat()
+                || decision.state() == ConntrackState.ESTABLISHED
+                || decision.state() == ConntrackState.RELATED) {
+            return true;
+        }
+
+        String ingressName =
+                ingressPort.nameif == null
+                        ? ""
+                        : ingressPort.nameif;
+
+        String appliedAclName = accessGroups.get(ingressName);
+
+        if (appliedAclName != null) {
+            long sourceIp = ipToLong(packet.sourceIp);
+            long destinationIp = ipToLong(packet.targetIp);
+
+            for (ParsedAclRule rule : parsedAcls) {
+                if (!rule.name.equals(appliedAclName)) {
+                    continue;
+                }
+
+                if (rule.matches(
+                        sourceIp,
+                        destinationIp,
+                        packet.applicationProtocol == null
+                                ? "IP"
+                                : packet.applicationProtocol,
+                        packet.targetPort
+                )) {
+                    return rule.permit;
+                }
+            }
+
+            return false;
+        }
+
+        return ingressPort.securityLevel > egressPort.securityLevel;
     }
 
     public OSINetworkPacket filterAndRoutePacket(OSINetworkPacket packet, String ingressPortName) {
@@ -1293,6 +1610,8 @@ public class FirewallOsSimulator {
         for (String n : bgpNeighbors) { CompoundTag t = new CompoundTag(); t.putString("N", n); bgpNets.add(t); }
         tag.put("BgpNeighbors", bgpNets);
 
+        tag.putBoolean("W116Nat44Configured", w116Nat44Configured);
+        tag.putString("W116Nat44PublicIp", w116Nat44PublicIp);
         return tag;
     }
 
@@ -1366,5 +1685,19 @@ public class FirewallOsSimulator {
             ListTag nets = tag.getList("BgpNeighbors", Tag.TAG_COMPOUND);
             for (int i = 0; i < nets.size(); i++) bgpNeighbors.add(nets.getCompound(i).getString("N"));
         }
+
+        if (tag.contains("W116Nat44Configured")) {
+            w116Nat44Configured = tag.getBoolean("W116Nat44Configured");
+        }
+
+        if (tag.contains("W116Nat44PublicIp")) {
+            w116Nat44PublicIp = tag.getString("W116Nat44PublicIp");
+        }
+
+        if (w116Nat44Configured && !w116Nat44PublicIp.isBlank()) {
+            w116Firewall.enableNat44(w116Nat44PublicIp);
+        }
+
+        w1161RefreshRib();
     }
 }

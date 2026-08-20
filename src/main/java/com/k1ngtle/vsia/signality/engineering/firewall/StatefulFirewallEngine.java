@@ -136,7 +136,10 @@ public final class StatefulFirewallEngine {
                 )
                         : conntrack.classify(packet, nowMillis);
 
-        ConntrackState state = lookup.state();
+        ConntrackState state =
+                inboundNat != null
+                        ? ConntrackState.ESTABLISHED
+                        : lookup.state();
 
         FirewallRule matchedRule = null;
 

@@ -45,6 +45,14 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
     private BlockPos wanConnection = null;
     private BlockPos lanConnection = null;
 
+    private long w1161LanRx = 0L;
+    private long w1161WanRx = 0L;
+    private long w1161LanTx = 0L;
+    private long w1161WanTx = 0L;
+    private long w1161Drops = 0L;
+    private long w1161TtlExpired = 0L;
+    private String w1161LastTransit = "READY";
+
     // Rules
     private final List<FirewallRule> activeRules = new ArrayList<>();
 
@@ -90,17 +98,171 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
     }
 
     public void receiveWiredPacket(OSINetworkPacket packet, BlockPos ingressPos) {
-        if (level == null || level.isClientSide) return;
-
-        String ingressPort = ingressPos.equals(lanConnection) ? "GigabitEthernet1/1" :
-                ingressPos.equals(wanConnection) ? "GigabitEthernet1/2" : null;
-        if (ingressPort == null) return;
-
-        // Apply Stateful Packet Inspection & VPN decryption/encryption via primary blade
-        OSINetworkPacket filtered = osSimulators[0].filterAndRoutePacket(packet, ingressPort);
-        if (filtered != null) {
-            broadcastPacketOutwards(filtered);
+        if (level == null || level.isClientSide || packet == null || ingressPos == null) {
+            return;
         }
+
+        String ingressPort;
+
+        if (ingressPos.equals(lanConnection)) {
+            ingressPort = "GigabitEthernet1/1";
+            w1161LanRx++;
+        } else if (ingressPos.equals(wanConnection)) {
+            ingressPort = "GigabitEthernet1/2";
+            w1161WanRx++;
+        } else {
+            w1161Drops++;
+            w1161LastTransit =
+                    "DROP UNKNOWN_INGRESS pos="
+                            + ingressPos.toShortString();
+            setChanged();
+            return;
+        }
+
+        OSINetworkPacket filtered =
+                osSimulators[0].w1161FilterAndRoutePacket(
+                        packet,
+                        ingressPort
+                );
+
+        if (filtered == null) {
+            w1161Drops++;
+            w1161LastTransit =
+                    osSimulators[0]
+                            .w1161LastPipelineStatus();
+            setChanged();
+            return;
+        }
+
+        String egressPort =
+                osSimulators[0]
+                        .w1161LastEgressInterface();
+
+        if (egressPort == null) {
+            w1161Drops++;
+            w1161LastTransit =
+                    "DROP NO_ROUTE dst="
+                            + filtered.targetIp;
+            setChanged();
+            return;
+        }
+
+        if (egressPort.equals(ingressPort)) {
+            w1161Drops++;
+            w1161LastTransit =
+                    "DROP SAME_INTERFACE "
+                            + ingressPort;
+            setChanged();
+            return;
+        }
+
+        if (!osSimulators[0]
+                .w1161InterfaceUp(
+                        egressPort
+                )) {
+            w1161Drops++;
+            w1161LastTransit =
+                    "DROP EGRESS_DOWN "
+                            + egressPort;
+            setChanged();
+            return;
+        }
+
+        if (filtered.ttl <= 1) {
+            w1161Drops++;
+            w1161TtlExpired++;
+            w1161LastTransit =
+                    "DROP TTL_EXPIRED ingress="
+                            + ingressPort;
+            setChanged();
+            return;
+        }
+
+        filtered.ttl--;
+
+        if (!sendPacketOutPort(
+                filtered,
+                egressPort
+        )) {
+            w1161Drops++;
+            w1161LastTransit =
+                    "DROP NO_WORLD_LINK egress="
+                            + egressPort;
+            setChanged();
+            return;
+        }
+
+        w1161LastTransit =
+                "FORWARD "
+                        + ingressPort
+                        + " -> "
+                        + egressPort
+                        + " "
+                        + filtered.sourceIp
+                        + ":"
+                        + filtered.sourcePort
+                        + " -> "
+                        + filtered.targetIp
+                        + ":"
+                        + filtered.targetPort
+                        + " ttl="
+                        + filtered.ttl;
+
+        setChanged();
+    }
+
+    private boolean sendPacketOutPort(
+            OSINetworkPacket packet,
+            String egressPort
+    ) {
+        if (level == null || packet == null || egressPort == null) {
+            return false;
+        }
+
+        BlockPos target;
+
+        if (egressPort.equals("GigabitEthernet1/1")) {
+            target = lanConnection;
+        } else if (egressPort.equals("GigabitEthernet1/2")) {
+            target = wanConnection;
+        } else {
+            return false;
+        }
+
+        if (target == null) {
+            return false;
+        }
+
+        BlockEntity be =
+                level.getBlockEntity(
+                        target
+                );
+
+        OSINetworkPacket forwarded =
+                OSINetworkPacket.deserializeNBT(
+                        packet.serializeNBT().copy()
+                );
+
+        if (be instanceof NetworkSwitchBlockEntity sw) {
+            sw.receiveWiredPacket(
+                    forwarded,
+                    this.worldPosition
+            );
+        } else if (be instanceof ServerRackBlockEntity rack) {
+            rack.receiveWiredPacket(
+                    forwarded
+            );
+        } else {
+            return false;
+        }
+
+        if (egressPort.equals("GigabitEthernet1/1")) {
+            w1161LanTx++;
+        } else {
+            w1161WanTx++;
+        }
+
+        return true;
     }
 
     @Override
@@ -163,6 +325,136 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
 
     public List<FirewallRule> getRules() { return activeRules; }
 
+    public BlockPos getLanConnection() {
+        return lanConnection;
+    }
+
+    public BlockPos getWanConnection() {
+        return wanConnection;
+    }
+
+    public boolean connectLanDevice(
+            BlockPos pos
+    ) {
+        return connectTransitDevice(
+                pos,
+                true
+        );
+    }
+
+    public boolean connectWanDevice(
+            BlockPos pos
+    ) {
+        return connectTransitDevice(
+                pos,
+                false
+        );
+    }
+
+    private boolean connectTransitDevice(
+            BlockPos pos,
+            boolean lan
+    ) {
+        if (pos == null
+                || pos.equals(this.worldPosition)) {
+            return false;
+        }
+
+        BlockPos other =
+                lan
+                        ? wanConnection
+                        : lanConnection;
+
+        if (pos.equals(other)) {
+            return false;
+        }
+
+        if (lan) {
+            if (pos.equals(lanConnection)) {
+                return true;
+            }
+
+            lanConnection = pos;
+        } else {
+            if (pos.equals(wanConnection)) {
+                return true;
+            }
+
+            wanConnection = pos;
+        }
+
+        setChanged();
+
+        if (level != null
+                && !level.isClientSide) {
+            level.sendBlockUpdated(
+                    getBlockPos(),
+                    getBlockState(),
+                    getBlockState(),
+                    3
+            );
+        }
+
+        return true;
+    }
+
+    public void disconnectAllTransitDevices() {
+        lanConnection = null;
+        wanConnection = null;
+        setChanged();
+
+        if (level != null
+                && !level.isClientSide) {
+            level.sendBlockUpdated(
+                    getBlockPos(),
+                    getBlockState(),
+                    getBlockState(),
+                    3
+            );
+        }
+    }
+
+    public void w1161ClearCounters() {
+        w1161LanRx = 0L;
+        w1161WanRx = 0L;
+        w1161LanTx = 0L;
+        w1161WanTx = 0L;
+        w1161Drops = 0L;
+        w1161TtlExpired = 0L;
+        w1161LastTransit = "READY";
+        setChanged();
+    }
+
+    public String w1161TransitStatus() {
+        return "W1.16.1 TRANSIT"
+                + " | LAN="
+                + (
+                lanConnection == null
+                        ? "NONE"
+                        : lanConnection.toShortString()
+        )
+                + " | WAN="
+                + (
+                wanConnection == null
+                        ? "NONE"
+                        : wanConnection.toShortString()
+        )
+                + " | lanRx="
+                + w1161LanRx
+                + " | wanRx="
+                + w1161WanRx
+                + " | lanTx="
+                + w1161LanTx
+                + " | wanTx="
+                + w1161WanTx
+                + " | drops="
+                + w1161Drops
+                + " | ttlExpired="
+                + w1161TtlExpired
+                + " | last="
+                + w1161LastTransit;
+    }
+
     public boolean connectDevice(BlockPos pos) {
         if (pos.equals(this.worldPosition)) return false;
         if (pos.equals(lanConnection) || pos.equals(wanConnection)) return false;
@@ -218,6 +510,14 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
         if (wanConnection != null) tag.putLong("WanPos", wanConnection.asLong());
         if (lanConnection != null) tag.putLong("LanPos", lanConnection.asLong());
 
+        tag.putLong("W1161LanRx", w1161LanRx);
+        tag.putLong("W1161WanRx", w1161WanRx);
+        tag.putLong("W1161LanTx", w1161LanTx);
+        tag.putLong("W1161WanTx", w1161WanTx);
+        tag.putLong("W1161Drops", w1161Drops);
+        tag.putLong("W1161TtlExpired", w1161TtlExpired);
+        tag.putString("W1161LastTransit", w1161LastTransit);
+
         ListTag rulesList = new ListTag();
         for (FirewallRule rule : activeRules) {
             CompoundTag rt = new CompoundTag();
@@ -250,6 +550,14 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
 
         if (tag.contains("WanPos")) wanConnection = BlockPos.of(tag.getLong("WanPos"));
         if (tag.contains("LanPos")) lanConnection = BlockPos.of(tag.getLong("LanPos"));
+
+        if (tag.contains("W1161LanRx")) w1161LanRx = tag.getLong("W1161LanRx");
+        if (tag.contains("W1161WanRx")) w1161WanRx = tag.getLong("W1161WanRx");
+        if (tag.contains("W1161LanTx")) w1161LanTx = tag.getLong("W1161LanTx");
+        if (tag.contains("W1161WanTx")) w1161WanTx = tag.getLong("W1161WanTx");
+        if (tag.contains("W1161Drops")) w1161Drops = tag.getLong("W1161Drops");
+        if (tag.contains("W1161TtlExpired")) w1161TtlExpired = tag.getLong("W1161TtlExpired");
+        if (tag.contains("W1161LastTransit")) w1161LastTransit = tag.getString("W1161LastTransit");
 
         if (tag.contains("Rules", Tag.TAG_LIST)) {
             activeRules.clear();

@@ -69,6 +69,7 @@ public class SwitchOsSimulator {
     public String switchHostname;
     public String managementIp = "unassigned";
     public String managementMask = "unassigned";
+    public String managementDefaultGateway = "unassigned";
     public String macAddress;
     public String stpMode = "pvst";
     public int stpPriority = 32768;
@@ -380,6 +381,17 @@ public class SwitchOsSimulator {
     }
 
     public void executeCliCore(String input, boolean echo) {
+        if (SwitchCliEnhancer.handlePreParse(
+                this,
+                input,
+                echo
+        )) {
+            cliScrollOffset = 0;
+            if (onStateChange != null) onStateChange.run();
+            if (guiCallback != null) guiCallback.run();
+            return;
+        }
+
         if (input.endsWith("?")) {
             if (echo) { cliLines.add(getPrompt() + input); cliScrollOffset = 0; }
             String prefix = input.substring(0, input.length() - 1);
@@ -610,11 +622,11 @@ public class SwitchOsSimulator {
         if (mode == CliMode.EXEC) {
             allContexts.addAll(List.of("enable", "ping", "show version", "show running-config", "show ip interface brief", "show mac address-table", "show vlan brief", "show spanning-tree", "exit", "logout", "help"));
         } else if (mode == CliMode.PRIVILEGED) {
-            allContexts.addAll(List.of("configure terminal", "disable", "exit", "write memory", "copy running-config startup-config", "show version", "show running-config", "show ip interface brief", "show mac address-table", "show vlan brief", "show spanning-tree", "ping", "help"));
+            allContexts.addAll(List.of("configure terminal", "disable", "exit", "write memory", "copy running-config startup-config", "show version", "show running-config", "show ip interface brief", "show ip default-gateway", "show interface vlan 1", "show interfaces vlan 1", "show history", "show mac address-table", "show vlan brief", "show spanning-tree", "ping", "help"));
         } else if (mode == CliMode.CONFIG) {
-            allContexts.addAll(List.of("interface FastEthernet", "interface GigabitEthernet", "interface vlan", "vlan", "hostname", "spanning-tree mode pvst", "spanning-tree mode rapid-pvst", "spanning-tree vlan", "exit", "end", "do", "help"));
+            allContexts.addAll(List.of("interface FastEthernet", "interface GigabitEthernet", "interface vlan", "vlan", "hostname", "ip default-gateway", "no ip default-gateway", "spanning-tree mode pvst", "spanning-tree mode rapid-pvst", "spanning-tree vlan", "exit", "end", "do", "help"));
         } else if (mode == CliMode.CONFIG_IF) {
-            allContexts.addAll(List.of("description", "speed", "duplex", "shutdown", "no shutdown", "switchport mode access", "switchport mode trunk", "switchport access vlan", "switchport trunk allowed vlan", "spanning-tree portfast", "spanning-tree cost", "exit", "end", "do", "help"));
+            allContexts.addAll(List.of("ip address", "no ip address", "description", "speed", "duplex", "shutdown", "no shutdown", "switchport mode access", "switchport mode trunk", "switchport access vlan", "switchport trunk allowed vlan", "spanning-tree portfast", "spanning-tree cost", "exit", "end", "do", "help"));
         } else if (mode == CliMode.CONFIG_VLAN) {
             allContexts.addAll(List.of("name", "exit", "end", "do", "help"));
         }
@@ -701,6 +713,10 @@ public class SwitchOsSimulator {
         if (!managementIp.equals("unassigned")) cliLines.add(" ip address " + managementIp + " " + managementMask);
         else cliLines.add(" no ip address");
         cliLines.add("!");
+        if (!managementDefaultGateway.equals("unassigned")) {
+            cliLines.add("ip default-gateway " + managementDefaultGateway);
+            cliLines.add("!");
+        }
         cliLines.add("end");
     }
 
@@ -811,6 +827,7 @@ public class SwitchOsSimulator {
         tag.putString("Hostname", switchHostname);
         tag.putString("ManagementIp", managementIp);
         tag.putString("ManagementMask", managementMask);
+        tag.putString("ManagementDefaultGateway", managementDefaultGateway);
         tag.putString("MacAddress", macAddress);
         tag.putString("StpMode", stpMode);
         tag.putInt("StpPriority", stpPriority);
@@ -835,6 +852,7 @@ public class SwitchOsSimulator {
         if (tag.contains("Hostname")) switchHostname = tag.getString("Hostname");
         if (tag.contains("ManagementIp")) managementIp = tag.getString("ManagementIp");
         if (tag.contains("ManagementMask")) managementMask = tag.getString("ManagementMask");
+        if (tag.contains("ManagementDefaultGateway")) managementDefaultGateway = tag.getString("ManagementDefaultGateway");
         if (tag.contains("MacAddress")) macAddress = tag.getString("MacAddress");
         if (tag.contains("StpMode")) stpMode = tag.getString("StpMode");
         if (tag.contains("StpPriority")) stpPriority = tag.getInt("StpPriority");

@@ -183,6 +183,117 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
         }
     }
 
+    public boolean w1161InjectProbeToward(
+            BlockPos targetPos,
+            OSINetworkPacket packet
+    ) {
+        if (level == null
+                || level.isClientSide
+                || targetPos == null
+                || packet == null) {
+            return false;
+        }
+
+        String targetPort =
+                getInterfaceNameForPos(
+                        targetPos
+                );
+
+        if (targetPort == null) {
+            return false;
+        }
+
+        SwitchOsSimulator.PortConfig targetConfig =
+                osSimulators[0]
+                        .portConfigs
+                        .get(targetPort);
+
+        if (targetConfig == null
+                || !targetConfig.up
+                || !"FWD".equals(targetConfig.stpState)) {
+            return false;
+        }
+
+        String syntheticIngress = null;
+
+        for (String candidate :
+                osSimulators[0].portConfigs.keySet()) {
+            if (candidate.equals(targetPort)) {
+                continue;
+            }
+
+            SwitchOsSimulator.PortConfig candidateConfig =
+                    osSimulators[0]
+                            .portConfigs
+                            .get(candidate);
+
+            if (candidateConfig == null
+                    || !candidateConfig.up
+                    || !"FWD".equals(candidateConfig.stpState)) {
+                continue;
+            }
+
+            if (!candidateConfig.accessVlan.equals(
+                    targetConfig.accessVlan
+            )) {
+                continue;
+            }
+
+            syntheticIngress = candidate;
+            break;
+        }
+
+        if (syntheticIngress == null) {
+            return false;
+        }
+
+        OSINetworkPacket probe =
+                OSINetworkPacket.deserializeNBT(
+                        packet.serializeNBT().copy()
+                );
+
+        List<String> egressPorts =
+                osSimulators[0]
+                        .processAndForwardPacket(
+                                probe,
+                                syntheticIngress
+                        );
+
+        if (!egressPorts.contains(targetPort)) {
+            return false;
+        }
+
+        BlockEntity be =
+                level.getBlockEntity(
+                        targetPos
+                );
+
+        if (be instanceof FirewallBlockEntity fw) {
+            fw.receiveWiredPacket(
+                    probe,
+                    this.worldPosition
+            );
+            return true;
+        }
+
+        if (be instanceof ServerRackBlockEntity rack) {
+            rack.receiveWiredPacket(
+                    probe
+            );
+            return true;
+        }
+
+        if (be instanceof NetworkSwitchBlockEntity sw) {
+            sw.receiveWiredPacket(
+                    probe,
+                    this.worldPosition
+            );
+            return true;
+        }
+
+        return false;
+    }
+
     // ========================================================================
     // DHCP PROPAGATION (Uplink to Rack)
     // ========================================================================
