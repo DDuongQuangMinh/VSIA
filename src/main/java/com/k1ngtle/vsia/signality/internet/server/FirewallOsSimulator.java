@@ -448,6 +448,39 @@ public class FirewallOsSimulator {
     public int w1161NatCount() {
         return w116Firewall.nat44().size();
     }
+    public List<Nat44Mapping> w1162NatMappings() {
+        return w116Firewall.nat44().mappings();
+    }
+
+    public Nat44Mapping w1162FindNatMapping(
+            String protocol,
+            String insideLocalIp,
+            int insideLocalPort,
+            String outsideIp,
+            int outsidePort
+    ) {
+        for (Nat44Mapping mapping :
+                w116Firewall.nat44().mappings()) {
+            if (mapping.protocol().equalsIgnoreCase(protocol)
+                    && mapping.insideLocalIp().equals(insideLocalIp)
+                    && mapping.insideLocalPort() == insideLocalPort
+                    && mapping.outsideIp().equals(outsideIp)
+                    && mapping.outsidePort() == outsidePort) {
+                return mapping;
+            }
+        }
+
+        return null;
+    }
+
+    public int w1162ExpireNat(long nowMillis) {
+        return w116Firewall.nat44().expire(nowMillis);
+    }
+
+    public int w1162ExpireConntrack(long nowMillis) {
+        return w116Firewall.conntrack().expire(nowMillis);
+    }
+
     public Nat44Mapping w1161LatestNatMapping() {
         List<Nat44Mapping> mappings =
                 w116Firewall.nat44().mappings();
