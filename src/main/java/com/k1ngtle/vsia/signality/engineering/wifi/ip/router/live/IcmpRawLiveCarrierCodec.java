@@ -76,7 +76,15 @@ public final class IcmpRawLiveCarrierCodec {
                 buildQuote(logical);
 
         byte[] icmp =
-                IcmpErrorModel.encode(
+                type == IcmpErrorModel.DESTINATION_UNREACHABLE
+                        && code == IcmpErrorModel.FRAGMENTATION_NEEDED_CODE
+                        ? IcmpErrorModel.encodeFragmentationNeeded(
+                        logical.payload.getInt(
+                                "next_hop_mtu"
+                        ),
+                        quote
+                )
+                        : IcmpErrorModel.encode(
                         type,
                         code,
                         quote
@@ -280,6 +288,27 @@ public final class IcmpRawLiveCarrierCodec {
                 "icmp_code",
                 code
         );
+
+        if (type == IcmpErrorModel.DESTINATION_UNREACHABLE
+                && code == IcmpErrorModel.FRAGMENTATION_NEEDED_CODE) {
+            int nextHopMtu =
+                    (
+                            (
+                                    icmp[6]
+                                            & 0xFF
+                            )
+                                    << 8
+                    )
+                            | (
+                            icmp[7]
+                                    & 0xFF
+                    );
+
+            logical.payload.putInt(
+                    "next_hop_mtu",
+                    nextHopMtu
+            );
+        }
 
         byte[] quote =
                 java.util.Arrays.copyOfRange(

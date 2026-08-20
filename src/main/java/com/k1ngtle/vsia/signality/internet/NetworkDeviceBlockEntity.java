@@ -164,6 +164,10 @@ public abstract class NetworkDeviceBlockEntity
             wifiRouterPendingByNextHop =
             new java.util.LinkedHashMap<>();
 
+    private final Map<String, Integer>
+            wifiRouterInterfaceMtu =
+            new java.util.LinkedHashMap<>();
+
     private static final int WIFI_ROUTER_DIAGNOSTIC_LIMIT =
             32;
 
@@ -1374,6 +1378,7 @@ public abstract class NetworkDeviceBlockEntity
                 enabled;
 
         wifiRouterPendingByNextHop.clear();
+        wifiRouterInterfaceMtu.clear();
         wifiRouterDiagnostics.clear();
 
         if (enabled) {
@@ -1481,11 +1486,51 @@ public abstract class NetworkDeviceBlockEntity
     public void resetWifiLiveRouterConfiguration() {
         wifiLiveRouter.clearConfiguration();
         wifiRouterPendingByNextHop.clear();
+        wifiRouterInterfaceMtu.clear();
         wifiRouterDiagnostics.clear();
         wifiLiveRouterEnabled =
                 false;
 
         setChanged();
+    }
+    public boolean setWifiRouterInterfaceMtu(
+            String interfaceName,
+            int mtu
+    ) {
+        if (interfaceName == null
+                || interfaceName.isBlank()
+                || mtu < 68
+                || mtu > 65535
+                || wifiLiveRouter.interfaceByName(
+                interfaceName
+        ) == null) {
+            return false;
+        }
+
+        wifiRouterInterfaceMtu.put(
+                interfaceName,
+                mtu
+        );
+
+        traceWifiRouter(
+                "MTU dev="
+                        + interfaceName
+                        + " mtu="
+                        + mtu
+        );
+
+        setChanged();
+
+        return true;
+    }
+
+    public int wifiRouterInterfaceMtu(
+            String interfaceName
+    ) {
+        return wifiRouterInterfaceMtu.getOrDefault(
+                interfaceName,
+                1500
+        );
     }
     public java.util.List<RouterRoute> wifiLiveRouterRoutes() {
         return wifiLiveRouter.routes();
@@ -1587,6 +1632,77 @@ public abstract class NetworkDeviceBlockEntity
                 : 0L;
     }
 
+    public boolean sendWifiPmtuProbe(
+            String targetIp,
+            int packetBytes,
+            long sessionId
+    ) {
+        restorePersistedWifiHostRouting();
+
+        if (!wifiIpReady()
+                || !Ipv4Prefix.isUsableUnicast(
+                targetIp
+        )
+                || packetBytes < 68
+                || packetBytes > 65535) {
+            return false;
+        }
+
+        long nowMicros =
+                wifiNetworkNowMicros();
+
+        OSINetworkPacket packet =
+                wifiIpApplication.createIcmpEcho(
+                        macAddress,
+                        ipAddress,
+                        "FF:FF:FF:FF:FF:FF",
+                        targetIp,
+                        Math.max(
+                                1,
+                                packetBytes - 28
+                        ),
+                        nowMicros
+                );
+
+        packet.ttl =
+                64;
+
+        packet.dontFragment =
+                true;
+
+        packet.ipPacketLength =
+                packetBytes;
+
+        packet.payload.putBoolean(
+                "pmtu_probe",
+                true
+        );
+
+        packet.payload.putLong(
+                "pmtu_session_id",
+                sessionId
+        );
+
+        packet.payload.putInt(
+                "pmtu_probe_bytes",
+                packetBytes
+        );
+
+        wifiIpApplication.setStatus(
+                "PMTUD DF probe "
+                        + targetIp
+                        + " bytes="
+                        + packetBytes
+        );
+
+        transmitPacket(
+                packet
+        );
+
+        setChanged();
+
+        return true;
+    }
     public boolean sendWifiTracerouteProbe(
             String targetIp,
             int ttl,
@@ -3778,6 +3894,13 @@ public abstract class NetworkDeviceBlockEntity
                             packet,
                             wifiNetworkNowMicros()
                     );
+
+            com.k1ngtle.vsia.signality.debug.WifiPmtuManager
+                    .onIcmpResponse(
+                            this,
+                            packet,
+                            wifiNetworkNowMicros()
+                    );
         }
 
         if ("ICMP".equalsIgnoreCase(
@@ -4618,6 +4741,45 @@ public abstract class NetworkDeviceBlockEntity
                         + (decision.nextHopIp().isBlank() ? "none" : decision.nextHopIp())
         );
 
+        if ((
+                decision.action()
+                        == RouterForwardAction.FORWARD
+                        || decision.action()
+                        == RouterForwardAction.ARP_REQUIRED
+        )
+                && shouldSendWifiFragmentationNeeded(
+                packet,
+                decision
+        )) {
+            int mtu =
+                    wifiRouterInterfaceMtu(
+                            decision.egressInterface()
+                    );
+
+            traceWifiRouter(
+                    "PMTU FRAGMENTATION_NEEDED "
+                            + packet.sourceIp
+                            + " -> "
+                            + packet.targetIp
+                            + " dev="
+                            + decision.egressInterface()
+                            + " bytes="
+                            + effectiveWifiIpv4PacketLength(
+                            packet
+                    )
+                            + " mtu="
+                            + mtu
+            );
+
+            emitWifiRouterFragmentationNeeded(
+                    packet,
+                    decision,
+                    mtu
+            );
+
+            return true;
+        }
+
         switch (decision.action()) {
             case FORWARD -> {
                 forwardWifiRouterPacket(
@@ -4724,6 +4886,163 @@ public abstract class NetworkDeviceBlockEntity
         return false;
     }
 
+    private boolean shouldSendWifiFragmentationNeeded(
+            OSINetworkPacket packet,
+            RouterForwardDecision decision
+    ) {
+        if (packet == null
+                || decision == null
+                || !packet.dontFragment
+                || decision.egressInterface() == null
+                || decision.egressInterface().isBlank()) {
+            return false;
+        }
+
+        return effectiveWifiIpv4PacketLength(
+                packet
+        ) > wifiRouterInterfaceMtu(
+                decision.egressInterface()
+        );
+    }
+
+    private int effectiveWifiIpv4PacketLength(
+            OSINetworkPacket packet
+    ) {
+        if (packet == null) {
+            return 0;
+        }
+
+        int declared =
+                packet.payload.getInt(
+                        "pmtu_probe_bytes"
+                );
+
+        return Math.max(
+                packet.ipPacketLength,
+                declared
+        );
+    }
+
+    private void emitWifiRouterFragmentationNeeded(
+            OSINetworkPacket original,
+            RouterForwardDecision decision,
+            int nextHopMtu
+    ) {
+        RouterInterface ingress =
+                resolveWifiRouterIngress(
+                        original
+                );
+
+        if (ingress == null
+                || original.sourceMac == null
+                || original.sourceMac.isBlank()) {
+            wifiIpApplication.setStatus(
+                    "Router PMTU ICMP could not return to source"
+            );
+            return;
+        }
+
+        OSINetworkPacket error =
+                new OSINetworkPacket();
+
+        error.sourceMac =
+                macAddress;
+
+        error.targetMac =
+                original.sourceMac;
+
+        error.sourceIp =
+                ingress.ipv4Address();
+
+        error.targetIp =
+                original.sourceIp;
+
+        error.ttl =
+                64;
+
+        error.ipProtocol =
+                1;
+
+        error.applicationProtocol =
+                "ICMP";
+
+        error.isResponse =
+                true;
+
+        error.payload.putString(
+                "type",
+                "DESTINATION_UNREACHABLE"
+        );
+
+        error.payload.putInt(
+                "icmp_type",
+                3
+        );
+
+        error.payload.putInt(
+                "icmp_code",
+                4
+        );
+
+        error.payload.putInt(
+                "next_hop_mtu",
+                nextHopMtu
+        );
+
+        error.payload.putInt(
+                "icmp_error_id",
+                (
+                        int
+                ) (
+                System.nanoTime()
+                        & 0xFFFFL
+        )
+        );
+
+        error.payload.putString(
+                "quoted_source_ip",
+                original.sourceIp
+        );
+
+        error.payload.putString(
+                "quoted_target_ip",
+                original.targetIp
+        );
+
+        error.payload.putInt(
+                "quoted_protocol",
+                original.ipProtocol
+        );
+
+        error.payload.putInt(
+                "quoted_ttl",
+                original.ttl
+        );
+
+        error.payload.putInt(
+                "quoted_source_port",
+                original.sourcePort
+        );
+
+        error.payload.putInt(
+                "quoted_target_port",
+                original.targetPort
+        );
+
+        error.payload.putBoolean(
+                "router_egress_bypass",
+                true
+        );
+
+        wifiIpApplication.setStatus(
+                "ICMP fragmentation needed mtu="
+                        + nextHopMtu
+        );
+
+        transmitPacket(
+                error
+        );
+    }
     private boolean handleWifiRouterArp(
             OSINetworkPacket packet
     ) {

@@ -954,6 +954,29 @@ public final class WifiIpApplicationEngine {
                 );
             }
 
+            if (packet.payload.getBoolean(
+                    "pmtu_probe"
+            )) {
+                response.payload.putBoolean(
+                        "pmtu_probe",
+                        true
+                );
+
+                response.payload.putLong(
+                        "pmtu_session_id",
+                        packet.payload.getLong(
+                                "pmtu_session_id"
+                        )
+                );
+
+                response.payload.putInt(
+                        "pmtu_probe_bytes",
+                        packet.payload.getInt(
+                                "pmtu_probe_bytes"
+                        )
+                );
+            }
+
             transmitter.accept(
                     response
             );
