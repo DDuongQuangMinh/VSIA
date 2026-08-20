@@ -91,6 +91,7 @@ import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4Fragmenter;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4TransitForwarder;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4TransitPending;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4TransitCarrierCodec;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4Refragmenter;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveController;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveScheduler;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveSnapshot;
@@ -5170,25 +5171,11 @@ public abstract class NetworkDeviceBlockEntity
                                     + mtu
                     );
                 } else {
-                    wifiIpApplication.setStatus(
-                            "Router raw IPv4 re-fragment required: "
-                                    + fragment.totalLength()
-                                    + " > MTU "
-                                    + mtu
-                    );
-
-                    traceWifiRouter(
-                            "RAW FRAGMENT REFRAGMENT_REQUIRED id="
-                                    + String.format(
-                                            "%04X",
-                                            fragment.identification()
-                                    )
-                                    + " off="
-                                    + fragment.fragmentOffset()
-                                    + " bytes="
-                                    + fragment.totalLength()
-                                    + " mtu="
-                                    + mtu
+                    refragmentWifiRouterRawFragment(
+                            decodedFragment,
+                            fragment,
+                            decision,
+                            mtu
                     );
                 }
 
@@ -5260,6 +5247,303 @@ public abstract class NetworkDeviceBlockEntity
         }
 
         return false;
+    }
+
+
+    private void refragmentWifiRouterRawFragment(
+            RawIpv4LiveCarrierCodec.DecodedFragment decodedFragment,
+            RawIpv4TransitForwarder.FragmentInfo parent,
+            RouterForwardDecision decision,
+            int mtu
+    ) {
+        java.util.List<byte[]> children;
+
+        try {
+            children =
+                    RawIpv4Refragmenter.refragment(
+                            decodedFragment.rawIpv4(),
+                            mtu,
+                            decision.outgoingTtl()
+                    );
+        } catch (RawIpv4Fragmenter.FragmentationNeededException exception) {
+            emitWifiRouterFragmentationNeeded(
+                    rawFragmentLogicalShell(
+                            decodedFragment,
+                            parent
+                    ),
+                    decision,
+                    exception.nextHopMtu()
+            );
+
+            traceWifiRouter(
+                    "REFRAGMENT DF BLOCKED id="
+                            + String.format(
+                                    "%04X",
+                                    parent.identification()
+                            )
+                            + " off="
+                            + parent.fragmentOffset()
+                            + " mtu="
+                            + exception.nextHopMtu()
+            );
+
+            return;
+        } catch (Exception exception) {
+            wifiIpApplication.setStatus(
+                    "Router re-fragmentation failed: "
+                            + exception.getMessage()
+            );
+
+            traceWifiRouter(
+                    "REFRAGMENT DROP id="
+                            + String.format(
+                                    "%04X",
+                                    parent.identification()
+                            )
+                            + " off="
+                            + parent.fragmentOffset()
+                            + " reason="
+                            + exception.getMessage()
+            );
+
+            return;
+        }
+
+        traceWifiRouter(
+                "REFRAGMENT id="
+                        + String.format(
+                                "%04X",
+                                parent.identification()
+                        )
+                        + " parent-off="
+                        + parent.fragmentOffset()
+                        + " parent-mf="
+                        + (parent.moreFragments() ? 1 : 0)
+                        + " bytes="
+                        + parent.totalLength()
+                        + " mtu="
+                        + mtu
+                        + " children="
+                        + children.size()
+                        + " ttl="
+                        + decision.incomingTtl()
+                        + "->"
+                        + decision.outgoingTtl()
+        );
+
+        if (decision.action()
+                == RouterForwardAction.FORWARD) {
+            forwardWifiRouterRefragmentedChildren(
+                    children,
+                    decodedFragment,
+                    decision
+            );
+
+            return;
+        }
+
+        if (decision.action()
+                == RouterForwardAction.ARP_REQUIRED) {
+            if (!queueWifiRouterRefragmentedChildren(
+                    children,
+                    decodedFragment,
+                    decision
+            )) {
+                wifiIpApplication.setStatus(
+                        "Router re-fragment queue full for "
+                                + decision.nextHopIp()
+                );
+
+                traceWifiRouter(
+                        "REFRAGMENT QUEUE DROP next-hop="
+                                + decision.nextHopIp()
+                                + " children="
+                                + children.size()
+                );
+
+                return;
+            }
+
+            sendWifiRouterArpRequest(
+                    decision.egressInterface(),
+                    decision.nextHopIp()
+            );
+
+            if (level instanceof ServerLevel serverLevel) {
+                WifiRouterArpRetryManager.schedule(
+                        serverLevel,
+                        worldPosition,
+                        decision.egressInterface(),
+                        decision.nextHopIp()
+                );
+            }
+        }
+    }
+
+    private void forwardWifiRouterRefragmentedChildren(
+            java.util.List<byte[]> children,
+            RawIpv4LiveCarrierCodec.DecodedFragment decodedFragment,
+            RouterForwardDecision decision
+    ) {
+        for (int index = 0;
+             index < children.size();
+             index++) {
+            byte[] child =
+                    children.get(
+                            index
+                    );
+
+            RawIpv4TransitForwarder.FragmentInfo info =
+                    RawIpv4TransitForwarder.inspect(
+                            child
+                    );
+
+            CompoundTag body =
+                    RawIpv4TransitCarrierCodec.wrap(
+                            child,
+                            macAddress,
+                            decision.nextHopMac(),
+                            decodedFragment.metadata(),
+                            index,
+                            children.size()
+                    );
+
+            body.putBoolean(
+                    "w1113_refragmented",
+                    true
+            );
+
+            body.putInt(
+                    "w1113_child_index",
+                    index
+            );
+
+            body.putInt(
+                    "w1113_child_count",
+                    children.size()
+            );
+
+            wifiMac.sendData(
+                    macAddress,
+                    decision.nextHopMac(),
+                    body,
+                    WifiAccessCategory.BEST_EFFORT,
+                    wifiSender()
+            );
+
+            traceWifiRouter(
+                    "REFRAGMENT CHILD TX id="
+                            + String.format(
+                                    "%04X",
+                                    info.identification()
+                            )
+                            + " off="
+                            + info.fragmentOffset()
+                            + " mf="
+                            + (info.moreFragments() ? 1 : 0)
+                            + " len="
+                            + info.totalLength()
+                            + " dev="
+                            + decision.egressInterface()
+                            + " child="
+                            + (index + 1)
+                            + "/"
+                            + children.size()
+            );
+        }
+    }
+
+    private boolean queueWifiRouterRefragmentedChildren(
+            java.util.List<byte[]> children,
+            RawIpv4LiveCarrierCodec.DecodedFragment decodedFragment,
+            RouterForwardDecision decision
+    ) {
+        if (children == null
+                || children.isEmpty()) {
+            return false;
+        }
+
+        int total =
+                wifiRouterRawPendingByNextHop
+                        .values()
+                        .stream()
+                        .mapToInt(
+                                java.util.List::size
+                        )
+                        .sum();
+
+        String key =
+                decision.egressInterface()
+                        + "|"
+                        + decision.nextHopIp();
+
+        java.util.List<RawIpv4TransitPending> queue =
+                wifiRouterRawPendingByNextHop
+                        .computeIfAbsent(
+                                key,
+                                ignored ->
+                                        new java.util.ArrayList<>()
+                        );
+
+        if (total + children.size()
+                > WIFI_ROUTER_PENDING_TOTAL
+                || queue.size() + children.size()
+                > WIFI_ROUTER_PENDING_PER_NEXT_HOP) {
+            if (queue.isEmpty()) {
+                wifiRouterRawPendingByNextHop.remove(
+                        key
+                );
+            }
+
+            return false;
+        }
+
+        for (int index = 0;
+             index < children.size();
+             index++) {
+            byte[] child =
+                    children.get(
+                            index
+                    );
+
+            RawIpv4TransitForwarder.FragmentInfo info =
+                    RawIpv4TransitForwarder.inspect(
+                            child
+                    );
+
+            queue.add(
+                    new RawIpv4TransitPending(
+                            child,
+                            decodedFragment.sourceMac(),
+                            decodedFragment.metadata(),
+                            index,
+                            children.size(),
+                            decision.egressInterface(),
+                            decision.nextHopIp(),
+                            decision.outgoingTtl()
+                    )
+            );
+
+            traceWifiRouter(
+                    "QUEUE REFRAGMENT CHILD id="
+                            + String.format(
+                                    "%04X",
+                                    info.identification()
+                            )
+                            + " off="
+                            + info.fragmentOffset()
+                            + " mf="
+                            + (info.moreFragments() ? 1 : 0)
+                            + " len="
+                            + info.totalLength()
+                            + " key="
+                            + key
+                            + " depth="
+                            + queue.size()
+            );
+        }
+
+        return true;
     }
 
     private OSINetworkPacket rawFragmentLogicalShell(
