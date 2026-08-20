@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.signality.internet.server;
 
 import com.k1ngtle.vsia.signality.SignalityBlocks;
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
+import com.k1ngtle.vsia.signality.engineering.firewall.w117.W117HostEndpoint;
 import com.k1ngtle.vsia.world.inventory.NetworkSwitchMenu;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -25,12 +26,17 @@ import software.bernie.geckolib.util.GeckoLibUtil;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.Set;
 
 public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEntity, MenuProvider {
 
     public static final int MAX_PORTS = 26; // 24 FE + 2 GE
     private final List<BlockPos> connectedDevices = new ArrayList<>();
+
+    private final Map<String, W117HostEndpoint> w117HostsByPort =
+            new LinkedHashMap<>();
 
     private String switchName = "Switch0";
     private int switchId = -1;
@@ -49,10 +55,13 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
 
     public void tick() {
         if (level != null && !level.isClientSide) {
-            // Forward ticking into our advanced STP/L2 simulation engines
             for (SwitchOsSimulator sim : osSimulators) {
                 sim.tick(this::broadcastPacketOutwards);
             }
+
+            w117TickHosts(
+                    System.currentTimeMillis()
+            );
         }
     }
 
@@ -165,12 +174,15 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
 
         for (String egressPort : egressPorts) {
             BlockPos targetPos = getPosForInterfaceName(egressPort);
+            OSINetworkPacket forwardedPacket =
+                    egressPorts.size() > 1
+                            ? OSINetworkPacket.deserializeNBT(
+                            packet.serializeNBT().copy()
+                    )
+                            : packet;
+
             if (targetPos != null) {
                 BlockEntity be = level.getBlockEntity(targetPos);
-
-                // Clone the packet if we are flooding to prevent cross-reference bugs
-                OSINetworkPacket forwardedPacket = egressPorts.size() > 1 ?
-                        OSINetworkPacket.deserializeNBT(packet.serializeNBT().copy()) : packet;
 
                 if (be instanceof ServerRackBlockEntity rack) {
                     rack.receiveWiredPacket(forwardedPacket);
@@ -178,6 +190,25 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
                     sw.receiveWiredPacket(forwardedPacket, this.worldPosition);
                 } else if (be instanceof FirewallBlockEntity fw) {
                     fw.receiveWiredPacket(forwardedPacket, this.worldPosition);
+                }
+            } else {
+                W117HostEndpoint endpoint =
+                        w117HostsByPort.get(egressPort);
+
+                if (endpoint != null) {
+                    List<OSINetworkPacket> reactions =
+                            endpoint.receive(
+                                    forwardedPacket,
+                                    System.currentTimeMillis()
+                            );
+
+                    for (OSINetworkPacket reaction : reactions) {
+                        w117TransmitFromHostInternal(
+                                egressPort,
+                                reaction,
+                                0
+                        );
+                    }
                 }
             }
         }
@@ -294,6 +325,249 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
         return false;
     }
 
+    public String w117BindHostAuto(
+            W117HostEndpoint endpoint
+    ) {
+        if (endpoint == null) {
+            return null;
+        }
+
+        for (int i = 1; i <= 24; i++) {
+            String port = "FastEthernet0/" + i;
+
+            if (w117PortAvailableForHost(port)
+                    && w117BindHost(port, endpoint)) {
+                return port;
+            }
+        }
+
+        for (int i = 1; i <= 2; i++) {
+            String port = "GigabitEthernet0/" + i;
+
+            if (w117PortAvailableForHost(port)
+                    && w117BindHost(port, endpoint)) {
+                return port;
+            }
+        }
+
+        return null;
+    }
+
+    public boolean w117BindHost(
+            String port,
+            W117HostEndpoint endpoint
+    ) {
+        if (port == null
+                || endpoint == null
+                || !w117PortAvailableForHost(port)) {
+            return false;
+        }
+
+        SwitchOsSimulator.PortConfig config =
+                osSimulators[0].portConfigs.get(port);
+
+        if (config == null) {
+            return false;
+        }
+
+        config.up = true;
+        config.stpState = "FWD";
+
+        w117HostsByPort.put(port, endpoint);
+        setChanged();
+        return true;
+    }
+
+    public W117HostEndpoint w117Host(String name) {
+        if (name == null) {
+            return null;
+        }
+
+        for (W117HostEndpoint endpoint : w117HostsByPort.values()) {
+            if (name.equalsIgnoreCase(endpoint.name())) {
+                return endpoint;
+            }
+        }
+
+        return null;
+    }
+
+    public String w117HostPort(String name) {
+        if (name == null) {
+            return null;
+        }
+
+        for (Map.Entry<String, W117HostEndpoint> entry : w117HostsByPort.entrySet()) {
+            if (name.equalsIgnoreCase(entry.getValue().name())) {
+                return entry.getKey();
+            }
+        }
+
+        return null;
+    }
+
+    public Map<String, W117HostEndpoint> w117Hosts() {
+        return Map.copyOf(w117HostsByPort);
+    }
+
+    public void w117ClearHostDynamicState() {
+        for (W117HostEndpoint endpoint : w117HostsByPort.values()) {
+            endpoint.clearDynamicState();
+        }
+        setChanged();
+    }
+
+    public boolean w117TransmitFromHost(
+            String ingressPort,
+            OSINetworkPacket packet
+    ) {
+        return w117TransmitFromHostInternal(ingressPort, packet, 0);
+    }
+
+    private boolean w117TransmitFromHostInternal(
+            String ingressPort,
+            OSINetworkPacket packet,
+            int depth
+    ) {
+        if (level == null
+                || level.isClientSide
+                || ingressPort == null
+                || packet == null
+                || depth > 32) {
+            return false;
+        }
+
+        W117HostEndpoint sourceEndpoint =
+                w117HostsByPort.get(ingressPort);
+
+        if (sourceEndpoint == null) {
+            return false;
+        }
+
+        SwitchOsSimulator.PortConfig ingressConfig =
+                osSimulators[0].portConfigs.get(ingressPort);
+
+        if (ingressConfig == null
+                || !ingressConfig.up
+                || !"FWD".equals(ingressConfig.stpState)) {
+            return false;
+        }
+
+        List<String> egressPorts =
+                osSimulators[0].processAndForwardPacket(
+                        packet,
+                        ingressPort
+                );
+
+        for (String egressPort : egressPorts) {
+            w117DeliverEgress(egressPort, packet, depth + 1);
+        }
+
+        return true;
+    }
+
+    private void w117DeliverEgress(
+            String egressPort,
+            OSINetworkPacket packet,
+            int depth
+    ) {
+        if (level == null
+                || egressPort == null
+                || packet == null
+                || depth > 32) {
+            return;
+        }
+
+        OSINetworkPacket forwarded =
+                OSINetworkPacket.deserializeNBT(
+                        packet.serializeNBT().copy()
+                );
+
+        BlockPos targetPos = getPosForInterfaceName(egressPort);
+
+        if (targetPos != null) {
+            BlockEntity be = level.getBlockEntity(targetPos);
+
+            if (be instanceof ServerRackBlockEntity rack) {
+                rack.receiveWiredPacket(forwarded);
+            } else if (be instanceof NetworkSwitchBlockEntity sw) {
+                sw.receiveWiredPacket(forwarded, this.worldPosition);
+            } else if (be instanceof FirewallBlockEntity fw) {
+                fw.receiveWiredPacket(forwarded, this.worldPosition);
+            }
+
+            return;
+        }
+
+        W117HostEndpoint endpoint = w117HostsByPort.get(egressPort);
+
+        if (endpoint == null) {
+            return;
+        }
+
+        List<OSINetworkPacket> reactions =
+                endpoint.receive(
+                        forwarded,
+                        System.currentTimeMillis()
+                );
+
+        for (OSINetworkPacket reaction : reactions) {
+            w117TransmitFromHostInternal(
+                    egressPort,
+                    reaction,
+                    depth + 1
+            );
+        }
+    }
+
+    private boolean w117PortAvailableForHost(String port) {
+        if (port == null
+                || !osSimulators[0].portConfigs.containsKey(port)
+                || w117HostsByPort.containsKey(port)) {
+            return false;
+        }
+
+        return getPosForInterfaceName(port) == null;
+    }
+
+    private void w117TickHosts(long nowMillis) {
+        List<Map.Entry<String, W117HostEndpoint>> hosts =
+                new ArrayList<>(w117HostsByPort.entrySet());
+
+        for (Map.Entry<String, W117HostEndpoint> entry : hosts) {
+            List<OSINetworkPacket> retries =
+                    entry.getValue().tick(nowMillis);
+
+            for (OSINetworkPacket retry : retries) {
+                w117TransmitFromHostInternal(
+                        entry.getKey(),
+                        retry,
+                        0
+                );
+            }
+        }
+    }
+
+    public String w117HostStatus() {
+        long now = System.currentTimeMillis();
+
+        StringBuilder builder =
+                new StringBuilder(
+                        "W1.17 HOSTS=" + w117HostsByPort.size()
+                );
+
+        for (Map.Entry<String, W117HostEndpoint> entry : w117HostsByPort.entrySet()) {
+            builder.append(
+                    "\n"
+                            + entry.getKey()
+                            + " "
+                            + entry.getValue().status(now)
+            );
+        }
+
+        return builder.toString();
+    }
+
     // ========================================================================
     // DHCP PROPAGATION (Uplink to Rack)
     // ========================================================================
@@ -390,6 +664,20 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
         }
         tag.put("Connections", links);
 
+        ListTag w117Hosts =
+                new ListTag();
+
+        for (Map.Entry<String, W117HostEndpoint> entry : w117HostsByPort.entrySet()) {
+            CompoundTag hostTag = new CompoundTag();
+
+            hostTag.putString("Port", entry.getKey());
+            hostTag.put("Endpoint", entry.getValue().save());
+            w117Hosts.add(hostTag);
+        }
+
+        tag.put("W117Hosts", w117Hosts);
+
+
         ListTag osList = new ListTag();
         for (int i = 0; i < 7; i++) {
             osList.add(osSimulators[i].saveToNBT());
@@ -417,6 +705,31 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
             ListTag links = tag.getList("Connections", Tag.TAG_COMPOUND);
             for (int i = 0; i < links.size(); i++) {
                 connectedDevices.add(BlockPos.of(links.getCompound(i).getLong("Pos")));
+            }
+        }
+
+        w117HostsByPort.clear();
+
+        if (tag.contains("W117Hosts", Tag.TAG_LIST)) {
+            ListTag hostList =
+                    tag.getList("W117Hosts", Tag.TAG_COMPOUND);
+
+            for (int i = 0; i < hostList.size(); i++) {
+                CompoundTag hostTag = hostList.getCompound(i);
+                String port = hostTag.getString("Port");
+
+                if (!hostTag.contains("Endpoint", Tag.TAG_COMPOUND)) {
+                    continue;
+                }
+
+                W117HostEndpoint endpoint =
+                        W117HostEndpoint.load(
+                                hostTag.getCompound("Endpoint")
+                        );
+
+                if (osSimulators[0].portConfigs.containsKey(port)) {
+                    w117HostsByPort.put(port, endpoint);
+                }
             }
         }
 

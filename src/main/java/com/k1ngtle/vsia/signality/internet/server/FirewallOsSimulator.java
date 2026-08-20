@@ -5,6 +5,7 @@ import com.k1ngtle.vsia.signality.engineering.firewall.FirewallDecision;
 import com.k1ngtle.vsia.signality.engineering.firewall.FirewallPacketView;
 import com.k1ngtle.vsia.signality.engineering.firewall.FirewallW116Adapter;
 import com.k1ngtle.vsia.signality.engineering.firewall.StatefulFirewallEngine;
+import com.k1ngtle.vsia.signality.engineering.firewall.w117.W117Ipv4;
 import com.k1ngtle.vsia.signality.engineering.firewall.Nat44Mapping;
 import com.k1ngtle.vsia.signality.engineering.firewall.ConntrackState;
 import net.minecraft.nbt.CompoundTag;
@@ -592,6 +593,84 @@ public class FirewallOsSimulator {
 
     public String w1161NatPublicIp() {
         return w116Nat44PublicIp;
+    }
+
+    public String w117NextHopIp(
+            String destinationIp,
+            String egressPort
+    ) {
+        if (!W117Ipv4.valid(destinationIp)
+                || egressPort == null) {
+            return null;
+        }
+
+        PortConfig port = portConfigs.get(egressPort);
+
+        if (port == null
+                || port.ipAddress == null
+                || port.subnetMask == null) {
+            return null;
+        }
+
+        if (W117Ipv4.valid(port.ipAddress)
+                && W117Ipv4.contiguousMask(port.subnetMask)
+                && W117Ipv4.sameSubnet(
+                port.ipAddress,
+                destinationIp,
+                port.subnetMask
+        )) {
+            return destinationIp;
+        }
+
+        String wantedNameif =
+                port.nameif == null ? "" : port.nameif;
+
+        String bestGateway = null;
+        int bestPrefix = -1;
+        long destination = W117Ipv4.parse(destinationIp);
+
+        for (String routeLine : routes) {
+            if (routeLine == null) {
+                continue;
+            }
+
+            String[] parts = routeLine.trim().split("\\s+");
+
+            if (parts.length < 5
+                    || !"route".equalsIgnoreCase(parts[0])) {
+                continue;
+            }
+
+            if (!wantedNameif.equalsIgnoreCase(parts[1])) {
+                continue;
+            }
+
+            String network = parts[2];
+            String mask = parts[3];
+            String gateway = parts[4];
+
+            if (!W117Ipv4.valid(network)
+                    || !W117Ipv4.contiguousMask(mask)
+                    || !W117Ipv4.valid(gateway)) {
+                continue;
+            }
+
+            long maskValue = W117Ipv4.parse(mask);
+
+            if ((destination & maskValue)
+                    != (W117Ipv4.parse(network) & maskValue)) {
+                continue;
+            }
+
+            int prefix = W117Ipv4.prefixLength(mask);
+
+            if (prefix > bestPrefix) {
+                bestPrefix = prefix;
+                bestGateway = gateway;
+            }
+        }
+
+        return bestGateway;
     }
 
     public OSINetworkPacket w1161FilterAndRoutePacket(

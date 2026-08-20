@@ -2,6 +2,8 @@ package com.k1ngtle.vsia.signality.internet.server;
 
 import com.k1ngtle.vsia.signality.SignalityBlocks;
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
+import com.k1ngtle.vsia.signality.engineering.firewall.w117.W117InterfaceNeighborEngine;
+import com.k1ngtle.vsia.signality.engineering.firewall.w117.W117ArpFrame;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -53,6 +55,21 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
     private long w1161TtlExpired = 0L;
     private String w1161LastTransit = "READY";
 
+    private final W117InterfaceNeighborEngine w117LanNeighbors =
+            new W117InterfaceNeighborEngine();
+
+    private final W117InterfaceNeighborEngine w117WanNeighbors =
+            new W117InterfaceNeighborEngine();
+
+    private long w117ArpRx = 0L;
+    private long w117ArpTx = 0L;
+    private long w117QueuedIpv4 = 0L;
+    private long w117ResolvedIpv4 = 0L;
+    private boolean w117DuplicateInside = false;
+    private boolean w117DuplicateOutside = false;
+    private String w117LastNeighborEvent = "READY";
+
+
     // Rules
     private final List<FirewallRule> activeRules = new ArrayList<>();
 
@@ -71,10 +88,13 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
 
     public void tick() {
         if (level != null && !level.isClientSide) {
-            // Forward ticking into our advanced OSPF/IPsec simulators for all 7 instances
             for (FirewallOsSimulator sim : osSimulators) {
                 sim.tick(this::broadcastPacketOutwards);
             }
+
+            w117TickNeighbors(
+                    System.currentTimeMillis()
+            );
         }
     }
 
@@ -97,8 +117,14 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
         }
     }
 
-    public void receiveWiredPacket(OSINetworkPacket packet, BlockPos ingressPos) {
-        if (level == null || level.isClientSide || packet == null || ingressPos == null) {
+    public void receiveWiredPacket(
+            OSINetworkPacket packet,
+            BlockPos ingressPos
+    ) {
+        if (level == null
+                || level.isClientSide
+                || packet == null
+                || ingressPos == null) {
             return;
         }
 
@@ -106,10 +132,8 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
 
         if (ingressPos.equals(lanConnection)) {
             ingressPort = "GigabitEthernet1/1";
-            w1161LanRx++;
         } else if (ingressPos.equals(wanConnection)) {
             ingressPort = "GigabitEthernet1/2";
-            w1161WanRx++;
         } else {
             w1161Drops++;
             w1161LastTransit =
@@ -117,6 +141,18 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
                             + ingressPos.toShortString();
             setChanged();
             return;
+        }
+
+        if (W117ArpFrame.isArp(packet)) {
+            w117HandleArp(packet, ingressPort);
+            setChanged();
+            return;
+        }
+
+        if ("GigabitEthernet1/1".equals(ingressPort)) {
+            w1161LanRx++;
+        } else {
+            w1161WanRx++;
         }
 
         OSINetworkPacket filtered =
@@ -128,21 +164,18 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
         if (filtered == null) {
             w1161Drops++;
             w1161LastTransit =
-                    osSimulators[0]
-                            .w1161LastPipelineStatus();
+                    osSimulators[0].w1161LastPipelineStatus();
             setChanged();
             return;
         }
 
         String egressPort =
-                osSimulators[0]
-                        .w1161LastEgressInterface();
+                osSimulators[0].w1161LastEgressInterface();
 
-        if (egressPort == null) {
+        if (egressPort == null || egressPort.isBlank()) {
             w1161Drops++;
             w1161LastTransit =
-                    "DROP NO_ROUTE dst="
-                            + filtered.targetIp;
+                    "DROP NO_ROUTE dst=" + filtered.targetIp;
             setChanged();
             return;
         }
@@ -150,20 +183,15 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
         if (egressPort.equals(ingressPort)) {
             w1161Drops++;
             w1161LastTransit =
-                    "DROP SAME_INTERFACE "
-                            + ingressPort;
+                    "DROP SAME_INTERFACE " + ingressPort;
             setChanged();
             return;
         }
 
-        if (!osSimulators[0]
-                .w1161InterfaceUp(
-                        egressPort
-                )) {
+        if (!osSimulators[0].w1161InterfaceUp(egressPort)) {
             w1161Drops++;
             w1161LastTransit =
-                    "DROP EGRESS_DOWN "
-                            + egressPort;
+                    "DROP EGRESS_DOWN " + egressPort;
             setChanged();
             return;
         }
@@ -172,41 +200,120 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
             w1161Drops++;
             w1161TtlExpired++;
             w1161LastTransit =
-                    "DROP TTL_EXPIRED ingress="
-                            + ingressPort;
+                    "DROP TTL_EXPIRED ingress=" + ingressPort;
             setChanged();
             return;
         }
 
         filtered.ttl--;
 
-        if (!sendPacketOutPort(
-                filtered,
-                egressPort
-        )) {
+        String nextHopIp =
+                osSimulators[0].w117NextHopIp(
+                        filtered.targetIp,
+                        egressPort
+                );
+
+        if (nextHopIp == null || nextHopIp.isBlank()) {
             w1161Drops++;
             w1161LastTransit =
-                    "DROP NO_WORLD_LINK egress="
+                    "DROP NO_NEXT_HOP dst="
+                            + filtered.targetIp
+                            + " egress="
                             + egressPort;
             setChanged();
             return;
         }
 
+        W117InterfaceNeighborEngine neighbors =
+                w117NeighborEngine(egressPort);
+
+        if (neighbors == null) {
+            w1161Drops++;
+            w1161LastTransit =
+                    "DROP NO_NEIGHBOR_ENGINE egress=" + egressPort;
+            setChanged();
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+
+        var resolved = neighbors.lookup(nextHopIp, now);
+
+        if (resolved.isPresent()) {
+            filtered.sourceMac = w117MacForInterface(egressPort);
+            filtered.targetMac = resolved.get().mac();
+
+            if (!sendPacketOutPort(filtered, egressPort)) {
+                w1161Drops++;
+                w1161LastTransit =
+                        "DROP NO_WORLD_LINK egress=" + egressPort;
+                setChanged();
+                return;
+            }
+
+            w1161LastTransit =
+                    "FORWARD "
+                            + ingressPort
+                            + " -> "
+                            + egressPort
+                            + " nextHop="
+                            + nextHopIp
+                            + " l2dst="
+                            + resolved.get().mac()
+                            + " "
+                            + filtered.sourceIp
+                            + ":"
+                            + filtered.sourcePort
+                            + " -> "
+                            + filtered.targetIp
+                            + ":"
+                            + filtered.targetPort
+                            + " ttl="
+                            + filtered.ttl;
+
+            setChanged();
+            return;
+        }
+
+        boolean queued =
+                neighbors.queue(
+                        nextHopIp,
+                        filtered,
+                        egressPort,
+                        now
+                );
+
+        if (!queued) {
+            w1161Drops++;
+            w1161LastTransit =
+                    "DROP NEIGHBOR_QUEUE_FULL nextHop=" + nextHopIp;
+            setChanged();
+            return;
+        }
+
+        w117QueuedIpv4++;
+
+        if (neighbors.needsInitialRequest(nextHopIp)) {
+            neighbors.markRequestSent(nextHopIp, now);
+
+            OSINetworkPacket request =
+                    W117ArpFrame.request(
+                            w117MacForInterface(egressPort),
+                            w117IpForInterface(egressPort),
+                            nextHopIp,
+                            "W1.17-FIREWALL-ARP"
+                    );
+
+            w117SendLayer2Frame(request, egressPort);
+        }
+
         w1161LastTransit =
-                "FORWARD "
-                        + ingressPort
-                        + " -> "
+                "ARP_PENDING egress="
                         + egressPort
-                        + " "
-                        + filtered.sourceIp
-                        + ":"
-                        + filtered.sourcePort
-                        + " -> "
-                        + filtered.targetIp
-                        + ":"
-                        + filtered.targetPort
-                        + " ttl="
-                        + filtered.ttl;
+                        + " nextHop="
+                        + nextHopIp
+                        + " queued="
+                        + neighbors.pendingCount();
 
         setChanged();
     }
@@ -263,6 +370,305 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
         }
 
         return true;
+    }
+
+    private void w117HandleArp(
+            OSINetworkPacket packet,
+            String ingressPort
+    ) {
+        w117ArpRx++;
+
+        W117InterfaceNeighborEngine neighbors =
+                w117NeighborEngine(ingressPort);
+
+        if (neighbors == null) {
+            w117LastNeighborEvent =
+                    "ARP_DROP_NO_ENGINE " + ingressPort;
+            return;
+        }
+
+        String senderIp = W117ArpFrame.senderIp(packet);
+        String senderMac = W117ArpFrame.senderMac(packet);
+
+        if (senderIp != null
+                && !senderIp.isBlank()
+                && senderMac != null
+                && !senderMac.isBlank()) {
+            String ownIp = w117IpForInterface(ingressPort);
+            String ownMac = w117MacForInterface(ingressPort);
+
+            if (ownIp.equals(senderIp)
+                    && !ownMac.equalsIgnoreCase(senderMac)) {
+                if ("GigabitEthernet1/1".equals(ingressPort)) {
+                    w117DuplicateInside = true;
+                } else {
+                    w117DuplicateOutside = true;
+                }
+
+                w117LastNeighborEvent =
+                        "DUPLICATE_IPV4 interface="
+                                + ingressPort
+                                + " senderMac="
+                                + senderMac;
+            }
+
+            neighbors.learn(
+                    senderIp,
+                    senderMac,
+                    System.currentTimeMillis()
+            );
+        }
+
+        if (W117ArpFrame.isRequest(packet)
+                && w117IpForInterface(ingressPort).equals(
+                W117ArpFrame.targetIp(packet)
+        )) {
+            OSINetworkPacket reply =
+                    W117ArpFrame.reply(
+                            w117MacForInterface(ingressPort),
+                            w117IpForInterface(ingressPort),
+                            senderMac,
+                            senderIp,
+                            packet.sessionId
+                    );
+
+            neighbors.noteReplyTx();
+            w117SendLayer2Frame(reply, ingressPort);
+
+            w117LastNeighborEvent =
+                    "ARP_REPLY interface="
+                            + ingressPort
+                            + " target="
+                            + senderIp;
+        }
+
+        if (W117ArpFrame.isReply(packet)) {
+            w117FlushResolved(neighbors);
+        }
+    }
+
+    private void w117FlushResolved(
+            W117InterfaceNeighborEngine neighbors
+    ) {
+        for (W117InterfaceNeighborEngine.ResolvedPacket resolved :
+                neighbors.drainResolved()) {
+            OSINetworkPacket packet = resolved.packet();
+
+            packet.sourceMac =
+                    w117MacForInterface(resolved.egressPort());
+
+            packet.targetMac = resolved.nextHopMac();
+
+            if (sendPacketOutPort(packet, resolved.egressPort())) {
+                w117ResolvedIpv4++;
+
+                w1161LastTransit =
+                        "FORWARD_RESOLVED egress="
+                                + resolved.egressPort()
+                                + " nextHop="
+                                + resolved.nextHopIp()
+                                + " l2dst="
+                                + resolved.nextHopMac()
+                                + " "
+                                + packet.sourceIp
+                                + ":"
+                                + packet.sourcePort
+                                + " -> "
+                                + packet.targetIp
+                                + ":"
+                                + packet.targetPort
+                                + " ttl="
+                                + packet.ttl;
+            } else {
+                w1161Drops++;
+                w1161LastTransit =
+                        "DROP RESOLVED_NO_WORLD_LINK egress="
+                                + resolved.egressPort();
+            }
+        }
+    }
+
+    private void w117TickNeighbors(long nowMillis) {
+        w117TickNeighborEngine(
+                w117LanNeighbors,
+                "GigabitEthernet1/1",
+                nowMillis
+        );
+
+        w117TickNeighborEngine(
+                w117WanNeighbors,
+                "GigabitEthernet1/2",
+                nowMillis
+        );
+
+        w117FlushResolved(w117LanNeighbors);
+        w117FlushResolved(w117WanNeighbors);
+    }
+
+    private void w117TickNeighborEngine(
+            W117InterfaceNeighborEngine neighbors,
+            String egressPort,
+            long nowMillis
+    ) {
+        for (W117InterfaceNeighborEngine.Retry retry :
+                neighbors.tick(nowMillis)) {
+            OSINetworkPacket request =
+                    W117ArpFrame.request(
+                            w117MacForInterface(egressPort),
+                            w117IpForInterface(egressPort),
+                            retry.nextHopIp(),
+                            "W1.17-FIREWALL-ARP-RETRY-"
+                                    + retry.attempt()
+                    );
+
+            w117SendLayer2Frame(request, egressPort);
+
+            w117LastNeighborEvent =
+                    "ARP_RETRY interface="
+                            + egressPort
+                            + " nextHop="
+                            + retry.nextHopIp()
+                            + " attempt="
+                            + retry.attempt();
+        }
+    }
+
+    private W117InterfaceNeighborEngine w117NeighborEngine(String port) {
+        if ("GigabitEthernet1/1".equals(port)) {
+            return w117LanNeighbors;
+        }
+
+        if ("GigabitEthernet1/2".equals(port)) {
+            return w117WanNeighbors;
+        }
+
+        return null;
+    }
+
+    private String w117IpForInterface(String port) {
+        FirewallOsSimulator.PortConfig config =
+                osSimulators[0].portConfigs.get(port);
+
+        if (config == null || config.ipAddress == null) {
+            return "";
+        }
+
+        return config.ipAddress;
+    }
+
+    public String w117MacForInterface(String port) {
+        int portId =
+                "GigabitEthernet1/2".equals(port)
+                        ? 2
+                        : 1;
+
+        int id = Math.max(0, deviceId) & 0xFF;
+
+        return String.format(
+                "02:FA:%02X:%02X:00:01",
+                id,
+                portId
+        );
+    }
+
+    private boolean w117SendLayer2Frame(
+            OSINetworkPacket packet,
+            String egressPort
+    ) {
+        if (level == null
+                || packet == null
+                || egressPort == null) {
+            return false;
+        }
+
+        BlockPos target;
+
+        if ("GigabitEthernet1/1".equals(egressPort)) {
+            target = lanConnection;
+        } else if ("GigabitEthernet1/2".equals(egressPort)) {
+            target = wanConnection;
+        } else {
+            return false;
+        }
+
+        if (target == null) {
+            return false;
+        }
+
+        BlockEntity be = level.getBlockEntity(target);
+
+        OSINetworkPacket forwarded =
+                OSINetworkPacket.deserializeNBT(
+                        packet.serializeNBT().copy()
+                );
+
+        if (be instanceof NetworkSwitchBlockEntity sw) {
+            sw.receiveWiredPacket(forwarded, this.worldPosition);
+        } else if (be instanceof ServerRackBlockEntity rack) {
+            rack.receiveWiredPacket(forwarded);
+        } else {
+            return false;
+        }
+
+        w117ArpTx++;
+        return true;
+    }
+
+    public void w117ClearNeighborState() {
+        w117LanNeighbors.clear();
+        w117WanNeighbors.clear();
+        w117ArpRx = 0L;
+        w117ArpTx = 0L;
+        w117QueuedIpv4 = 0L;
+        w117ResolvedIpv4 = 0L;
+        w117DuplicateInside = false;
+        w117DuplicateOutside = false;
+        w117LastNeighborEvent = "READY";
+        setChanged();
+    }
+
+    public boolean w117SendGratuitousArp(String port) {
+        String ip = w117IpForInterface(port);
+
+        if (ip == null
+                || ip.isBlank()
+                || "unassigned".equalsIgnoreCase(ip)) {
+            return false;
+        }
+
+        OSINetworkPacket packet =
+                W117ArpFrame.gratuitous(
+                        w117MacForInterface(port),
+                        ip
+                );
+
+        return w117SendLayer2Frame(packet, port);
+    }
+
+    public String w117NeighborStatus() {
+        long now = System.currentTimeMillis();
+
+        return "W1.17 FIREWALL NEIGHBORS"
+                + " | inside{"
+                + w117LanNeighbors.status(now)
+                + "}"
+                + " | outside{"
+                + w117WanNeighbors.status(now)
+                + "}"
+                + " | arpRx="
+                + w117ArpRx
+                + " | arpTx="
+                + w117ArpTx
+                + " | queuedIpv4="
+                + w117QueuedIpv4
+                + " | resolvedIpv4="
+                + w117ResolvedIpv4
+                + " | dupInside="
+                + w117DuplicateInside
+                + " | dupOutside="
+                + w117DuplicateOutside
+                + " | last="
+                + w117LastNeighborEvent;
     }
 
     @Override
