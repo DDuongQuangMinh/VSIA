@@ -26,5 +26,6 @@
     "item.vsia.network_cable":  "Network Connector",
     "block.vsia.network_switch":  "Switch Server",
     "block.vsia.rt_ac68u_router":  "RT-AC68U Router",
-    "item.vsia.rt_ac68u_router":  "RT-AC68U Router"
+    "item.vsia.rt_ac68u_router":  "RT-AC68U Router",
+    "block.visa.firewall": "Firewall"
 }

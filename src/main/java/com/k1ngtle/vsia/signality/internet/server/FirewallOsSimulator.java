@@ -1,6 +1,10 @@
 package com.k1ngtle.vsia.signality.internet.server;
 
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
+import com.k1ngtle.vsia.signality.engineering.firewall.FirewallDecision;
+import com.k1ngtle.vsia.signality.engineering.firewall.FirewallPacketView;
+import com.k1ngtle.vsia.signality.engineering.firewall.FirewallW116Adapter;
+import com.k1ngtle.vsia.signality.engineering.firewall.StatefulFirewallEngine;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
@@ -155,6 +159,13 @@ public class FirewallOsSimulator {
     private final List<ConnectionState> connectionTable = new ArrayList<>();
     private final List<String> xlateTable = new ArrayList<>();
 
+    private StatefulFirewallEngine w116Firewall =
+            StatefulFirewallEngine.permissiveCompatibilityEngine();
+
+    private String w116LastDecision =
+            "W1.16 STATEFUL FIREWALL READY";
+
+
     public final List<String> asaCommands = new ArrayList<>();
     public final List<String> cliLines = new ArrayList<>();
     public boolean isBooted = false;
@@ -274,11 +285,102 @@ public class FirewallOsSimulator {
         }
     }
 
+
+    public void w116EnableNat44(String publicIpv4) {
+        w116Firewall.enableNat44(
+                publicIpv4
+        );
+
+        w116LastDecision =
+                "W1.16 NAT44/PAT public="
+                        + publicIpv4;
+
+        if (onStateChange != null) {
+            onStateChange.run();
+        }
+    }
+
+    public void w116DisableNat44() {
+        w116Firewall.disableNat44();
+
+        w116LastDecision =
+                "W1.16 NAT44/PAT disabled";
+
+        if (onStateChange != null) {
+            onStateChange.run();
+        }
+    }
+
+    public void w116Reset() {
+        w116Firewall =
+                StatefulFirewallEngine.permissiveCompatibilityEngine();
+
+        w116LastDecision =
+                "W1.16 STATEFUL FIREWALL RESET";
+
+        if (onStateChange != null) {
+            onStateChange.run();
+        }
+    }
+
+    public String w116Status() {
+        return "W1.16 STATEFUL FIREWALL"
+                + " | conntrack="
+                + w116Firewall.conntrack().size()
+                + " | nat="
+                + w116Firewall.nat44().size()
+                + " | rules="
+                + w116Firewall.rules().size()
+                + " | last="
+                + w116LastDecision;
+    }
+
     public OSINetworkPacket filterAndRoutePacket(OSINetworkPacket packet, String ingressPortName) {
         if (!isBooted) return null;
 
         PortConfig ingressPort = portConfigs.get(ingressPortName);
         if (ingressPort == null || !ingressPort.up || ingressPort.nameif.isEmpty()) return null;
+
+        String w116EgressPortName =
+                lookupRoute(
+                        packet.targetIp
+                );
+
+        FirewallPacketView w116Packet =
+                FirewallW116Adapter.packetView(
+                        packet,
+                        ingressPortName,
+                        w116EgressPortName
+                );
+
+        FirewallDecision w116Decision =
+                w116Firewall.inspect(
+                        w116Packet,
+                        0,
+                        System.currentTimeMillis()
+                );
+
+        w116LastDecision =
+                w116Decision.action()
+                        + " "
+                        + w116Decision.state()
+                        + " rule="
+                        + w116Decision.ruleName()
+                        + " reason="
+                        + w116Decision.reason();
+
+        if (!w116Decision.allowed()) {
+            if (onStateChange != null) {
+                onStateChange.run();
+            }
+
+            return null;
+        }
+
+        FirewallW116Adapter.applyNat(
+                packet,
+                w116Decision
+        );
 
         long pSrcIp = ipToLong(packet.sourceIp);
         long pDstIp = ipToLong(packet.targetIp);
