@@ -84,6 +84,7 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
     private long w118DnsRx = 0L;
     private long w118DnsTx = 0L;
     private String w118LastServiceEvent = "READY";
+    private int w118DhcpLastEventRank = 0;
 
 
     // Rules
@@ -775,13 +776,26 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
                 ingressPort
         );
 
-        w118LastServiceEvent =
-                "DHCP_"
-                        + W118DhcpMessage.type(response)
-                        + " xid="
-                        + W118DhcpMessage.xid(response)
-                        + " yiaddr="
-                        + W118DhcpMessage.yourIp(response);
+        W118DhcpMessage.Type responseType =
+                W118DhcpMessage.type(response);
+
+        int eventRank =
+                w118DhcpEventRank(
+                        responseType
+                );
+
+        if (eventRank >= w118DhcpLastEventRank) {
+            w118DhcpLastEventRank =
+                    eventRank;
+
+            w118LastServiceEvent =
+                    "DHCP_"
+                            + responseType
+                            + " xid="
+                            + W118DhcpMessage.xid(response)
+                            + " yiaddr="
+                            + W118DhcpMessage.yourIp(response);
+        }
     }
 
     private void w118HandleDns(
@@ -836,6 +850,17 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
                         + W118DnsMessage.answer(response);
     }
 
+    private int w118DhcpEventRank(
+            W118DhcpMessage.Type type
+    ) {
+        return switch (type) {
+            case OFFER -> 1;
+            case ACK -> 2;
+            case NAK -> 2;
+            default -> 0;
+        };
+    }
+
     public void w118ClearServices() {
         w118DhcpServer.clearDynamic();
         w118DnsServer.clearCache();
@@ -843,6 +868,7 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
         w118DhcpTx = 0L;
         w118DnsRx = 0L;
         w118DnsTx = 0L;
+        w118DhcpLastEventRank = 0;
         w118LastServiceEvent = "READY";
         setChanged();
     }
