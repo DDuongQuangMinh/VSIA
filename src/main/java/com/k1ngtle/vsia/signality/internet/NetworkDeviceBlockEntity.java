@@ -96,6 +96,11 @@ import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4TransitCarrierC
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4Refragmenter;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIcmpQuote;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIcmpErrorPolicy;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4HeaderValidator;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4HeaderFaultFactory;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4FaultCarrierCodec;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4Encoder;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawUdpCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveController;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveScheduler;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveSnapshot;
@@ -3598,6 +3603,22 @@ public abstract class NetworkDeviceBlockEntity
                                 data
                         );
 
+
+                RawIpv4HeaderValidator.ValidationResult headerValidation =
+                        RawIpv4HeaderValidator.validate(
+                                decodedFragment.rawIpv4()
+                        );
+
+                if (!headerValidation.valid()) {
+                    handleWifiRawIpv4HeaderValidationFailure(
+                            decodedFragment,
+                            headerValidation
+                    );
+
+                    setChanged();
+                    return;
+                }
+
                 if (handleWifiRouterRawIpv4Fragment(
                         decodedFragment
                 )) {
@@ -4621,6 +4642,240 @@ public abstract class NetworkDeviceBlockEntity
 
         transmitPacket(error);
         setChanged();
+    }
+
+
+    public boolean sendWifiRawIpv4HeaderFaultProbe(
+            String nextHopMac,
+            String targetIp,
+            String faultName
+    ) {
+        if (!wifiIpReady()
+                || nextHopMac == null
+                || nextHopMac.isBlank()
+                || targetIp == null
+                || targetIp.isBlank()) {
+            return false;
+        }
+
+        wifiRawIpv4Identification =
+                (wifiRawIpv4Identification + 1)
+                        & 0xFFFF;
+
+        int identification =
+                wifiRawIpv4Identification;
+
+        byte[] testPayload =
+                new byte[32];
+
+        for (int i = 0;
+             i < testPayload.length;
+             i++) {
+            testPayload[i] =
+                    (byte) (
+                            identification
+                                    + i * 17
+                    );
+        }
+
+        byte[] udp =
+                RawUdpCodec.encode(
+                        ipAddress,
+                        targetIp,
+                        51000
+                                + (
+                                identification
+                                        % 10000
+                        ),
+                        40001,
+                        testPayload
+                );
+
+        byte[] validRaw =
+                RawIpv4Encoder.encode(
+                        ipAddress,
+                        targetIp,
+                        0,
+                        identification,
+                        false,
+                        false,
+                        0,
+                        64,
+                        17,
+                        udp
+                );
+
+        byte[] faultRaw =
+                RawIpv4HeaderFaultFactory.apply(
+                        validRaw,
+                        faultName
+                );
+
+        CompoundTag body =
+                RawIpv4FaultCarrierCodec.wrapUnchecked(
+                        faultRaw,
+                        macAddress,
+                        nextHopMac,
+                        faultName
+                );
+
+        wifiMac.sendData(
+                macAddress,
+                nextHopMac,
+                body,
+                WifiAccessCategory.BEST_EFFORT,
+                wifiSender()
+        );
+
+        wifiIpApplication.setStatus(
+                "W1.14 raw IPv4 header fault sent | "
+                        + faultName
+        );
+
+        setChanged();
+
+        return true;
+    }
+
+    private void handleWifiRawIpv4HeaderValidationFailure(
+            RawIpv4LiveCarrierCodec.DecodedFragment decodedFragment,
+            RawIpv4HeaderValidator.ValidationResult validation
+    ) {
+        wifiIpApplication.setStatus(
+                "RAW IPv4 header rejected | "
+                        + validation.issue().name()
+        );
+
+        traceWifiRouter(
+                "IPV4 HEADER INVALID issue="
+                        + validation.issue().name()
+                        + " ptr="
+                        + validation.pointer()
+                        + " code="
+                        + validation.icmpCode()
+                        + " src="
+                        + validation.sourceIp()
+                        + " dst="
+                        + validation.destinationIp()
+        );
+
+        if (!validation.sendParameterProblem()) {
+            traceWifiRouter(
+                    "PARAMETER PROBLEM SUPPRESSED issue="
+                            + validation.issue().name()
+            );
+
+            return;
+        }
+
+        RouterInterface ingress =
+                wifiLiveRouter.interfaceForSourceNetwork(
+                        validation.sourceIp()
+                );
+
+        String errorSourceIp =
+                ingress != null
+                        ? ingress.ipv4Address()
+                        : ipAddress;
+
+        OSINetworkPacket error =
+                new OSINetworkPacket();
+
+        error.sourceMac =
+                macAddress;
+
+        error.targetMac =
+                "";
+
+        error.sourceIp =
+                errorSourceIp;
+
+        error.targetIp =
+                validation.sourceIp();
+
+        error.ttl =
+                64;
+
+        error.ipProtocol =
+                1;
+
+        error.applicationProtocol =
+                "ICMP";
+
+        error.isResponse =
+                true;
+
+        error.payload.putString(
+                "type",
+                "PARAMETER_PROBLEM"
+        );
+
+        error.payload.putInt(
+                "icmp_type",
+                12
+        );
+
+        error.payload.putInt(
+                "icmp_code",
+                validation.icmpCode()
+        );
+
+        error.payload.putInt(
+                "icmp_pointer",
+                validation.pointer()
+        );
+
+        error.payload.putInt(
+                "icmp_error_id",
+                (int) (System.nanoTime() & 0xFFFFL)
+        );
+
+        error.payload.putString(
+                "quoted_source_ip",
+                validation.sourceIp()
+        );
+
+        error.payload.putString(
+                "quoted_target_ip",
+                validation.destinationIp()
+        );
+
+        byte[] originalRaw =
+                decodedFragment.rawIpv4();
+
+        error.payload.putInt(
+                "quoted_protocol",
+                originalRaw.length > 9
+                        ? originalRaw[9] & 0xFF
+                        : 0
+        );
+
+        error.payload.putInt(
+                "quoted_ttl",
+                originalRaw.length > 8
+                        ? originalRaw[8] & 0xFF
+                        : 0
+        );
+
+        error.payload.putByteArray(
+                "icmp_quote",
+                RawIcmpQuote.fromPossiblyMalformedIpv4(
+                        originalRaw
+                )
+        );
+
+        traceWifiRouter(
+                "PARAMETER PROBLEM TX type=12 code="
+                        + validation.icmpCode()
+                        + " ptr="
+                        + validation.pointer()
+                        + " issue="
+                        + validation.issue().name()
+        );
+
+        transmitPacket(
+                error
+        );
     }
 
     public boolean sendWifiRawUdpFragmentProbe(

@@ -7,8 +7,20 @@ public final class IcmpErrorModel {
     public static final int TIME_EXCEEDED =
             11;
 
+    public static final int PARAMETER_PROBLEM =
+            12;
+
     public static final int FRAGMENTATION_NEEDED_CODE =
             4;
+
+    public static final int PARAMETER_PROBLEM_POINTER_CODE =
+            0;
+
+    public static final int PARAMETER_PROBLEM_MISSING_OPTION_CODE =
+            1;
+
+    public static final int PARAMETER_PROBLEM_BAD_LENGTH_CODE =
+            2;
 
     private IcmpErrorModel() {
     }
@@ -23,14 +35,10 @@ public final class IcmpErrorModel {
              i < data.length;
              i += 2) {
             int word =
-                    (
-                            data[i]
-                                    & 0xFF
-                    )
+                    (data[i] & 0xFF)
                             << 8;
 
-            if (i + 1
-                    < data.length) {
+            if (i + 1 < data.length) {
                 word |=
                         data[i + 1]
                                 & 0xFF;
@@ -42,19 +50,12 @@ public final class IcmpErrorModel {
             while ((sum >>> 16)
                     != 0) {
                 sum =
-                        (
-                                sum
-                                        & 0xFFFF
-                        )
-                                + (
-                                sum >>> 16
-                        );
+                        (sum & 0xFFFF)
+                                + (sum >>> 16);
             }
         }
 
-        return (int) (
-                ~sum
-        )
+        return (int) (~sum)
                 & 0xFFFF;
     }
 
@@ -85,8 +86,36 @@ public final class IcmpErrorModel {
         return encodeWithRest(
                 DESTINATION_UNREACHABLE,
                 FRAGMENTATION_NEEDED_CODE,
-                nextHopMtu
-                        & 0xFFFF,
+                nextHopMtu & 0xFFFF,
+                quoted
+        );
+    }
+
+    public static byte[] encodeParameterProblem(
+            int code,
+            int pointer,
+            byte[] quoted
+    ) {
+        if (code < 0 || code > 2) {
+            throw new IllegalArgumentException(
+                    "Invalid Parameter Problem code"
+            );
+        }
+
+        if (pointer < 0 || pointer > 255) {
+            throw new IllegalArgumentException(
+                    "Invalid Parameter Problem pointer"
+            );
+        }
+
+        int rest =
+                (pointer & 0xFF)
+                        << 24;
+
+        return encodeWithRest(
+                PARAMETER_PROBLEM,
+                code,
+                rest,
                 quoted
         );
     }
@@ -104,8 +133,7 @@ public final class IcmpErrorModel {
 
         byte[] out =
                 new byte[
-                        8
-                                + quote.length
+                        8 + quote.length
                 ];
 
         out[0] =

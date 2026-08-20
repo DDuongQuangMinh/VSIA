@@ -11,9 +11,13 @@ public final class RawIcmpQuote {
     private RawIcmpQuote() {
     }
 
-    public static byte[] fromRawIpv4(byte[] rawIpv4) {
+    public static byte[] fromRawIpv4(
+            byte[] rawIpv4
+    ) {
         RawIpv4Packet packet =
-                RawIpv4Decoder.decode(rawIpv4);
+                RawIpv4Decoder.decode(
+                        rawIpv4
+                );
 
         if (!packet.checksumValid()) {
             throw new IllegalArgumentException(
@@ -21,16 +25,13 @@ public final class RawIcmpQuote {
             );
         }
 
-        int quoteLength =
+        return Arrays.copyOf(
+                rawIpv4,
                 Math.min(
                         packet.totalLength(),
                         packet.headerBytes()
                                 + MIN_TRANSPORT_QUOTE_BYTES
-                );
-
-        return Arrays.copyOf(
-                rawIpv4,
-                quoteLength
+                )
         );
     }
 
@@ -45,7 +46,9 @@ public final class RawIcmpQuote {
         }
 
         RawIpv4Packet packet =
-                RawIpv4Decoder.decode(rawIpv4);
+                RawIpv4Decoder.decode(
+                        rawIpv4
+                );
 
         if (!packet.checksumValid()) {
             throw new IllegalArgumentException(
@@ -53,11 +56,53 @@ public final class RawIcmpQuote {
             );
         }
 
-        int quoteLength =
+        return Arrays.copyOf(
+                rawIpv4,
                 Math.min(
                         packet.totalLength(),
                         packet.headerBytes()
                                 + transportBytes
+                )
+        );
+    }
+
+    public static byte[] fromPossiblyMalformedIpv4(
+            byte[] rawIpv4
+    ) {
+        if (rawIpv4 == null
+                || rawIpv4.length == 0) {
+            return new byte[0];
+        }
+
+        int ihlWords =
+                rawIpv4[0]
+                        & 0x0F;
+
+        int headerBytes =
+                ihlWords >= 5
+                        ? ihlWords * 4
+                        : 20;
+
+        headerBytes =
+                Math.max(
+                        20,
+                        Math.min(
+                                60,
+                                headerBytes
+                        )
+                );
+
+        int availableHeader =
+                Math.min(
+                        headerBytes,
+                        rawIpv4.length
+                );
+
+        int quoteLength =
+                Math.min(
+                        rawIpv4.length,
+                        availableHeader
+                                + MIN_TRANSPORT_QUOTE_BYTES
                 );
 
         return Arrays.copyOf(

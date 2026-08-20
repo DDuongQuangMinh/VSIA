@@ -50,7 +50,8 @@ public final class IcmpRawLiveCarrierCodec {
                 );
 
         return "TIME_EXCEEDED".equalsIgnoreCase(type)
-                || "DESTINATION_UNREACHABLE".equalsIgnoreCase(type);
+                || "DESTINATION_UNREACHABLE".equalsIgnoreCase(type)
+                || "PARAMETER_PROBLEM".equalsIgnoreCase(type);
     }
 
     public static CompoundTag encode(
@@ -75,20 +76,34 @@ public final class IcmpRawLiveCarrierCodec {
         byte[] quote =
                 buildQuote(logical);
 
-        byte[] icmp =
-                type == IcmpErrorModel.DESTINATION_UNREACHABLE
-                        && code == IcmpErrorModel.FRAGMENTATION_NEEDED_CODE
-                        ? IcmpErrorModel.encodeFragmentationNeeded(
-                        logical.payload.getInt(
-                                "next_hop_mtu"
-                        ),
-                        quote
-                )
-                        : IcmpErrorModel.encode(
-                        type,
-                        code,
-                        quote
-                );
+        byte[] icmp;
+
+        if (type == IcmpErrorModel.PARAMETER_PROBLEM) {
+            icmp =
+                    IcmpErrorModel.encodeParameterProblem(
+                            code,
+                            logical.payload.getInt(
+                                    "icmp_pointer"
+                            ),
+                            quote
+                    );
+        } else if (type == IcmpErrorModel.DESTINATION_UNREACHABLE
+                && code == IcmpErrorModel.FRAGMENTATION_NEEDED_CODE) {
+            icmp =
+                    IcmpErrorModel.encodeFragmentationNeeded(
+                            logical.payload.getInt(
+                                    "next_hop_mtu"
+                            ),
+                            quote
+                    );
+        } else {
+            icmp =
+                    IcmpErrorModel.encode(
+                            type,
+                            code,
+                            quote
+                    );
+        }
 
         Ipv4Header header =
                 new Ipv4Header(
@@ -228,7 +243,8 @@ public final class IcmpRawLiveCarrierCodec {
                 icmp[1] & 0xFF;
 
         if (type != IcmpErrorModel.TIME_EXCEEDED
-                && type != IcmpErrorModel.DESTINATION_UNREACHABLE) {
+                && type != IcmpErrorModel.DESTINATION_UNREACHABLE
+                && type != IcmpErrorModel.PARAMETER_PROBLEM) {
             throw new IllegalArgumentException(
                     "Unsupported ICMP error type "
                             + type
@@ -276,6 +292,8 @@ public final class IcmpRawLiveCarrierCodec {
                 "type",
                 type == IcmpErrorModel.TIME_EXCEEDED
                         ? "TIME_EXCEEDED"
+                        : type == IcmpErrorModel.PARAMETER_PROBLEM
+                        ? "PARAMETER_PROBLEM"
                         : "DESTINATION_UNREACHABLE"
         );
 
@@ -288,6 +306,14 @@ public final class IcmpRawLiveCarrierCodec {
                 "icmp_code",
                 code
         );
+
+        if (type == IcmpErrorModel.PARAMETER_PROBLEM) {
+            logical.payload.putInt(
+                    "icmp_pointer",
+                    icmp[4] & 0xFF
+            );
+        }
+
 
         if (type == IcmpErrorModel.DESTINATION_UNREACHABLE
                 && code == IcmpErrorModel.FRAGMENTATION_NEEDED_CODE) {
