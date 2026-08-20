@@ -85,6 +85,9 @@ import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.live.WifiRouterArpR
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterEngineeringSnapshot;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterPersistenceCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.live.IcmpRawLiveCarrierCodec;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4LiveCarrierCodec;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4ReassemblyTable;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4Fragmenter;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveController;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveScheduler;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveSnapshot;
@@ -235,6 +238,11 @@ public abstract class NetworkDeviceBlockEntity
 
     private final Set<String> wifiRawDnsPeers =
             new HashSet<>();
+
+    private final RawIpv4ReassemblyTable wifiRawIpv4Reassembly =
+            new RawIpv4ReassemblyTable();
+
+    private int wifiRawIpv4Identification;
 
     private int wifiDnsTransactionId;
 
@@ -3568,6 +3576,71 @@ public abstract class NetworkDeviceBlockEntity
         }
 
         if (data != null
+                && RawIpv4LiveCarrierCodec.isRawFragmentCarrier(
+                data
+        )) {
+            try {
+                RawIpv4LiveCarrierCodec.DecodedFragment decodedFragment =
+                        RawIpv4LiveCarrierCodec.decodeFragment(
+                                data
+                        );
+
+                RawIpv4ReassemblyTable.ReassemblyResult result =
+                        wifiRawIpv4Reassembly.accept(
+                                decodedFragment.rawIpv4(),
+                                wifiNetworkNowMicros()
+                        );
+
+                switch (result.status()) {
+                    case WAITING -> {
+                        wifiIpApplication.setStatus(
+                                "RAW IPv4 fragment waiting | count="
+                                        + result.fragments()
+                        );
+
+                        setChanged();
+                        return;
+                    }
+
+                    case REJECTED -> {
+                        wifiIpApplication.setStatus(
+                                "RAW IPv4 fragment rejected: "
+                                        + result.reason()
+                        );
+
+                        setChanged();
+                        return;
+                    }
+
+                    case COMPLETE -> {
+                        OSINetworkPacket logical =
+                                RawIpv4LiveCarrierCodec.toLogical(
+                                        result.rawPacket(),
+                                        decodedFragment.sourceMac(),
+                                        decodedFragment.targetMac(),
+                                        decodedFragment.metadata()
+                                );
+
+                        processLayer2(
+                                logical
+                        );
+
+                        setChanged();
+                        return;
+                    }
+                }
+            } catch (Exception exception) {
+                wifiIpApplication.setStatus(
+                        "RAW IPv4 fragment drop: "
+                                + exception.getMessage()
+                );
+
+                setChanged();
+                return;
+            }
+        }
+
+        if (data != null
                 && IcmpRawLiveCarrierCodec.isRawCarrier(
                 data
         )) {
@@ -4299,6 +4372,149 @@ public abstract class NetworkDeviceBlockEntity
         }
     }
 
+    public boolean sendWifiRawUdpFragmentProbe(
+            String targetIp,
+            int payloadBytes,
+            boolean dontFragment
+    ) {
+        if (!wifiIpReady()
+                || targetIp == null
+                || targetIp.isBlank()
+                || payloadBytes < 1
+                || payloadBytes > 60000) {
+            return false;
+        }
+
+        byte[] data =
+                new byte[payloadBytes];
+
+        int sequence =
+                nextWifiRawIpv4Identification();
+
+        for (int i = 0;
+             i < data.length;
+             i++) {
+            data[i] =
+                    (byte) (
+                            sequence
+                                    + i * 29
+                    );
+        }
+
+        OSINetworkPacket packet =
+                new OSINetworkPacket();
+
+        packet.sourceMac =
+                macAddress;
+
+        packet.targetMac =
+                "FF:FF:FF:FF:FF:FF";
+
+        packet.sourceIp =
+                ipAddress;
+
+        packet.targetIp =
+                targetIp;
+
+        packet.sourcePort =
+                50000
+                        + (
+                        sequence
+                                % 10000
+                );
+
+        packet.targetPort =
+                WifiIpApplicationEngine.UDP_ECHO_PORT;
+
+        packet.ipProtocol =
+                17;
+
+        packet.ttl =
+                64;
+
+        packet.dontFragment =
+                dontFragment;
+
+        packet.ipPacketLength =
+                20
+                        + 8
+                        + data.length;
+
+        packet.applicationProtocol =
+                "UDP";
+
+        packet.payload.putString(
+                "service",
+                "ECHO"
+        );
+
+        packet.payload.putString(
+                "type",
+                "REQUEST"
+        );
+
+        packet.payload.putInt(
+                "sequence",
+                sequence
+        );
+
+        packet.payload.putByteArray(
+                "data",
+                data
+        );
+
+        packet.payload.putBoolean(
+                "w111_raw_fragment_probe",
+                true
+        );
+
+        transmitPacket(
+                packet
+        );
+
+        setChanged();
+
+        return true;
+    }
+
+    private int wifiRawIpv4EgressMtu(
+            OSINetworkPacket packet
+    ) {
+        if (packet != null
+                && packet.payload.getBoolean(
+                "router_egress_bypass"
+        )) {
+            String interfaceName =
+                    packet.payload.getString(
+                            "router_egress_interface"
+                    );
+
+            if (!interfaceName.isBlank()) {
+                return wifiRouterInterfaceMtu(
+                        interfaceName
+                );
+            }
+        }
+
+        return 1500;
+    }
+
+    private int nextWifiRawIpv4Identification() {
+        wifiRawIpv4Identification =
+                (
+                        wifiRawIpv4Identification
+                                + 1
+                )
+                        & 0xFFFF;
+
+        if (wifiRawIpv4Identification == 0) {
+            wifiRawIpv4Identification =
+                    1;
+        }
+
+        return wifiRawIpv4Identification;
+    }
+
     public void requestDynamicIp() {
         wifiDhcpTransactionId =
                 (
@@ -4379,6 +4595,114 @@ public abstract class NetworkDeviceBlockEntity
                 packet
         )) {
             return;
+        }
+
+        if (wifiTcpExecutionMode
+                == ExecutionMode.CONFORMANCE
+                && packet != null
+                && "UDP".equalsIgnoreCase(
+                packet.applicationProtocol
+        )) {
+            try {
+                int mtu =
+                        wifiRawIpv4EgressMtu(
+                                packet
+                        );
+
+                java.util.List<CompoundTag> fragments =
+                        RawIpv4LiveCarrierCodec.encodeUdpFragments(
+                                packet,
+                                mtu,
+                                nextWifiRawIpv4Identification()
+                        );
+
+                for (CompoundTag body
+                        : fragments) {
+                    wifiMac.sendData(
+                            macAddress,
+                            packet.targetMac,
+                            body,
+                            WifiAccessCategory.BEST_EFFORT,
+                            wifiSender()
+                    );
+                }
+
+                wifiIpApplication.setStatus(
+                        "RAW IPv4/UDP sent | fragments="
+                                + fragments.size()
+                                + " mtu="
+                                + mtu
+                );
+
+                return;
+            } catch (RawIpv4Fragmenter.FragmentationNeededException exception) {
+                wifiIpApplication.setStatus(
+                        "RAW IPv4 DF exceeds MTU "
+                                + exception.nextHopMtu()
+                );
+
+                return;
+            }
+        }
+
+        if (wifiTcpExecutionMode
+                == ExecutionMode.CONFORMANCE
+                && packet != null
+                && "ICMP".equalsIgnoreCase(
+                packet.applicationProtocol
+        )
+                && (
+                "ECHO_REQUEST".equalsIgnoreCase(
+                        packet.payload.getString(
+                                "type"
+                        )
+                )
+                        || "ECHO_REPLY".equalsIgnoreCase(
+                        packet.payload.getString(
+                                "type"
+                        )
+                )
+        )) {
+            try {
+                int mtu =
+                        wifiRawIpv4EgressMtu(
+                                packet
+                        );
+
+                java.util.List<CompoundTag> fragments =
+                        RawIpv4LiveCarrierCodec.encodeIcmpEchoFragments(
+                                packet,
+                                mtu,
+                                nextWifiRawIpv4Identification()
+                        );
+
+                for (CompoundTag body
+                        : fragments) {
+                    wifiMac.sendData(
+                            macAddress,
+                            packet.targetMac,
+                            body,
+                            WifiAccessCategory.BEST_EFFORT,
+                            wifiSender()
+                    );
+                }
+
+                wifiIpApplication.setStatus(
+                        "RAW IPv4/ICMP sent | fragments="
+                                + fragments.size()
+                                + " mtu="
+                                + mtu
+                );
+
+                return;
+            } catch (RawIpv4Fragmenter.FragmentationNeededException exception) {
+                wifiIpApplication.setStatus(
+                        "RAW IPv4 DF exceeds MTU "
+                                + exception.nextHopMtu()
+                );
+
+                return;
+            }
         }
 
         if (wifiTcpExecutionMode
@@ -6330,6 +6654,16 @@ public abstract class NetworkDeviceBlockEntity
             return false;
         }
 
+        if (ArpRawLiveCarrierCodec.isRawArpCarrier(
+                body
+        )) {
+            wifiIpApplication.setStatus(
+                    "ARP_ROBUST_PHY MCS0"
+            );
+
+            return true;
+        }
+
         if (body.contains(
                 "osi_packet"
         )) {
@@ -6339,6 +6673,16 @@ public abstract class NetworkDeviceBlockEntity
                                     "osi_packet"
                             )
                     );
+
+            if ("ARP".equalsIgnoreCase(
+                    controlPacket.applicationProtocol
+            )) {
+                wifiIpApplication.setStatus(
+                        "ARP_ROBUST_PHY MCS0"
+                );
+
+                return true;
+            }
 
             if (controlPacket.payload.getBoolean(
                     "pmtu_probe"
