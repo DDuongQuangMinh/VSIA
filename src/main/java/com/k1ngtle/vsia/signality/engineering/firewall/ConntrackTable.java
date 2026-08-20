@@ -53,6 +53,61 @@ public final class ConntrackTable {
         return new Lookup(ConntrackState.NEW, null, false);
     }
 
+    public Lookup classifyInboundNat(
+            FirewallPacketView packet,
+            Nat44Mapping mapping,
+            long nowMillis
+    ) {
+        if (packet == null) {
+            throw new IllegalArgumentException("packet");
+        }
+
+        if (mapping == null) {
+            throw new IllegalArgumentException("mapping");
+        }
+
+        FirewallPacketView translated =
+                new FirewallPacketView(
+                        packet.family(),
+                        packet.protocol(),
+                        packet.sourceIp(),
+                        packet.sourcePort(),
+                        mapping.insideLocalIp(),
+                        mapping.insideLocalPort(),
+                        packet.ingressInterface(),
+                        packet.egressInterface(),
+                        packet.tcpSyn(),
+                        packet.tcpAck(),
+                        packet.tcpFin(),
+                        packet.tcpRst(),
+                        packet.icmpError(),
+                        packet.relatedFlow(),
+                        packet.fragmentIdentification(),
+                        packet.fragmentOffset(),
+                        packet.moreFragments()
+                );
+
+        Lookup lookup =
+                classify(
+                        translated,
+                        nowMillis
+                );
+
+        if (lookup.entry() == null) {
+            return new Lookup(
+                    ConntrackState.INVALID,
+                    null,
+                    true
+            );
+        }
+
+        return new Lookup(
+                lookup.state(),
+                lookup.entry(),
+                true
+        );
+    }
+
     public ConntrackEntry create(
             FirewallPacketView packet,
             long nowMillis

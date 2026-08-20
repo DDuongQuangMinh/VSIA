@@ -134,12 +134,19 @@ public final class StatefulFirewallEngine {
                         null,
                         false
                 )
-                        : conntrack.classify(packet, nowMillis);
+                        : inboundNat != null
+                        ? conntrack.classifyInboundNat(
+                        packet,
+                        inboundNat,
+                        nowMillis
+                )
+                        : conntrack.classify(
+                        packet,
+                        nowMillis
+                );
 
         ConntrackState state =
-                inboundNat != null
-                        ? ConntrackState.ESTABLISHED
-                        : lookup.state();
+                lookup.state();
 
         FirewallRule matchedRule = null;
 
@@ -174,8 +181,13 @@ public final class StatefulFirewallEngine {
         }
 
         if (state == ConntrackState.NEW
+                && lookup.entry() == null
+                && association == null
                 && !packet.nonInitialFragment()) {
-            conntrack.create(packet, nowMillis);
+            conntrack.create(
+                    packet,
+                    nowMillis
+            );
         }
 
         Nat44Mapping outboundNat = null;

@@ -299,7 +299,155 @@ public final class WifiW1162TestCommand {
                         && noRoute.w1161LastPipelineStatus()
                         .startsWith("DROP_NO_ROUTE"));
 
-        int total = 35;
+        FirewallOsSimulator repeatUdp =
+                configuredSimulator();
+
+        OSINetworkPacket udpFirst =
+                W1162FlowFactory.outboundUdp(
+                        lanHost,
+                        "203.0.113.20",
+                        54000,
+                        443,
+                        "",
+                        300
+                );
+
+        OSINetworkPacket udpFirstResult =
+                repeatUdp.w1161FilterAndRoutePacket(
+                        udpFirst,
+                        "GigabitEthernet1/1"
+                );
+
+        passed += check(source, "w1162-udp-repeat-first",
+                udpFirstResult != null);
+
+        Nat44Mapping udpRepeatMapping =
+                repeatUdp.w1162FindNatMapping(
+                        "UDP",
+                        "192.168.10.20",
+                        54000,
+                        "203.0.113.20",
+                        443
+                );
+
+        int udpRepeatPat =
+                udpRepeatMapping == null
+                        ? -1
+                        : udpRepeatMapping.insideGlobalPort();
+
+        OSINetworkPacket udpSecond =
+                W1162FlowFactory.outboundUdp(
+                        lanHost,
+                        "203.0.113.20",
+                        54000,
+                        443,
+                        "",
+                        301
+                );
+
+        OSINetworkPacket udpSecondResult =
+                repeatUdp.w1161FilterAndRoutePacket(
+                        udpSecond,
+                        "GigabitEthernet1/1"
+                );
+
+        passed += check(source, "w1162-udp-repeat-second",
+                udpSecondResult != null);
+        passed += check(source, "w1162-udp-repeat-one-conntrack",
+                repeatUdp.w1161ConntrackCount() == 1);
+        passed += check(source, "w1162-udp-repeat-one-nat",
+                repeatUdp.w1161NatCount() == 1);
+
+        Nat44Mapping udpRepeatMappingAfter =
+                repeatUdp.w1162FindNatMapping(
+                        "UDP",
+                        "192.168.10.20",
+                        54000,
+                        "203.0.113.20",
+                        443
+                );
+
+        passed += check(source, "w1162-udp-repeat-pat-reused",
+                udpRepeatMappingAfter != null
+                        && udpRepeatMappingAfter.insideGlobalPort()
+                        == udpRepeatPat);
+
+        FirewallOsSimulator repeatTcp =
+                configuredSimulator();
+
+        OSINetworkPacket repeatSyn =
+                W1162FlowFactory.outboundTcpSyn(
+                        lanHost,
+                        "203.0.113.20",
+                        55000,
+                        443,
+                        "",
+                        400
+                );
+
+        OSINetworkPacket repeatSynResult =
+                repeatTcp.w1161FilterAndRoutePacket(
+                        repeatSyn,
+                        "GigabitEthernet1/1"
+                );
+
+        passed += check(source, "w1162-tcp-repeat-handshake-created",
+                repeatSynResult != null);
+
+        Nat44Mapping repeatTcpMapping =
+                repeatTcp.w1162FindNatMapping(
+                        "TCP",
+                        "192.168.10.20",
+                        55000,
+                        "203.0.113.20",
+                        443
+                );
+
+        OSINetworkPacket repeatSynAck =
+                repeatTcpMapping == null
+                        ? null
+                        : W1162FlowFactory.reply(
+                        repeatTcpMapping,
+                        401
+                );
+
+        OSINetworkPacket repeatReturn =
+                repeatSynAck == null
+                        ? null
+                        : repeatTcp.w1161FilterAndRoutePacket(
+                        repeatSynAck,
+                        "GigabitEthernet1/2"
+                );
+
+        passed += check(source, "w1162-tcp-repeat-return-established",
+                repeatReturn != null
+                        && repeatTcp.w1161LastPipelineStatus()
+                        .contains("ESTABLISHED"));
+
+        OSINetworkPacket retransmittedSyn =
+                W1162FlowFactory.outboundTcpSyn(
+                        lanHost,
+                        "203.0.113.20",
+                        55000,
+                        443,
+                        "",
+                        402
+                );
+
+        OSINetworkPacket retransmittedResult =
+                repeatTcp.w1161FilterAndRoutePacket(
+                        retransmittedSyn,
+                        "GigabitEthernet1/1"
+                );
+
+        passed += check(source, "w1162-tcp-retransmit-forward",
+                retransmittedResult != null);
+        passed += check(source, "w1162-tcp-retransmit-one-conntrack",
+                repeatTcp.w1161ConntrackCount() == 1);
+        passed += check(source, "w1162-tcp-retransmit-one-nat",
+                repeatTcp.w1161NatCount() == 1);
+
+        int total = 45;
         int failed = total - passed;
         int p = passed;
         int f = failed;
