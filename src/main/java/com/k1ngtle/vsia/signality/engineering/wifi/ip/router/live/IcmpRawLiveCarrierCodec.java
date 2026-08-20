@@ -281,16 +281,109 @@ public final class IcmpRawLiveCarrierCodec {
                 code
         );
 
-        logical.payload.putByteArray(
-                "icmp_quote",
+        byte[] quote =
                 java.util.Arrays.copyOfRange(
                         icmp,
                         8,
                         icmp.length
-                )
+                );
+
+        logical.payload.putByteArray(
+                "icmp_quote",
+                quote
+        );
+
+        populateQuotedIpv4Metadata(
+                logical,
+                quote
         );
 
         return logical;
+    }
+
+    private static void populateQuotedIpv4Metadata(
+            OSINetworkPacket logical,
+            byte[] quote
+    ) {
+        if (logical == null
+                || quote == null
+                || quote.length < 20) {
+            return;
+        }
+
+        try {
+            RawIpv4Packet quoted =
+                    RawIpv4Decoder.decode(
+                            quote
+                    );
+
+            logical.payload.putString(
+                    "quoted_source_ip",
+                    quoted.sourceAddress()
+            );
+
+            logical.payload.putString(
+                    "quoted_target_ip",
+                    quoted.destinationAddress()
+            );
+
+            logical.payload.putInt(
+                    "quoted_protocol",
+                    quoted.protocol()
+            );
+
+            logical.payload.putInt(
+                    "quoted_ttl",
+                    quoted.ttl()
+            );
+
+            logical.payload.putInt(
+                    "quoted_identification",
+                    quoted.identification()
+            );
+
+            byte[] quotedPayload =
+                    quoted.payload();
+
+            if (quotedPayload.length >= 4) {
+                int sourcePort =
+                        (
+                                (
+                                        quotedPayload[0]
+                                                & 0xFF
+                                )
+                                        << 8
+                        )
+                                | (
+                                quotedPayload[1]
+                                        & 0xFF
+                        );
+
+                int targetPort =
+                        (
+                                (
+                                        quotedPayload[2]
+                                                & 0xFF
+                                )
+                                        << 8
+                        )
+                                | (
+                                quotedPayload[3]
+                                        & 0xFF
+                        );
+
+                logical.payload.putInt(
+                        "quoted_source_port",
+                        sourcePort
+                );
+
+                logical.payload.putInt(
+                        "quoted_target_port",
+                        targetPort
+                );
+            }
+        } catch (IllegalArgumentException ignored) {
+        }
     }
 
     private static byte[] buildQuote(

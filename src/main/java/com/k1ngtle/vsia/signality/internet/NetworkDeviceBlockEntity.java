@@ -1579,6 +1579,85 @@ public abstract class NetworkDeviceBlockEntity
                         : wifiDefaultGatewayIp
         );
     }
+    public long wifiNetworkNowMicros() {
+        return level instanceof ServerLevel serverLevel
+                ? NetworkTimebase.nowMicros(
+                serverLevel
+        )
+                : 0L;
+    }
+
+    public boolean sendWifiTracerouteProbe(
+            String targetIp,
+            int ttl,
+            long traceId,
+            int attempt
+    ) {
+        restorePersistedWifiHostRouting();
+
+        if (!wifiIpReady()
+                || !Ipv4Prefix.isUsableUnicast(
+                targetIp
+        )
+                || ttl < 1
+                || ttl > 255
+                || attempt < 1) {
+            return false;
+        }
+
+        long nowMicros =
+                wifiNetworkNowMicros();
+
+        OSINetworkPacket packet =
+                wifiIpApplication.createIcmpEcho(
+                        macAddress,
+                        ipAddress,
+                        "FF:FF:FF:FF:FF:FF",
+                        targetIp,
+                        32,
+                        nowMicros
+                );
+
+        packet.ttl =
+                ttl;
+
+        packet.payload.putBoolean(
+                "traceroute_probe",
+                true
+        );
+
+        packet.payload.putLong(
+                "traceroute_id",
+                traceId
+        );
+
+        packet.payload.putInt(
+                "traceroute_ttl",
+                ttl
+        );
+
+        packet.payload.putInt(
+                "traceroute_attempt",
+                attempt
+        );
+
+        wifiIpApplication.setStatus(
+                "Traceroute "
+                        + targetIp
+                        + " ttl="
+                        + ttl
+                        + " attempt="
+                        + attempt
+        );
+
+        transmitPacket(
+                packet
+        );
+
+        setChanged();
+
+        return true;
+    }
     public boolean sendWifiTtlProbe(
             String targetIp,
             int ttl
@@ -3689,6 +3768,18 @@ public abstract class NetworkDeviceBlockEntity
     protected void processLayer4(
             OSINetworkPacket packet
     ) {
+        if ("ICMP".equalsIgnoreCase(
+                packet.applicationProtocol
+        )
+                && packet.isResponse) {
+            com.k1ngtle.vsia.signality.debug.WifiTracerouteManager
+                    .onIcmpResponse(
+                            this,
+                            packet,
+                            wifiNetworkNowMicros()
+                    );
+        }
+
         if ("ICMP".equalsIgnoreCase(
                 packet.applicationProtocol
         )

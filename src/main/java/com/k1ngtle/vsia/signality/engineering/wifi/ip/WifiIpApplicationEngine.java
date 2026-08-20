@@ -762,6 +762,36 @@ public final class WifiIpApplicationEngine {
                     )
             );
 
+            if (packet.payload.getBoolean(
+                    "traceroute_probe"
+            )) {
+                response.payload.putBoolean(
+                        "traceroute_probe",
+                        true
+                );
+
+                response.payload.putLong(
+                        "traceroute_id",
+                        packet.payload.getLong(
+                                "traceroute_id"
+                        )
+                );
+
+                response.payload.putInt(
+                        "traceroute_ttl",
+                        packet.payload.getInt(
+                                "traceroute_ttl"
+                        )
+                );
+
+                response.payload.putInt(
+                        "traceroute_attempt",
+                        packet.payload.getInt(
+                                "traceroute_attempt"
+                        )
+                );
+            }
+
             transmitter.accept(
                     response
             );
@@ -894,6 +924,36 @@ public final class WifiIpApplicationEngine {
                     )
             );
 
+            if (packet.payload.getBoolean(
+                    "traceroute_probe"
+            )) {
+                response.payload.putBoolean(
+                        "traceroute_probe",
+                        true
+                );
+
+                response.payload.putLong(
+                        "traceroute_id",
+                        packet.payload.getLong(
+                                "traceroute_id"
+                        )
+                );
+
+                response.payload.putInt(
+                        "traceroute_ttl",
+                        packet.payload.getInt(
+                                "traceroute_ttl"
+                        )
+                );
+
+                response.payload.putInt(
+                        "traceroute_attempt",
+                        packet.payload.getInt(
+                                "traceroute_attempt"
+                        )
+                );
+            }
+
             transmitter.accept(
                     response
             );
@@ -1017,6 +1077,36 @@ public final class WifiIpApplicationEngine {
                             "w1_request_id"
                     )
             );
+
+            if (packet.payload.getBoolean(
+                    "traceroute_probe"
+            )) {
+                response.payload.putBoolean(
+                        "traceroute_probe",
+                        true
+                );
+
+                response.payload.putLong(
+                        "traceroute_id",
+                        packet.payload.getLong(
+                                "traceroute_id"
+                        )
+                );
+
+                response.payload.putInt(
+                        "traceroute_ttl",
+                        packet.payload.getInt(
+                                "traceroute_ttl"
+                        )
+                );
+
+                response.payload.putInt(
+                        "traceroute_attempt",
+                        packet.payload.getInt(
+                                "traceroute_attempt"
+                        )
+                );
+            }
 
             transmitter.accept(
                     response
