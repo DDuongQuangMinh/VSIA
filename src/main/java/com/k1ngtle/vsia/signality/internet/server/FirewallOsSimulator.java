@@ -5,6 +5,7 @@ import com.k1ngtle.vsia.signality.engineering.firewall.FirewallDecision;
 import com.k1ngtle.vsia.signality.engineering.firewall.FirewallPacketView;
 import com.k1ngtle.vsia.signality.engineering.firewall.FirewallW116Adapter;
 import com.k1ngtle.vsia.signality.engineering.firewall.StatefulFirewallEngine;
+import com.k1ngtle.vsia.signality.engineering.firewall.Nat44Mapping;
 import com.k1ngtle.vsia.signality.engineering.firewall.ConntrackState;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -447,6 +448,110 @@ public class FirewallOsSimulator {
     public int w1161NatCount() {
         return w116Firewall.nat44().size();
     }
+    public Nat44Mapping w1161LatestNatMapping() {
+        List<Nat44Mapping> mappings =
+                w116Firewall.nat44().mappings();
+
+        if (mappings.isEmpty()) {
+            return null;
+        }
+
+        return mappings.get(
+                mappings.size() - 1
+        );
+    }
+
+    public String w1161LatestNatMappingSummary() {
+        Nat44Mapping mapping =
+                w1161LatestNatMapping();
+
+        if (mapping == null) {
+            return "NONE";
+        }
+
+        return mapping.protocol()
+                + " "
+                + mapping.insideLocalIp()
+                + ":"
+                + mapping.insideLocalPort()
+                + " <-> "
+                + mapping.insideGlobalIp()
+                + ":"
+                + mapping.insideGlobalPort()
+                + " <-> "
+                + mapping.outsideIp()
+                + ":"
+                + mapping.outsidePort();
+    }
+
+    public OSINetworkPacket w1161BuildLatestNatReplyProbe() {
+        Nat44Mapping mapping =
+                w1161LatestNatMapping();
+
+        if (mapping == null) {
+            return null;
+        }
+
+        OSINetworkPacket packet =
+                new OSINetworkPacket();
+
+        packet.sourceMac =
+                "02:16:01:00:00:30";
+        packet.targetMac =
+                "FF:FF:FF:FF:FF:FF";
+
+        packet.sourceIp =
+                mapping.outsideIp();
+        packet.targetIp =
+                mapping.insideGlobalIp();
+
+        packet.sourcePort =
+                mapping.outsidePort();
+        packet.targetPort =
+                mapping.insideGlobalPort();
+
+        packet.ttl = 64;
+        packet.ipPacketLength = 64;
+        packet.dontFragment = false;
+        packet.isResponse = true;
+
+        if ("TCP".equalsIgnoreCase(
+                mapping.protocol()
+        )) {
+            packet.ipProtocol = 6;
+            packet.applicationProtocol = "TCP";
+        } else if ("UDP".equalsIgnoreCase(
+                mapping.protocol()
+        )) {
+            packet.ipProtocol = 17;
+            packet.applicationProtocol = "UDP";
+        } else {
+            packet.ipProtocol = 0;
+            packet.applicationProtocol =
+                    mapping.protocol();
+        }
+
+        packet.sessionId =
+                "W1.16.1-STATEFUL-NAT-RETURN";
+
+        CompoundTag payload =
+                new CompoundTag();
+
+        payload.putString(
+                "kind",
+                "W1.16.1_STATEFUL_NAT_RETURN"
+        );
+
+        payload.putString(
+                "mapping",
+                w1161LatestNatMappingSummary()
+        );
+
+        packet.payload = payload;
+
+        return packet;
+    }
+
 
     public boolean w1161NatConfigured() {
         return w116Nat44Configured;
