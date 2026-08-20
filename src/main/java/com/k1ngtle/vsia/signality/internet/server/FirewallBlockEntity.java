@@ -2,6 +2,10 @@ package com.k1ngtle.vsia.signality.internet.server;
 
 import com.k1ngtle.vsia.signality.SignalityBlocks;
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
+import com.k1ngtle.vsia.signality.engineering.firewall.w118.W118DnsServer;
+import com.k1ngtle.vsia.signality.engineering.firewall.w118.W118DnsMessage;
+import com.k1ngtle.vsia.signality.engineering.firewall.w118.W118DhcpServer;
+import com.k1ngtle.vsia.signality.engineering.firewall.w118.W118DhcpMessage;
 import com.k1ngtle.vsia.signality.engineering.firewall.w117.W117InterfaceNeighborEngine;
 import com.k1ngtle.vsia.signality.engineering.firewall.w117.W117ArpFrame;
 import net.minecraft.core.BlockPos;
@@ -68,6 +72,18 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
     private boolean w117DuplicateInside = false;
     private boolean w117DuplicateOutside = false;
     private String w117LastNeighborEvent = "READY";
+
+    private final W118DhcpServer w118DhcpServer =
+            new W118DhcpServer();
+
+    private final W118DnsServer w118DnsServer =
+            new W118DnsServer();
+
+    private long w118DhcpRx = 0L;
+    private long w118DhcpTx = 0L;
+    private long w118DnsRx = 0L;
+    private long w118DnsTx = 0L;
+    private String w118LastServiceEvent = "READY";
 
 
     // Rules
@@ -139,6 +155,26 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
             w1161LastTransit =
                     "DROP UNKNOWN_INGRESS pos="
                             + ingressPos.toShortString();
+            setChanged();
+            return;
+        }
+
+        if (W118DhcpMessage.isDhcp(packet)) {
+            w118HandleDhcp(
+                    packet,
+                    ingressPort
+            );
+            setChanged();
+            return;
+        }
+
+        if (W118DnsMessage.isDns(packet)
+                && w117IpForInterface(ingressPort)
+                .equals(packet.targetIp)) {
+            w118HandleDns(
+                    packet,
+                    ingressPort
+            );
             setChanged();
             return;
         }
@@ -307,13 +343,18 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
             w117SendLayer2Frame(request, egressPort);
         }
 
-        w1161LastTransit =
-                "ARP_PENDING egress="
-                        + egressPort
-                        + " nextHop="
-                        + nextHopIp
-                        + " queued="
-                        + neighbors.pendingCount();
+        int remainingPending =
+                neighbors.pendingCount();
+
+        if (remainingPending > 0) {
+            w1161LastTransit =
+                    "ARP_PENDING egress="
+                            + egressPort
+                            + " nextHop="
+                            + nextHopIp
+                            + " queued="
+                            + remainingPending;
+        }
 
         setChanged();
     }
@@ -669,6 +710,166 @@ public class FirewallBlockEntity extends BlockEntity implements GeoBlockEntity, 
                 + w117DuplicateOutside
                 + " | last="
                 + w117LastNeighborEvent;
+    }
+
+    private void w118HandleDhcp(
+            OSINetworkPacket packet,
+            String ingressPort
+    ) {
+        w118DhcpRx++;
+
+        if (!"GigabitEthernet1/1".equals(
+                ingressPort
+        )) {
+            w118LastServiceEvent =
+                    "DHCP_DROP_NON_INSIDE "
+                            + ingressPort;
+            return;
+        }
+
+        FirewallOsSimulator.PortConfig inside =
+                osSimulators[0]
+                        .portConfigs
+                        .get(
+                                "GigabitEthernet1/1"
+                        );
+
+        if (inside == null
+                || inside.ipAddress == null
+                || inside.subnetMask == null) {
+            w118LastServiceEvent =
+                    "DHCP_NO_INSIDE_CONFIG";
+            return;
+        }
+
+        w118DhcpServer.configure(
+                inside.ipAddress,
+                inside.subnetMask,
+                inside.ipAddress,
+                inside.ipAddress,
+                "192.168.10.100",
+                "192.168.10.199",
+                600L
+        );
+
+        OSINetworkPacket response =
+                w118DhcpServer.handle(
+                        packet,
+                        w117MacForInterface(
+                                ingressPort
+                        ),
+                        System.currentTimeMillis()
+                );
+
+        if (response == null) {
+            w118LastServiceEvent =
+                    "DHCP_NO_RESPONSE type="
+                            + W118DhcpMessage.type(packet);
+            return;
+        }
+
+        w118DhcpTx++;
+
+        w117SendLayer2Frame(
+                response,
+                ingressPort
+        );
+
+        w118LastServiceEvent =
+                "DHCP_"
+                        + W118DhcpMessage.type(response)
+                        + " xid="
+                        + W118DhcpMessage.xid(response)
+                        + " yiaddr="
+                        + W118DhcpMessage.yourIp(response);
+    }
+
+    private void w118HandleDns(
+            OSINetworkPacket packet,
+            String ingressPort
+    ) {
+        if (W118DnsMessage.isResponse(packet)) {
+            return;
+        }
+
+        w118DnsRx++;
+
+        String serverIp =
+                w117IpForInterface(
+                        ingressPort
+                );
+
+        OSINetworkPacket response =
+                w118DnsServer.handle(
+                        packet,
+                        serverIp,
+                        System.currentTimeMillis()
+                );
+
+        if (response == null) {
+            w118LastServiceEvent =
+                    "DNS_NO_RESPONSE";
+            return;
+        }
+
+        response.sourceMac =
+                w117MacForInterface(
+                        ingressPort
+                );
+
+        response.targetMac =
+                packet.sourceMac;
+
+        w118DnsTx++;
+
+        w117SendLayer2Frame(
+                response,
+                ingressPort
+        );
+
+        w118LastServiceEvent =
+                "DNS_RESPONSE "
+                        + W118DnsMessage.queryName(packet)
+                        + " rcode="
+                        + W118DnsMessage.rcode(response)
+                        + " answer="
+                        + W118DnsMessage.answer(response);
+    }
+
+    public void w118ClearServices() {
+        w118DhcpServer.clearDynamic();
+        w118DnsServer.clearCache();
+        w118DhcpRx = 0L;
+        w118DhcpTx = 0L;
+        w118DnsRx = 0L;
+        w118DnsTx = 0L;
+        w118LastServiceEvent = "READY";
+        setChanged();
+    }
+
+    public W118DhcpServer w118DhcpServer() {
+        return w118DhcpServer;
+    }
+
+    public String w118ServiceStatus() {
+        long now =
+                System.currentTimeMillis();
+
+        return "W1.18 SERVICES"
+                + " | "
+                + w118DhcpServer.status(now)
+                + " | "
+                + w118DnsServer.status(now)
+                + " | dhcpRx="
+                + w118DhcpRx
+                + " dhcpTx="
+                + w118DhcpTx
+                + " dnsRx="
+                + w118DnsRx
+                + " dnsTx="
+                + w118DnsTx
+                + " last="
+                + w118LastServiceEvent;
     }
 
     @Override

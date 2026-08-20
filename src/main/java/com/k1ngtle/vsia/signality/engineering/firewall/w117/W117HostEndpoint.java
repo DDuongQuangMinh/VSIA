@@ -1,6 +1,10 @@
 package com.k1ngtle.vsia.signality.engineering.firewall.w117;
 
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
+import com.k1ngtle.vsia.signality.engineering.firewall.w118.W118DnsMessage;
+import com.k1ngtle.vsia.signality.engineering.firewall.w118.W118DnsCache;
+import com.k1ngtle.vsia.signality.engineering.firewall.w118.W118DhcpMessage;
+import com.k1ngtle.vsia.signality.engineering.firewall.w118.W118DhcpClient;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
@@ -17,10 +21,25 @@ public final class W117HostEndpoint {
     private static final long ARP_RETRY_MILLIS = 1_000L;
 
     private final String name;
-    private final String ipv4;
-    private final String subnetMask;
-    private final String defaultGateway;
+    private String ipv4;
+    private String subnetMask;
+    private String defaultGateway;
     private final String macAddress;
+
+    private String w118DnsServer = "0.0.0.0";
+    private boolean w118DhcpEnabled = false;
+
+    private final W118DhcpClient w118DhcpClient =
+            new W118DhcpClient();
+
+    private final W118DnsCache w118DnsCache =
+            new W118DnsCache();
+
+    private int w118DnsId = 1;
+    private long w118DhcpRx = 0L;
+    private long w118DnsQueriesTx = 0L;
+    private long w118DnsResponsesRx = 0L;
+    private long w118DnsCacheHits = 0L;
 
     private final W117NeighborCache neighbors =
             new W117NeighborCache(60_000L);
@@ -228,6 +247,45 @@ public final class W117HostEndpoint {
             return List.of();
         }
 
+        if (W118DhcpMessage.isDhcp(packet)) {
+            w118DhcpRx++;
+
+            List<OSINetworkPacket> output =
+                    w118DhcpClient.receive(
+                            packet,
+                            macAddress,
+                            nowMillis
+                    );
+
+            w118SyncDhcpConfiguration();
+
+            return output;
+        }
+
+        if (W118DnsMessage.isDns(packet)
+                && W118DnsMessage.isResponse(packet)
+                && ipv4.equals(packet.targetIp)) {
+            w118DnsResponsesRx++;
+
+            w118DnsCache.put(
+                    W118DnsMessage.queryName(packet),
+                    W118DnsMessage.answer(packet),
+                    W118DnsMessage.rcode(packet),
+                    W118DnsMessage.ttlSeconds(packet),
+                    nowMillis
+            );
+
+            lastEvent =
+                    "DNS_RESPONSE "
+                            + W118DnsMessage.queryName(packet)
+                            + " rcode="
+                            + W118DnsMessage.rcode(packet)
+                            + " answer="
+                            + W118DnsMessage.answer(packet);
+
+            return List.of();
+        }
+
         if (W117ArpFrame.isArp(packet)) {
             return receiveArp(
                     packet,
@@ -401,9 +459,21 @@ public final class W117HostEndpoint {
             long nowMillis
     ) {
         neighbors.expire(nowMillis);
+        w118DnsCache.expire(nowMillis);
 
         List<OSINetworkPacket> output =
                 new ArrayList<>();
+
+        if (w118DhcpEnabled) {
+            output.addAll(
+                    w118DhcpClient.tick(
+                            macAddress,
+                            nowMillis
+                    )
+            );
+
+            w118SyncDhcpConfiguration();
+        }
 
         List<String> failed =
                 new ArrayList<>();
@@ -473,6 +543,15 @@ public final class W117HostEndpoint {
     public void clearDynamicState() {
         neighbors.clear();
         pending.clear();
+        w118DnsCache.clear();
+        w118DnsQueriesTx = 0L;
+        w118DnsResponsesRx = 0L;
+        w118DnsCacheHits = 0L;
+
+        if (w118DhcpEnabled) {
+            w118DhcpClient.clear();
+            w118ClearNetworkConfiguration();
+        }
         deliveredIpv4 = 0L;
         arpRequestsTx = 0L;
         arpRepliesTx = 0L;
@@ -481,6 +560,171 @@ public final class W117HostEndpoint {
         pendingDrops = 0L;
         duplicateIpv4 = false;
         lastEvent = "READY";
+    }
+
+    public void w118EnableDhcp() {
+        w118DhcpEnabled = true;
+        w118DhcpClient.clear();
+        w118ClearNetworkConfiguration();
+        lastEvent = "DHCP_ENABLED";
+    }
+
+    public boolean w118DhcpEnabled() {
+        return w118DhcpEnabled;
+    }
+
+    public boolean w118DhcpBound() {
+        return w118DhcpClient.bound()
+                && w118DhcpClient.configuration() != null;
+    }
+
+    public W118DhcpClient.Configuration w118DhcpConfiguration() {
+        return w118DhcpClient.configuration();
+    }
+
+    public List<OSINetworkPacket> w118StartDhcp(
+            long nowMillis
+    ) {
+        w118DhcpEnabled = true;
+        w118ClearNetworkConfiguration();
+
+        return List.of(
+                w118DhcpClient.start(
+                        macAddress,
+                        nowMillis
+                )
+        );
+    }
+
+    public List<OSINetworkPacket> w118DnsQuery(
+            String name,
+            long nowMillis
+    ) {
+        var cached =
+                w118DnsCache.lookup(
+                        name,
+                        nowMillis
+                );
+
+        if (cached.isPresent()) {
+            w118DnsCacheHits++;
+            lastEvent =
+                    "DNS_CACHE_HIT "
+                            + name
+                            + " answer="
+                            + cached.get().answer();
+            return List.of();
+        }
+
+        if ("0.0.0.0".equals(ipv4)
+                || "0.0.0.0".equals(w118DnsServer)) {
+            lastEvent = "DNS_NO_CONFIGURATION";
+            return List.of();
+        }
+
+        OSINetworkPacket query =
+                W118DnsMessage.query(
+                        ipv4,
+                        w118DnsServer,
+                        53000 + (w118DnsId % 1000),
+                        w118DnsId++,
+                        name
+                );
+
+        w118DnsQueriesTx++;
+
+        return sendIpv4(
+                query,
+                nowMillis
+        );
+    }
+
+    public String w118DnsCachedAnswer(
+            String name,
+            long nowMillis
+    ) {
+        return w118DnsCache.lookup(
+                name,
+                nowMillis
+        )
+                .map(W118DnsCache.Entry::answer)
+                .orElse(null);
+    }
+
+    public int w118DnsRcode(
+            String name,
+            long nowMillis
+    ) {
+        return w118DnsCache.lookup(
+                name,
+                nowMillis
+        )
+                .map(W118DnsCache.Entry::rcode)
+                .orElse(-1);
+    }
+
+    public String w118DnsServer() {
+        return w118DnsServer;
+    }
+
+    public String w118BootstrapStatus(
+            long nowMillis
+    ) {
+        return "W1.18 "
+                + name
+                + " "
+                + w118DhcpClient.status()
+                + " mask="
+                + subnetMask
+                + " gw="
+                + defaultGateway
+                + " dns="
+                + w118DnsServer
+                + " dnsCache="
+                + w118DnsCache.size(nowMillis)
+                + " dhcpRx="
+                + w118DhcpRx
+                + " dnsTx="
+                + w118DnsQueriesTx
+                + " dnsRx="
+                + w118DnsResponsesRx
+                + " dnsCacheHits="
+                + w118DnsCacheHits;
+    }
+
+    private void w118SyncDhcpConfiguration() {
+        W118DhcpClient.Configuration config =
+                w118DhcpClient.configuration();
+
+        if (config != null) {
+            ipv4 = config.ipv4();
+            subnetMask = config.subnetMask();
+            defaultGateway = config.gateway();
+            w118DnsServer = config.dnsServer();
+
+            lastEvent =
+                    "DHCP_BOUND "
+                            + ipv4
+                            + " gw="
+                            + defaultGateway
+                            + " dns="
+                            + w118DnsServer;
+
+            return;
+        }
+
+        if (w118DhcpEnabled
+                && w118DhcpClient.state()
+                == W118DhcpClient.State.INIT) {
+            w118ClearNetworkConfiguration();
+        }
+    }
+
+    private void w118ClearNetworkConfiguration() {
+        ipv4 = "0.0.0.0";
+        subnetMask = "0.0.0.0";
+        defaultGateway = "0.0.0.0";
+        w118DnsServer = "0.0.0.0";
     }
 
     public String status(long nowMillis) {
