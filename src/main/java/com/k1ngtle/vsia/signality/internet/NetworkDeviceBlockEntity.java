@@ -87,6 +87,8 @@ import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterPersistenceCo
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.live.IcmpRawLiveCarrierCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4LiveCarrierCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4ReassemblyTable;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4ReassemblyKey;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.live.RawIpv4ReassemblyTimeoutManager;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4Fragmenter;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4TransitForwarder;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4TransitPending;
@@ -3609,6 +3611,16 @@ public abstract class NetworkDeviceBlockEntity
 
                 switch (result.status()) {
                     case WAITING -> {
+                        if (level instanceof ServerLevel serverLevel
+                                && result.key() != null) {
+                            RawIpv4ReassemblyTimeoutManager.schedule(
+                                    serverLevel,
+                                    worldPosition,
+                                    result.key(),
+                                    wifiRawIpv4Reassembly.timeoutMicros()
+                            );
+                        }
+
                         wifiIpApplication.setStatus(
                                 "RAW IPv4 fragment waiting | count="
                                         + result.fragments()
@@ -3618,7 +3630,36 @@ public abstract class NetworkDeviceBlockEntity
                         return;
                     }
 
+                    case DUPLICATE -> {
+                        if (level instanceof ServerLevel serverLevel
+                                && result.key() != null) {
+                            RawIpv4ReassemblyTimeoutManager.schedule(
+                                    serverLevel,
+                                    worldPosition,
+                                    result.key(),
+                                    wifiRawIpv4Reassembly.timeoutMicros()
+                            );
+                        }
+
+                        wifiIpApplication.setStatus(
+                                "RAW IPv4 duplicate fragment ignored | count="
+                                        + result.fragments()
+                        );
+
+                        setChanged();
+                        return;
+                    }
+
                     case REJECTED -> {
+                        if (level instanceof ServerLevel serverLevel
+                                && result.key() != null) {
+                            RawIpv4ReassemblyTimeoutManager.cancel(
+                                    serverLevel,
+                                    worldPosition,
+                                    result.key()
+                            );
+                        }
+
                         wifiIpApplication.setStatus(
                                 "RAW IPv4 fragment rejected: "
                                         + result.reason()
@@ -3629,6 +3670,15 @@ public abstract class NetworkDeviceBlockEntity
                     }
 
                     case COMPLETE -> {
+                        if (level instanceof ServerLevel serverLevel
+                                && result.key() != null) {
+                            RawIpv4ReassemblyTimeoutManager.cancel(
+                                    serverLevel,
+                                    worldPosition,
+                                    result.key()
+                            );
+                        }
+
                         OSINetworkPacket logical =
                                 RawIpv4LiveCarrierCodec.toLogical(
                                         result.rawPacket(),
@@ -4388,6 +4438,189 @@ public abstract class NetworkDeviceBlockEntity
         }
     }
 
+
+    public void setWifiRawIpv4ReassemblyTimeoutMillis(long timeoutMillis) {
+        if (timeoutMillis < 100L || timeoutMillis > 120_000L) {
+            throw new IllegalArgumentException("timeoutMillis");
+        }
+
+        wifiRawIpv4Reassembly.setTimeoutMicros(timeoutMillis * 1000L);
+
+        if (level instanceof ServerLevel serverLevel) {
+            RawIpv4ReassemblyTimeoutManager.cancelDevice(
+                    serverLevel,
+                    worldPosition
+            );
+        }
+
+        wifiIpApplication.setStatus(
+                "Raw IPv4 reassembly timeout=" + timeoutMillis + " ms"
+        );
+
+        setChanged();
+    }
+
+    public long wifiRawIpv4ReassemblyTimeoutMillis() {
+        return wifiRawIpv4Reassembly.timeoutMicros() / 1000L;
+    }
+
+    public boolean sendWifiRawUdpFragmentProbeWithDrop(
+            String targetIp,
+            int payloadBytes,
+            int dropIndex
+    ) {
+        if (!wifiIpReady()
+                || targetIp == null
+                || targetIp.isBlank()
+                || payloadBytes < 1
+                || payloadBytes > 60000
+                || dropIndex < 0
+                || dropIndex > 63) {
+            return false;
+        }
+
+        byte[] data = new byte[payloadBytes];
+        int sequence = nextWifiRawIpv4Identification();
+
+        for (int i = 0; i < data.length; i++) {
+            data[i] = (byte) (sequence + i * 29);
+        }
+
+        OSINetworkPacket packet = new OSINetworkPacket();
+
+        packet.sourceMac = macAddress;
+        packet.targetMac = "FF:FF:FF:FF:FF:FF";
+        packet.sourceIp = ipAddress;
+        packet.targetIp = targetIp;
+        packet.sourcePort = 50000 + (sequence % 10000);
+        packet.targetPort = WifiIpApplicationEngine.UDP_ECHO_PORT;
+        packet.ipProtocol = 17;
+        packet.ttl = 64;
+        packet.dontFragment = false;
+        packet.ipPacketLength = 20 + 8 + data.length;
+        packet.applicationProtocol = "UDP";
+
+        packet.payload.putString("service", "ECHO");
+        packet.payload.putString("type", "REQUEST");
+        packet.payload.putInt("sequence", sequence);
+        packet.payload.putByteArray("data", data);
+        packet.payload.putBoolean("w111_raw_fragment_probe", true);
+        packet.payload.putInt("w1114_drop_fragment_index", dropIndex);
+
+        transmitPacket(packet);
+        setChanged();
+
+        return true;
+    }
+
+    public void wifiRawIpv4ReassemblyTimeout(
+            RawIpv4ReassemblyKey key
+    ) {
+        if (!(level instanceof ServerLevel serverLevel)
+                || key == null) {
+            return;
+        }
+
+        RawIpv4ReassemblyTable.ExpiredAssembly expired =
+                wifiRawIpv4Reassembly.expireKey(
+                        key,
+                        NetworkTimebase.nowMicros(serverLevel)
+                );
+
+        if (expired == null) {
+            return;
+        }
+
+        wifiIpApplication.setStatus(
+                "RAW IPv4 reassembly timeout | id="
+                        + String.format("%04X", key.identification())
+                        + " fragments="
+                        + expired.fragments()
+        );
+
+        if (!expired.zeroFragmentSeen()) {
+            traceWifiRouter(
+                    "REASSEMBLY TIMEOUT silent id="
+                            + String.format("%04X", key.identification())
+                            + " reason=no-fragment-zero"
+            );
+
+            setChanged();
+            return;
+        }
+
+        RawIpv4TransitForwarder.FragmentInfo first;
+
+        try {
+            first = RawIpv4TransitForwarder.inspect(
+                    expired.zeroFragment()
+            );
+        } catch (Exception exception) {
+            traceWifiRouter(
+                    "REASSEMBLY TIMEOUT quote-decode-failed id="
+                            + String.format("%04X", key.identification())
+            );
+
+            setChanged();
+            return;
+        }
+
+        OSINetworkPacket error = new OSINetworkPacket();
+
+        error.sourceMac = macAddress;
+        error.targetMac = "";
+        error.sourceIp = ipAddress;
+        error.targetIp = key.sourceIp();
+        error.ttl = 64;
+        error.ipProtocol = 1;
+        error.applicationProtocol = "ICMP";
+        error.isResponse = true;
+
+        error.payload.putString("type", "TIME_EXCEEDED");
+        error.payload.putInt("icmp_type", 11);
+        error.payload.putInt("icmp_code", 1);
+        error.payload.putInt(
+                "icmp_error_id",
+                (int) (System.nanoTime() & 0xFFFFL)
+        );
+
+        error.payload.putString("quoted_source_ip", key.sourceIp());
+        error.payload.putString("quoted_target_ip", key.destinationIp());
+        error.payload.putInt("quoted_protocol", key.protocol());
+        error.payload.putInt("quoted_ttl", first.ttl());
+        error.payload.putInt(
+                "quoted_identification",
+                key.identification()
+        );
+
+        byte[] firstPayload = first.payload();
+
+        if (firstPayload.length >= 4) {
+            int sourcePort =
+                    ((firstPayload[0] & 0xFF) << 8)
+                            | (firstPayload[1] & 0xFF);
+
+            int targetPort =
+                    ((firstPayload[2] & 0xFF) << 8)
+                            | (firstPayload[3] & 0xFF);
+
+            error.payload.putInt("quoted_source_port", sourcePort);
+            error.payload.putInt("quoted_target_port", targetPort);
+        }
+
+        traceWifiRouter(
+                "REASSEMBLY TIMEOUT ICMP type=11 code=1 id="
+                        + String.format("%04X", key.identification())
+                        + " fragments="
+                        + expired.fragments()
+                        + " received="
+                        + expired.receivedPayloadBytes()
+        );
+
+        transmitPacket(error);
+        setChanged();
+    }
+
     public boolean sendWifiRawUdpFragmentProbe(
             String targetIp,
             int payloadBytes,
@@ -4650,8 +4883,31 @@ public abstract class NetworkDeviceBlockEntity
                                 nextWifiRawIpv4Identification()
                         );
 
-                for (CompoundTag body
-                        : fragments) {
+                int dropFragmentIndex =
+                        packet.payload.contains(
+                                "w1114_drop_fragment_index"
+                        )
+                                ? packet.payload.getInt(
+                                "w1114_drop_fragment_index"
+                        )
+                                : -1;
+
+                for (int fragmentIndex = 0;
+                     fragmentIndex < fragments.size();
+                     fragmentIndex++) {
+                    if (fragmentIndex == dropFragmentIndex) {
+                        wifiIpApplication.setStatus(
+                                "RAW IPv4 test drop fragment index="
+                                        + fragmentIndex
+                        );
+                        continue;
+                    }
+
+                    CompoundTag body =
+                            fragments.get(
+                                    fragmentIndex
+                            );
+
                     wifiMac.sendData(
                             macAddress,
                             packet.targetMac,
