@@ -1651,16 +1651,16 @@ public abstract class NetworkDeviceBlockEntity
         long nowMicros =
                 wifiNetworkNowMicros();
 
+        int controlPayloadBytes =
+                32;
+
         OSINetworkPacket packet =
                 wifiIpApplication.createIcmpEcho(
                         macAddress,
                         ipAddress,
                         "FF:FF:FF:FF:FF:FF",
                         targetIp,
-                        Math.max(
-                                1,
-                                packetBytes - 28
-                        ),
+                        controlPayloadBytes,
                         nowMicros
                 );
 
@@ -1686,6 +1686,11 @@ public abstract class NetworkDeviceBlockEntity
         packet.payload.putInt(
                 "pmtu_probe_bytes",
                 packetBytes
+        );
+
+        packet.payload.putInt(
+                "pmtu_control_payload_bytes",
+                controlPayloadBytes
         );
 
         wifiIpApplication.setStatus(
@@ -4989,6 +4994,11 @@ public abstract class NetworkDeviceBlockEntity
                 nextHopMtu
         );
 
+        error.payload.putBoolean(
+                "pmtu_control",
+                true
+        );
+
         error.payload.putInt(
                 "icmp_error_id",
                 (
@@ -6318,6 +6328,30 @@ public abstract class NetworkDeviceBlockEntity
 
         if (body == null) {
             return false;
+        }
+
+        if (body.contains(
+                "osi_packet"
+        )) {
+            OSINetworkPacket controlPacket =
+                    OSINetworkPacket.deserializeNBT(
+                            body.getCompound(
+                                    "osi_packet"
+                            )
+                    );
+
+            if (controlPacket.payload.getBoolean(
+                    "pmtu_probe"
+            )
+                    || controlPacket.payload.getBoolean(
+                    "pmtu_control"
+            )) {
+                wifiIpApplication.setStatus(
+                        "PMTU_ROBUST_PHY MCS0"
+                );
+
+                return true;
+            }
         }
 
         return "EAPOL_KEY".equals(
