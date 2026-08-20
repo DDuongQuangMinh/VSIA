@@ -88,6 +88,9 @@ import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.live.IcmpRawLiveCar
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4LiveCarrierCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4ReassemblyTable;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4Fragmenter;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4TransitForwarder;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4TransitPending;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4TransitCarrierCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveController;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveScheduler;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveSnapshot;
@@ -165,6 +168,10 @@ public abstract class NetworkDeviceBlockEntity
 
     private final Map<String, java.util.List<OSINetworkPacket>>
             wifiRouterPendingByNextHop =
+            new java.util.LinkedHashMap<>();
+
+    private final Map<String, java.util.List<RawIpv4TransitPending>>
+            wifiRouterRawPendingByNextHop =
             new java.util.LinkedHashMap<>();
 
     private final Map<String, Integer>
@@ -1386,6 +1393,7 @@ public abstract class NetworkDeviceBlockEntity
                 enabled;
 
         wifiRouterPendingByNextHop.clear();
+        wifiRouterRawPendingByNextHop.clear();
         wifiRouterInterfaceMtu.clear();
         wifiRouterDiagnostics.clear();
 
@@ -3585,6 +3593,13 @@ public abstract class NetworkDeviceBlockEntity
                                 data
                         );
 
+                if (handleWifiRouterRawIpv4Fragment(
+                        decodedFragment
+                )) {
+                    setChanged();
+                    return;
+                }
+
                 RawIpv4ReassemblyTable.ReassemblyResult result =
                         wifiRawIpv4Reassembly.accept(
                                 decodedFragment.rawIpv4(),
@@ -4976,6 +4991,538 @@ public abstract class NetworkDeviceBlockEntity
         broadcastPayload(payload);
     }
 
+
+    private boolean handleWifiRouterRawIpv4Fragment(
+            RawIpv4LiveCarrierCodec.DecodedFragment decodedFragment
+    ) {
+        if (!wifiLiveRouterEnabled
+                || decodedFragment == null
+                || !macAddress.equalsIgnoreCase(
+                decodedFragment.targetMac()
+        )) {
+            return false;
+        }
+
+        RawIpv4TransitForwarder.FragmentInfo fragment;
+
+        try {
+            fragment =
+                    RawIpv4TransitForwarder.inspect(
+                            decodedFragment.rawIpv4()
+                    );
+        } catch (Exception exception) {
+            wifiIpApplication.setStatus(
+                    "Router raw IPv4 drop: "
+                            + exception.getMessage()
+            );
+
+            traceWifiRouter(
+                    "RAW FRAGMENT DROP invalid IPv4 "
+                            + exception.getMessage()
+            );
+
+            return true;
+        }
+
+        RouterInterface local =
+                wifiLiveRouter.interfaceForLocalIp(
+                        fragment.destinationIp()
+                );
+
+        if (local != null) {
+            return false;
+        }
+
+        RouterInterface ingress =
+                wifiLiveRouter.interfaceForSourceNetwork(
+                        fragment.sourceIp()
+                );
+
+        if (ingress == null
+                && decodedFragment.sourceMac() != null
+                && !decodedFragment.sourceMac().isBlank()) {
+            String interfaceName =
+                    wifiLiveRouter.neighbors()
+                            .interfaceForMac(
+                                    decodedFragment.sourceMac()
+                            );
+
+            if (!interfaceName.isBlank()) {
+                ingress =
+                        wifiLiveRouter.interfaceByName(
+                                interfaceName
+                        );
+            }
+        }
+
+        String ingressName =
+                ingress == null
+                        ? ""
+                        : ingress.name();
+
+        traceWifiRouter(
+                "RX FRAGMENT "
+                        + fragment.sourceIp()
+                        + " -> "
+                        + fragment.destinationIp()
+                        + " id="
+                        + String.format(
+                                "%04X",
+                                fragment.identification()
+                        )
+                        + " off="
+                        + fragment.fragmentOffset()
+                        + " mf="
+                        + (fragment.moreFragments() ? 1 : 0)
+                        + " ingress="
+                        + (ingressName.isBlank()
+                        ? "unknown"
+                        : ingressName)
+                        + " ttl="
+                        + fragment.ttl()
+        );
+
+        if (ingress != null
+                && decodedFragment.sourceMac() != null
+                && !decodedFragment.sourceMac().isBlank()
+                && Ipv4Prefix.isUsableUnicast(
+                fragment.sourceIp()
+        )) {
+            wifiLiveRouter.neighbors().learn(
+                    ingress.name(),
+                    fragment.sourceIp(),
+                    decodedFragment.sourceMac()
+            );
+        }
+
+        RouterPacket routerPacket =
+                new RouterPacket(
+                        fragment.sourceIp(),
+                        fragment.destinationIp(),
+                        fragment.ttl(),
+                        fragment.protocol(),
+                        fragment.identification(),
+                        fragment.dontFragment(),
+                        fragment.moreFragments(),
+                        fragment.fragmentOffset(),
+                        fragment.totalLength(),
+                        fragment.payload()
+                );
+
+        RouterForwardDecision decision =
+                wifiLiveRouter.evaluate(
+                        ingressName,
+                        routerPacket
+                );
+
+        traceWifiRouter(
+                "ROUTE FRAGMENT action="
+                        + decision.action().name()
+                        + " egress="
+                        + (decision.egressInterface().isBlank()
+                        ? "none"
+                        : decision.egressInterface())
+                        + " next-hop="
+                        + (decision.nextHopIp().isBlank()
+                        ? "none"
+                        : decision.nextHopIp())
+                        + " id="
+                        + String.format(
+                                "%04X",
+                                fragment.identification()
+                        )
+                        + " off="
+                        + fragment.fragmentOffset()
+        );
+
+        if ((decision.action()
+                == RouterForwardAction.FORWARD
+                || decision.action()
+                == RouterForwardAction.ARP_REQUIRED)
+                && !decision.egressInterface().isBlank()) {
+            int mtu =
+                    wifiRouterInterfaceMtu(
+                            decision.egressInterface()
+                    );
+
+            if (fragment.totalLength() > mtu) {
+                if (fragment.dontFragment()) {
+                    emitWifiRouterFragmentationNeeded(
+                            rawFragmentLogicalShell(
+                                    decodedFragment,
+                                    fragment
+                            ),
+                            decision,
+                            mtu
+                    );
+
+                    traceWifiRouter(
+                            "RAW FRAGMENT DF MTU DROP id="
+                                    + String.format(
+                                            "%04X",
+                                            fragment.identification()
+                                    )
+                                    + " off="
+                                    + fragment.fragmentOffset()
+                                    + " bytes="
+                                    + fragment.totalLength()
+                                    + " mtu="
+                                    + mtu
+                    );
+                } else {
+                    wifiIpApplication.setStatus(
+                            "Router raw IPv4 re-fragment required: "
+                                    + fragment.totalLength()
+                                    + " > MTU "
+                                    + mtu
+                    );
+
+                    traceWifiRouter(
+                            "RAW FRAGMENT REFRAGMENT_REQUIRED id="
+                                    + String.format(
+                                            "%04X",
+                                            fragment.identification()
+                                    )
+                                    + " off="
+                                    + fragment.fragmentOffset()
+                                    + " bytes="
+                                    + fragment.totalLength()
+                                    + " mtu="
+                                    + mtu
+                    );
+                }
+
+                return true;
+            }
+        }
+
+        switch (decision.action()) {
+            case FORWARD -> {
+                forwardWifiRouterRawFragment(
+                        decodedFragment,
+                        decision
+                );
+                return true;
+            }
+
+            case ARP_REQUIRED -> {
+                if (!queueWifiRouterRawFragment(
+                        decodedFragment,
+                        decision
+                )) {
+                    wifiIpApplication.setStatus(
+                            "Router raw fragment queue full for "
+                                    + decision.nextHopIp()
+                    );
+                    return true;
+                }
+
+                sendWifiRouterArpRequest(
+                        decision.egressInterface(),
+                        decision.nextHopIp()
+                );
+
+                if (level instanceof ServerLevel serverLevel) {
+                    WifiRouterArpRetryManager.schedule(
+                            serverLevel,
+                            worldPosition,
+                            decision.egressInterface(),
+                            decision.nextHopIp()
+                    );
+                }
+
+                return true;
+            }
+
+            case ICMP_TIME_EXCEEDED,
+                 ICMP_DESTINATION_UNREACHABLE -> {
+                emitWifiRouterIcmpError(
+                        rawFragmentLogicalShell(
+                                decodedFragment,
+                                fragment
+                        ),
+                        decision
+                );
+                return true;
+            }
+
+            case DROP -> {
+                wifiIpApplication.setStatus(
+                        "Router raw fragment drop: "
+                                + decision.detail()
+                );
+                return true;
+            }
+
+            case LOCAL_DELIVERY -> {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private OSINetworkPacket rawFragmentLogicalShell(
+            RawIpv4LiveCarrierCodec.DecodedFragment decodedFragment,
+            RawIpv4TransitForwarder.FragmentInfo fragment
+    ) {
+        OSINetworkPacket shell =
+                new OSINetworkPacket();
+
+        shell.sourceMac =
+                decodedFragment.sourceMac();
+
+        shell.targetMac =
+                decodedFragment.targetMac();
+
+        shell.sourceIp =
+                fragment.sourceIp();
+
+        shell.targetIp =
+                fragment.destinationIp();
+
+        shell.ttl =
+                fragment.ttl();
+
+        shell.ipProtocol =
+                fragment.protocol();
+
+        shell.ipPacketLength =
+                fragment.totalLength();
+
+        shell.dontFragment =
+                fragment.dontFragment();
+
+        shell.applicationProtocol =
+                fragment.protocol() == 17
+                        ? "UDP"
+                        : fragment.protocol() == 6
+                        ? "TCP"
+                        : fragment.protocol() == 1
+                        ? "ICMP"
+                        : "RAW_IPV4";
+
+        shell.payload.putInt(
+                "ipv4_identification",
+                fragment.identification()
+        );
+
+        shell.payload.putInt(
+                "ipv4_fragment_offset",
+                fragment.fragmentOffset()
+        );
+
+        shell.payload.putBoolean(
+                "ipv4_more_fragments",
+                fragment.moreFragments()
+        );
+
+        return shell;
+    }
+
+    private void forwardWifiRouterRawFragment(
+            RawIpv4LiveCarrierCodec.DecodedFragment decodedFragment,
+            RouterForwardDecision decision
+    ) {
+        byte[] forwarded =
+                RawIpv4TransitForwarder.forward(
+                        decodedFragment.rawIpv4(),
+                        decision.outgoingTtl()
+                );
+
+        RawIpv4TransitForwarder.FragmentInfo info =
+                RawIpv4TransitForwarder.inspect(
+                        forwarded
+                );
+
+        CompoundTag body =
+                RawIpv4TransitCarrierCodec.wrap(
+                        forwarded,
+                        macAddress,
+                        decision.nextHopMac(),
+                        decodedFragment.metadata(),
+                        0,
+                        0
+                );
+
+        wifiMac.sendData(
+                macAddress,
+                decision.nextHopMac(),
+                body,
+                WifiAccessCategory.BEST_EFFORT,
+                wifiSender()
+        );
+
+        traceWifiRouter(
+                "FORWARDED FRAGMENT "
+                        + info.sourceIp()
+                        + " -> "
+                        + info.destinationIp()
+                        + " id="
+                        + String.format(
+                                "%04X",
+                                info.identification()
+                        )
+                        + " off="
+                        + info.fragmentOffset()
+                        + " mf="
+                        + (info.moreFragments() ? 1 : 0)
+                        + " dev="
+                        + decision.egressInterface()
+                        + " ttl="
+                        + decision.incomingTtl()
+                        + "->"
+                        + decision.outgoingTtl()
+        );
+    }
+
+    private boolean queueWifiRouterRawFragment(
+            RawIpv4LiveCarrierCodec.DecodedFragment decodedFragment,
+            RouterForwardDecision decision
+    ) {
+        int total =
+                wifiRouterRawPendingByNextHop
+                        .values()
+                        .stream()
+                        .mapToInt(
+                                java.util.List::size
+                        )
+                        .sum();
+
+        if (total >= WIFI_ROUTER_PENDING_TOTAL) {
+            return false;
+        }
+
+        String key =
+                decision.egressInterface()
+                        + "|"
+                        + decision.nextHopIp();
+
+        java.util.List<RawIpv4TransitPending> queue =
+                wifiRouterRawPendingByNextHop
+                        .computeIfAbsent(
+                                key,
+                                ignored ->
+                                        new java.util.ArrayList<>()
+                        );
+
+        if (queue.size()
+                >= WIFI_ROUTER_PENDING_PER_NEXT_HOP) {
+            return false;
+        }
+
+        RawIpv4TransitForwarder.FragmentInfo info =
+                RawIpv4TransitForwarder.inspect(
+                        decodedFragment.rawIpv4()
+                );
+
+        queue.add(
+                new RawIpv4TransitPending(
+                        decodedFragment.rawIpv4(),
+                        decodedFragment.sourceMac(),
+                        decodedFragment.metadata(),
+                        0,
+                        0,
+                        decision.egressInterface(),
+                        decision.nextHopIp(),
+                        decision.outgoingTtl()
+                )
+        );
+
+        traceWifiRouter(
+                "QUEUE FRAGMENT id="
+                        + String.format(
+                                "%04X",
+                                info.identification()
+                        )
+                        + " off="
+                        + info.fragmentOffset()
+                        + " key="
+                        + key
+                        + " depth="
+                        + queue.size()
+        );
+
+        return true;
+    }
+
+    private void flushWifiRouterRawPending(
+            String interfaceName,
+            String nextHopIp,
+            String nextHopMac
+    ) {
+        String key =
+                interfaceName
+                        + "|"
+                        + nextHopIp;
+
+        java.util.List<RawIpv4TransitPending> pending =
+                wifiRouterRawPendingByNextHop.remove(
+                        key
+                );
+
+        if (pending == null
+                || pending.isEmpty()) {
+            return;
+        }
+
+        for (RawIpv4TransitPending queued
+                : pending) {
+            if (!interfaceName.equals(
+                    queued.egressInterface()
+            )
+                    || !nextHopIp.equals(
+                    queued.nextHopIp()
+            )
+                    || queued.outgoingTtl() <= 0) {
+                continue;
+            }
+
+            byte[] forwarded =
+                    RawIpv4TransitForwarder.forward(
+                            queued.rawIpv4(),
+                            queued.outgoingTtl()
+                    );
+
+            RawIpv4TransitForwarder.FragmentInfo info =
+                    RawIpv4TransitForwarder.inspect(
+                            forwarded
+                    );
+
+            CompoundTag body =
+                    RawIpv4TransitCarrierCodec.wrap(
+                            forwarded,
+                            macAddress,
+                            nextHopMac,
+                            queued.metadata(),
+                            queued.fragmentIndex(),
+                            queued.fragmentCount()
+                    );
+
+            wifiMac.sendData(
+                    macAddress,
+                    nextHopMac,
+                    body,
+                    WifiAccessCategory.BEST_EFFORT,
+                    wifiSender()
+            );
+
+            traceWifiRouter(
+                    "QUEUE RESUME FRAGMENT id="
+                            + String.format(
+                                    "%04X",
+                                    info.identification()
+                            )
+                            + " off="
+                            + info.fragmentOffset()
+                            + " dev="
+                            + interfaceName
+                            + " ttl="
+                            + queued.outgoingTtl()
+            );
+        }
+    }
+
     private boolean handleWifiRouterLayer2(
             OSINetworkPacket packet,
             boolean addressed,
@@ -5492,6 +6039,12 @@ public abstract class NetworkDeviceBlockEntity
                     senderIp,
                     senderMac
             );
+
+            flushWifiRouterRawPending(
+                    senderInterface.name(),
+                    senderIp,
+                    senderMac
+            );
         }
 
         wifiIpApplication.handleIncoming(
@@ -5793,15 +6346,23 @@ public abstract class NetworkDeviceBlockEntity
             return false;
         }
 
+        String key =
+                interfaceName
+                        + "|"
+                        + nextHopIp;
+
         java.util.List<OSINetworkPacket> pending =
                 wifiRouterPendingByNextHop.get(
-                        interfaceName
-                                + "|"
-                                + nextHopIp
+                        key
                 );
 
-        return pending != null
-                && !pending.isEmpty();
+        java.util.List<RawIpv4TransitPending> rawPending =
+                wifiRouterRawPendingByNextHop.get(
+                        key
+                );
+
+        return (pending != null && !pending.isEmpty())
+                || (rawPending != null && !rawPending.isEmpty());
     }
 
     public void retryWifiRouterArpRequest(
@@ -5845,10 +6406,14 @@ public abstract class NetworkDeviceBlockEntity
                         key
                 );
 
+        java.util.List<RawIpv4TransitPending> rawDropped =
+                wifiRouterRawPendingByNextHop.remove(
+                        key
+                );
+
         int count =
-                dropped == null
-                        ? 0
-                        : dropped.size();
+                (dropped == null ? 0 : dropped.size())
+                        + (rawDropped == null ? 0 : rawDropped.size());
 
         traceWifiRouter(
                 "ARP RETRY EXHAUSTED target="
