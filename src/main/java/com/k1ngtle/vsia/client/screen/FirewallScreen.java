@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.client.screen;
 
 import com.k1ngtle.vsia.world.inventory.FirewallMenu;
 import com.k1ngtle.vsia.signality.internet.server.FirewallOsSimulator;
+import com.k1ngtle.vsia.signality.internet.server.FirewallCliEnhancer;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -261,6 +262,32 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
 
         if (this.currentTab == Tab.CLI) {
             if (Screen.hasControlDown()) {
+                if (pKeyCode == GLFW.GLFW_KEY_V) {
+                    if (this.minecraft != null) {
+                        String clipboard =
+                                this.minecraft.keyboardHandler.getClipboard();
+
+                        List<String> pastedCommands =
+                                FirewallCliEnhancer.splitPaste(
+                                        clipboard
+                                );
+
+                        for (String command : pastedCommands) {
+                            act.executeCliCore(
+                                    command,
+                                    true
+                            );
+
+                            syncCommand(command);
+                        }
+
+                        act.cliInput = "";
+                        act.cliCursorPos = 0;
+                    }
+
+                    return true;
+                }
+
                 if (pKeyCode == GLFW.GLFW_KEY_Z) {
                     if (act.cliMode == FirewallOsSimulator.CliMode.CONFIG || act.cliMode == FirewallOsSimulator.CliMode.CONFIG_IF || act.cliMode == FirewallOsSimulator.CliMode.CONFIG_OBJ || act.cliMode == FirewallOsSimulator.CliMode.CONFIG_ROUTER || act.cliMode == FirewallOsSimulator.CliMode.CONFIG_CRYPTO_MAP) {
                         act.cliLines.add(act.getPrompt() + act.cliInput + "^Z");
@@ -271,9 +298,27 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
                     }
                     return true;
                 } else if (pKeyCode == GLFW.GLFW_KEY_C) {
-                    act.cliLines.add(act.getPrompt() + act.cliInput + "^C");
-                    act.cliInput = "";
-                    act.cliCursorPos = 0;
+                    if (this.minecraft != null
+                            && (
+                            Screen.hasShiftDown()
+                                    || act.cliInput.isEmpty()
+                    )) {
+                        this.minecraft.keyboardHandler.setClipboard(
+                                FirewallCliEnhancer.terminalSnapshot(
+                                        act
+                                )
+                        );
+                    } else {
+                        act.cliLines.add(
+                                act.getPrompt()
+                                        + act.cliInput
+                                        + "^C"
+                        );
+
+                        act.cliInput = "";
+                        act.cliCursorPos = 0;
+                    }
+
                     return true;
                 }
             }
@@ -293,6 +338,49 @@ public class FirewallScreen extends AbstractContainerScreen<FirewallMenu> {
                 syncCommand(cmd);
                 act.cliInput = "";
                 act.cliCursorPos = 0;
+                return true;
+            } else if (pKeyCode == GLFW.GLFW_KEY_UP) {
+                act.cliInput =
+                        FirewallCliEnhancer.historyPrevious(
+                                act,
+                                act.cliInput
+                        );
+
+                act.cliCursorPos =
+                        act.cliInput.length();
+
+                return true;
+            } else if (pKeyCode == GLFW.GLFW_KEY_DOWN) {
+                act.cliInput =
+                        FirewallCliEnhancer.historyNext(
+                                act
+                        );
+
+                act.cliCursorPos =
+                        act.cliInput.length();
+
+                return true;
+            } else if (pKeyCode == GLFW.GLFW_KEY_HOME) {
+                act.cliCursorPos = 0;
+                return true;
+            } else if (pKeyCode == GLFW.GLFW_KEY_END) {
+                act.cliCursorPos =
+                        act.cliInput.length();
+
+                return true;
+            } else if (pKeyCode == GLFW.GLFW_KEY_DELETE) {
+                if (act.cliCursorPos
+                        < act.cliInput.length()) {
+                    act.cliInput =
+                            act.cliInput.substring(
+                                    0,
+                                    act.cliCursorPos
+                            )
+                                    + act.cliInput.substring(
+                                    act.cliCursorPos + 1
+                            );
+                }
+
                 return true;
             } else if (pKeyCode == 263) { // LEFT
                 if (act.cliCursorPos > 0) act.cliCursorPos--;

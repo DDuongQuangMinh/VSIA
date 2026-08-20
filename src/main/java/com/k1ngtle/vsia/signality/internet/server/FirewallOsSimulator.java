@@ -202,6 +202,11 @@ public class FirewallOsSimulator {
         this.packetTransmitter = out;
         long now = System.currentTimeMillis();
 
+        FirewallCliEnhancer.advanceBoot(
+                this,
+                now
+        );
+
         // 1. Process IPsec ISAKMP Negotiation States
         Iterator<IpsecSA> saIt = activeSAs.iterator();
         while (saIt.hasNext()) {
@@ -333,6 +338,54 @@ public class FirewallOsSimulator {
                 + w116Firewall.rules().size()
                 + " | last="
                 + w116LastDecision;
+    }
+
+    public OSINetworkPacket w116DirectInspect(
+            OSINetworkPacket packet,
+            String ingressInterface,
+            String egressInterface
+    ) {
+        FirewallPacketView w116Packet =
+                FirewallW116Adapter.packetView(
+                        packet,
+                        ingressInterface,
+                        egressInterface
+                );
+
+        FirewallDecision w116Decision =
+                w116Firewall.inspect(
+                        w116Packet,
+                        0,
+                        System.currentTimeMillis()
+                );
+
+        w116LastDecision =
+                w116Decision.action()
+                        + " "
+                        + w116Decision.state()
+                        + " rule="
+                        + w116Decision.ruleName()
+                        + " reason="
+                        + w116Decision.reason();
+
+        if (!w116Decision.allowed()) {
+            if (onStateChange != null) {
+                onStateChange.run();
+            }
+
+            return null;
+        }
+
+        FirewallW116Adapter.applyNat(
+                packet,
+                w116Decision
+        );
+
+        if (onStateChange != null) {
+            onStateChange.run();
+        }
+
+        return packet;
     }
 
     public OSINetworkPacket filterAndRoutePacket(OSINetworkPacket packet, String ingressPortName) {
@@ -649,6 +702,24 @@ public class FirewallOsSimulator {
     }
 
     public void executeCliCore(String input, boolean echo) {
+        if (FirewallCliEnhancer.handle(
+                this,
+                input,
+                echo
+        )) {
+            cliScrollOffset = 0;
+
+            if (onStateChange != null) {
+                onStateChange.run();
+            }
+
+            if (guiCallback != null) {
+                guiCallback.run();
+            }
+
+            return;
+        }
+
         if (input.endsWith("?")) {
             if (echo) { cliLines.add(getPrompt() + input); cliScrollOffset = 0; }
             String prefix = input.substring(0, input.length() - 1);
