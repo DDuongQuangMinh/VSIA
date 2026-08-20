@@ -4477,6 +4477,24 @@ public abstract class NetworkDeviceBlockEntity
         return true;
     }
 
+    private boolean shouldUseWifiRawIpv4FragmentCarrier(
+            OSINetworkPacket packet
+    ) {
+        // W1.11 explicit raw-fragment carrier
+        if (packet == null) {
+            return false;
+        }
+
+        if (packet.payload.getBoolean(
+                "w111_raw_fragment_probe"
+        )) {
+            return true;
+        }
+
+        return wifiTcpExecutionMode
+                == ExecutionMode.CONFORMANCE;
+    }
+
     private int wifiRawIpv4EgressMtu(
             OSINetworkPacket packet
     ) {
@@ -4597,9 +4615,9 @@ public abstract class NetworkDeviceBlockEntity
             return;
         }
 
-        if (wifiTcpExecutionMode
-                == ExecutionMode.CONFORMANCE
-                && packet != null
+        if (shouldUseWifiRawIpv4FragmentCarrier(
+                packet
+        )
                 && "UDP".equalsIgnoreCase(
                 packet.applicationProtocol
         )) {
@@ -4628,10 +4646,14 @@ public abstract class NetworkDeviceBlockEntity
                 }
 
                 wifiIpApplication.setStatus(
-                        "RAW IPv4/UDP sent | fragments="
+                        "RAW IPv4/UDP LIVE | fragments="
                                 + fragments.size()
                                 + " mtu="
                                 + mtu
+                                + " payload="
+                                + packet.payload.getByteArray(
+                                "data"
+                        ).length
                 );
 
                 return;
@@ -4645,9 +4667,9 @@ public abstract class NetworkDeviceBlockEntity
             }
         }
 
-        if (wifiTcpExecutionMode
-                == ExecutionMode.CONFORMANCE
-                && packet != null
+        if (shouldUseWifiRawIpv4FragmentCarrier(
+                packet
+        )
                 && "ICMP".equalsIgnoreCase(
                 packet.applicationProtocol
         )
