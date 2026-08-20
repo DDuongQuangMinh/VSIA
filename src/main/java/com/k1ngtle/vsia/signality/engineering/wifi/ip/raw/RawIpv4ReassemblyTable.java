@@ -66,6 +66,7 @@ public final class RawIpv4ReassemblyTable {
         if (timeoutMicros <= 0) {
             throw new IllegalArgumentException("timeoutMicros");
         }
+
         this.timeoutMicros = timeoutMicros;
     }
 
@@ -76,12 +77,30 @@ public final class RawIpv4ReassemblyTable {
         expire(nowMicros);
 
         RawIpv4Packet packet =
-                RawIpv4Decoder.decode(rawFragment);
+                RawIpv4Decoder.decode(
+                        rawFragment
+                );
 
         if (!packet.checksumValid()) {
             return ReassemblyResult.rejected(
                     null,
                     "BAD_HEADER_CHECKSUM"
+            );
+        }
+
+        try {
+            RawIpv4Options.parse(
+                    packet.options()
+            );
+
+            RawIpv4Options.validateForFragmentOffset(
+                    packet.options(),
+                    packet.fragmentOffset()
+            );
+        } catch (IllegalArgumentException exception) {
+            return ReassemblyResult.rejected(
+                    keyOf(packet),
+                    "INVALID_OPTIONS"
             );
         }
 
@@ -100,12 +119,16 @@ public final class RawIpv4ReassemblyTable {
                     Arrays.copyOf(
                             rawFragment,
                             packet.totalLength()
-                    )
+                    ),
+                    keyOf(packet)
             );
         }
 
-        byte[] payload = packet.payload();
-        int offsetBytes = packet.fragmentOffset() * 8;
+        byte[] payload =
+                packet.payload();
+
+        int offsetBytes =
+                packet.fragmentOffset() * 8;
 
         if (packet.moreFragments()
                 && (payload.length & 7) != 0) {
@@ -115,31 +138,38 @@ public final class RawIpv4ReassemblyTable {
             );
         }
 
-        long end = (long) offsetBytes + payload.length;
+        long end =
+                (long) offsetBytes
+                        + payload.length;
 
-        if (end > 65535L - packet.headerBytes()) {
+        if (end > 65535L - 20L) {
             return ReassemblyResult.rejected(
                     keyOf(packet),
                     "DATAGRAM_TOO_LARGE"
             );
         }
 
-        RawIpv4ReassemblyKey key = keyOf(packet);
+        RawIpv4ReassemblyKey key =
+                keyOf(packet);
 
-        Assembly assembly = assemblies.get(key);
+        Assembly assembly =
+                assemblies.get(key);
 
         if (assembly == null) {
-            if (assemblies.size() >= maxAssemblies) {
+            if (assemblies.size()
+                    >= maxAssemblies) {
                 return ReassemblyResult.rejected(
                         key,
                         "ASSEMBLY_LIMIT"
                 );
             }
 
-            assembly = new Assembly(
-                    nowMicros,
-                    packet
-            );
+            assembly =
+                    new Assembly(
+                            nowMicros,
+                            packet
+                    );
+
             assemblies.put(
                     key,
                     assembly
@@ -148,22 +178,36 @@ public final class RawIpv4ReassemblyTable {
 
         if (!assembly.compatible(packet)) {
             assemblies.remove(key);
+
             return ReassemblyResult.rejected(
                     key,
                     "HEADER_MISMATCH"
             );
         }
 
-        Fragment candidate = new Fragment(
-                offsetBytes,
-                payload,
-                packet.moreFragments()
-        );
+        if (!assembly.optionsCompatible(packet)) {
+            assemblies.remove(key);
 
-        Fragment exact = assembly.exact(candidate);
+            return ReassemblyResult.rejected(
+                    key,
+                    "OPTION_COPY_MISMATCH"
+            );
+        }
+
+        Fragment candidate =
+                new Fragment(
+                        offsetBytes,
+                        payload,
+                        packet.moreFragments()
+                );
+
+        Fragment exact =
+                assembly.exact(candidate);
 
         if (exact != null) {
-            assembly.lastUpdateMicros = nowMicros;
+            assembly.lastUpdateMicros =
+                    nowMicros;
+
             return ReassemblyResult.duplicate(
                     key,
                     assembly.fragments.size()
@@ -172,6 +216,7 @@ public final class RawIpv4ReassemblyTable {
 
         if (assembly.overlaps(candidate)) {
             assemblies.remove(key);
+
             return ReassemblyResult.rejected(
                     key,
                     "OVERLAP"
@@ -181,6 +226,7 @@ public final class RawIpv4ReassemblyTable {
         if (assembly.fragments.size()
                 >= maxFragmentsPerAssembly) {
             assemblies.remove(key);
+
             return ReassemblyResult.rejected(
                     key,
                     "FRAGMENT_LIMIT"
@@ -188,13 +234,15 @@ public final class RawIpv4ReassemblyTable {
         }
 
         int candidateFinalLength =
-                offsetBytes + payload.length;
+                offsetBytes
+                        + payload.length;
 
         if (!packet.moreFragments()) {
             if (assembly.finalLength >= 0
                     && assembly.finalLength
                     != candidateFinalLength) {
                 assemblies.remove(key);
+
                 return ReassemblyResult.rejected(
                         key,
                         "FINAL_LENGTH_CONFLICT"
@@ -207,6 +255,7 @@ public final class RawIpv4ReassemblyTable {
                 && candidateFinalLength
                 > assembly.finalLength) {
             assemblies.remove(key);
+
             return ReassemblyResult.rejected(
                     key,
                     "PAST_FINAL_LENGTH"
@@ -214,13 +263,25 @@ public final class RawIpv4ReassemblyTable {
         }
 
         assembly.fragments.add(candidate);
-        assembly.lastUpdateMicros = nowMicros;
+        assembly.lastUpdateMicros =
+                nowMicros;
 
         if (offsetBytes == 0) {
             assembly.zeroFragment =
                     Arrays.copyOf(
                             rawFragment,
                             packet.totalLength()
+                    );
+
+            assembly.zeroPacket =
+                    packet;
+
+            assembly.zeroOptions =
+                    packet.options();
+
+            assembly.copiedOptions =
+                    RawIpv4Options.copiedForNonInitialFragment(
+                            packet.options()
                     );
         }
 
@@ -231,30 +292,43 @@ public final class RawIpv4ReassemblyTable {
             );
         }
 
-        byte[] reassembledPayload =
-                assembly.payload();
+        RawIpv4Packet headerSource =
+                assembly.zeroPacket != null
+                        ? assembly.zeroPacket
+                        : assembly.first;
+
+        byte[] headerOptions =
+                assembly.zeroOptions != null
+                        ? assembly.zeroOptions
+                        : new byte[0];
 
         byte[] raw =
-                RawIpv4Encoder.encode(
-                        packet.sourceAddress(),
-                        packet.destinationAddress(),
-                        assembly.first.dscpEcn(),
-                        packet.identification(),
+                RawIpv4Encoder.encodeWithOptions(
+                        headerSource.sourceAddress(),
+                        headerSource.destinationAddress(),
+                        headerSource.dscpEcn(),
+                        headerSource.identification(),
                         false,
                         false,
                         0,
-                        assembly.first.ttl(),
-                        packet.protocol(),
-                        reassembledPayload
+                        headerSource.ttl(),
+                        headerSource.protocol(),
+                        headerOptions,
+                        assembly.payload()
                 );
 
         assemblies.remove(key);
 
-        return ReassemblyResult.complete(raw, key);
+        return ReassemblyResult.complete(
+                raw,
+                key
+        );
     }
 
     public int expire(long nowMicros) {
-        return expireDetailed(nowMicros).size();
+        return expireDetailed(
+                nowMicros
+        ).size();
     }
 
     public List<ExpiredAssembly> expireDetailed(
@@ -264,7 +338,8 @@ public final class RawIpv4ReassemblyTable {
                 new ArrayList<>();
 
         var iterator =
-                assemblies.entrySet().iterator();
+                assemblies.entrySet()
+                        .iterator();
 
         while (iterator.hasNext()) {
             var entry =
@@ -288,7 +363,9 @@ public final class RawIpv4ReassemblyTable {
             iterator.remove();
         }
 
-        return List.copyOf(expired);
+        return List.copyOf(
+                expired
+        );
     }
 
     public ExpiredAssembly expireKey(
@@ -311,14 +388,18 @@ public final class RawIpv4ReassemblyTable {
 
         assemblies.remove(key);
 
-        return assembly.expired(key);
+        return assembly.expired(
+                key
+        );
     }
 
     public boolean contains(
             RawIpv4ReassemblyKey key
     ) {
         return key != null
-                && assemblies.containsKey(key);
+                && assemblies.containsKey(
+                key
+        );
     }
 
     public int pendingAssemblies() {
@@ -348,22 +429,48 @@ public final class RawIpv4ReassemblyTable {
         private long lastUpdateMicros;
         private int finalLength = -1;
         private byte[] zeroFragment;
+        private RawIpv4Packet zeroPacket;
+        private byte[] zeroOptions;
+        private byte[] copiedOptions;
 
         private Assembly(
                 long nowMicros,
                 RawIpv4Packet first
         ) {
-            this.first = first;
-            this.lastUpdateMicros = nowMicros;
+            this.first =
+                    first;
+
+            this.lastUpdateMicros =
+                    nowMicros;
+
+            if (first.fragmentOffset() == 0) {
+                this.zeroPacket =
+                        first;
+
+                this.zeroOptions =
+                        first.options();
+
+                this.copiedOptions =
+                        RawIpv4Options.copiedForNonInitialFragment(
+                                first.options()
+                        );
+            } else {
+                this.copiedOptions =
+                        first.options();
+            }
         }
 
         private boolean compatible(
                 RawIpv4Packet packet
         ) {
             return first.sourceAddress()
-                    .equals(packet.sourceAddress())
+                    .equals(
+                            packet.sourceAddress()
+                    )
                     && first.destinationAddress()
-                    .equals(packet.destinationAddress())
+                    .equals(
+                            packet.destinationAddress()
+                    )
                     && first.protocol()
                     == packet.protocol()
                     && first.identification()
@@ -372,10 +479,41 @@ public final class RawIpv4ReassemblyTable {
                     == packet.dscpEcn();
         }
 
+        private boolean optionsCompatible(
+                RawIpv4Packet packet
+        ) {
+            if (packet.fragmentOffset() == 0) {
+                byte[] expectedCopied =
+                        RawIpv4Options.copiedForNonInitialFragment(
+                                packet.options()
+                        );
+
+                if (copiedOptions != null
+                        && !Arrays.equals(
+                        copiedOptions,
+                        expectedCopied
+                )) {
+                    return false;
+                }
+
+                return true;
+            }
+
+            byte[] nonInitialOptions =
+                    packet.options();
+
+            return copiedOptions == null
+                    || Arrays.equals(
+                    copiedOptions,
+                    nonInitialOptions
+            );
+        }
+
         private Fragment exact(
                 Fragment candidate
         ) {
-            for (Fragment existing : fragments) {
+            for (Fragment existing
+                    : fragments) {
                 if (existing.offsetBytes
                         == candidate.offsetBytes
                         && existing.moreFragments
@@ -387,6 +525,7 @@ public final class RawIpv4ReassemblyTable {
                     return existing;
                 }
             }
+
             return null;
         }
 
@@ -397,7 +536,8 @@ public final class RawIpv4ReassemblyTable {
                     candidate.offsetBytes
                             + candidate.payload.length;
 
-            for (Fragment existing : fragments) {
+            for (Fragment existing
+                    : fragments) {
                 int existingEnd =
                         existing.offsetBytes
                                 + existing.payload.length;
@@ -414,12 +554,15 @@ public final class RawIpv4ReassemblyTable {
         }
 
         private boolean complete() {
-            if (finalLength < 0) {
+            if (finalLength < 0
+                    || zeroPacket == null) {
                 return false;
             }
 
             List<Fragment> sorted =
-                    new ArrayList<>(fragments);
+                    new ArrayList<>(
+                            fragments
+                    );
 
             sorted.sort(
                     Comparator.comparingInt(
@@ -428,21 +571,29 @@ public final class RawIpv4ReassemblyTable {
                     )
             );
 
-            int cursor = 0;
+            int cursor =
+                    0;
 
-            for (Fragment fragment : sorted) {
-                if (fragment.offsetBytes != cursor) {
+            for (Fragment fragment
+                    : sorted) {
+                if (fragment.offsetBytes
+                        != cursor) {
                     return false;
                 }
-                cursor += fragment.payload.length;
+
+                cursor +=
+                        fragment.payload.length;
             }
 
-            return cursor == finalLength;
+            return cursor
+                    == finalLength;
         }
 
         private byte[] payload() {
             List<Fragment> sorted =
-                    new ArrayList<>(fragments);
+                    new ArrayList<>(
+                            fragments
+                    );
 
             sorted.sort(
                     Comparator.comparingInt(
@@ -454,7 +605,8 @@ public final class RawIpv4ReassemblyTable {
             byte[] out =
                     new byte[finalLength];
 
-            for (Fragment fragment : sorted) {
+            for (Fragment fragment
+                    : sorted) {
                 System.arraycopy(
                         fragment.payload,
                         0,
@@ -470,9 +622,11 @@ public final class RawIpv4ReassemblyTable {
         private ExpiredAssembly expired(
                 RawIpv4ReassemblyKey key
         ) {
-            int receivedBytes = 0;
+            int receivedBytes =
+                    0;
 
-            for (Fragment fragment : fragments) {
+            for (Fragment fragment
+                    : fragments) {
                 receivedBytes +=
                         fragment.payload.length;
             }
@@ -536,6 +690,7 @@ public final class RawIpv4ReassemblyTable {
                     rawPacket == null
                             ? new byte[0]
                             : rawPacket.clone();
+
             reason =
                     reason == null
                             ? ""
@@ -545,18 +700,6 @@ public final class RawIpv4ReassemblyTable {
         @Override
         public byte[] rawPacket() {
             return rawPacket.clone();
-        }
-
-        public static ReassemblyResult complete(
-                byte[] rawPacket
-        ) {
-            return new ReassemblyResult(
-                    Status.COMPLETE,
-                    rawPacket,
-                    null,
-                    0,
-                    ""
-            );
         }
 
         public static ReassemblyResult complete(

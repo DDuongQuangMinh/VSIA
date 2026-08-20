@@ -3,6 +3,8 @@ package com.k1ngtle.vsia.signality.engineering.wifi.ip.raw;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.InternetChecksum;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.Ipv4Address;
 
+import java.util.Arrays;
+
 public final class RawIpv4Encoder {
     private RawIpv4Encoder() {
     }
@@ -19,6 +21,38 @@ public final class RawIpv4Encoder {
             int protocol,
             byte[] payload
     ) {
+        return encodeWithOptions(
+                sourceIp,
+                destinationIp,
+                dscpEcn,
+                identification,
+                dontFragment,
+                moreFragments,
+                fragmentOffsetUnits,
+                ttl,
+                protocol,
+                new byte[0],
+                payload
+        );
+    }
+
+    public static byte[] encodeWithOptions(
+            String sourceIp,
+            String destinationIp,
+            int dscpEcn,
+            int identification,
+            boolean dontFragment,
+            boolean moreFragments,
+            int fragmentOffsetUnits,
+            int ttl,
+            int protocol,
+            byte[] options,
+            byte[] payload
+    ) {
+        if (dscpEcn < 0 || dscpEcn > 255) {
+            throw new IllegalArgumentException("dscpEcn");
+        }
+
         if (identification < 0 || identification > 0xFFFF) {
             throw new IllegalArgumentException("identification");
         }
@@ -35,23 +69,50 @@ public final class RawIpv4Encoder {
             throw new IllegalArgumentException("protocol");
         }
 
+        byte[] headerOptions =
+                options == null
+                        ? new byte[0]
+                        : options.clone();
+
+        RawIpv4Options.parse(headerOptions);
+        RawIpv4Options.validateForFragmentOffset(
+                headerOptions,
+                fragmentOffsetUnits
+        );
+
         byte[] body =
                 payload == null
                         ? new byte[0]
                         : payload.clone();
 
+        int headerBytes =
+                20 + headerOptions.length;
+
+        int ihlWords =
+                headerBytes / 4;
+
+        if (ihlWords < 5 || ihlWords > 15) {
+            throw new IllegalArgumentException(
+                    "IPv4 IHL outside 5..15"
+            );
+        }
+
         int totalLength =
-                20 + body.length;
+                headerBytes + body.length;
 
         if (totalLength > 65535) {
-            throw new IllegalArgumentException("IPv4 packet too large");
+            throw new IllegalArgumentException(
+                    "IPv4 packet too large"
+            );
         }
 
         byte[] out =
                 new byte[totalLength];
 
         out[0] =
-                0x45;
+                (byte) (
+                        0x40 | ihlWords
+                );
 
         out[1] =
                 (byte) dscpEcn;
@@ -70,7 +131,11 @@ public final class RawIpv4Encoder {
             flagsAndOffset |= 0x2000;
         }
 
-        put16(out, 6, flagsAndOffset);
+        put16(
+                out,
+                6,
+                flagsAndOffset
+        );
 
         out[8] =
                 (byte) ttl;
@@ -84,25 +149,50 @@ public final class RawIpv4Encoder {
         byte[] destination =
                 Ipv4Address.parse(destinationIp);
 
-        System.arraycopy(source, 0, out, 12, 4);
-        System.arraycopy(destination, 0, out, 16, 4);
+        System.arraycopy(
+                source,
+                0,
+                out,
+                12,
+                4
+        );
+
+        System.arraycopy(
+                destination,
+                0,
+                out,
+                16,
+                4
+        );
+
+        System.arraycopy(
+                headerOptions,
+                0,
+                out,
+                20,
+                headerOptions.length
+        );
 
         int checksum =
                 InternetChecksum.compute(
-                        java.util.Arrays.copyOfRange(
+                        Arrays.copyOfRange(
                                 out,
                                 0,
-                                20
+                                headerBytes
                         )
                 );
 
-        put16(out, 10, checksum);
+        put16(
+                out,
+                10,
+                checksum
+        );
 
         System.arraycopy(
                 body,
                 0,
                 out,
-                20,
+                headerBytes,
                 body.length
         );
 

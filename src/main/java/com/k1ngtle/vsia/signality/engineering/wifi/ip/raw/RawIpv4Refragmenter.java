@@ -27,6 +27,15 @@ public final class RawIpv4Refragmenter {
             );
         }
 
+        RawIpv4Options.parse(
+                packet.options()
+        );
+
+        RawIpv4Options.validateForFragmentOffset(
+                packet.options(),
+                packet.fragmentOffset()
+        );
+
         if (outgoingTtl < 1 || outgoingTtl > 255) {
             throw new IllegalArgumentException(
                     "outgoingTtl"
@@ -54,13 +63,6 @@ public final class RawIpv4Refragmenter {
             );
         }
 
-        if (packet.ihlWords() != 5
-                || packet.options().length != 0) {
-            throw new IllegalArgumentException(
-                    "W1.11.3 re-fragmentation supports IHL=5 packets"
-            );
-        }
-
         byte[] payload =
                 packet.payload();
 
@@ -71,17 +73,13 @@ public final class RawIpv4Refragmenter {
             );
         }
 
-        int headerBytes =
-                packet.headerBytes();
+        byte[] parentOptions =
+                packet.options();
 
-        int maximumChildPayload =
-                ((mtu - headerBytes) / 8) * 8;
-
-        if (maximumChildPayload < 8) {
-            throw new IllegalArgumentException(
-                    "MTU too small for IPv4 re-fragmentation"
-            );
-        }
+        byte[] copiedOptions =
+                RawIpv4Options.copiedForNonInitialFragment(
+                        parentOptions
+                );
 
         List<byte[]> children =
                 new ArrayList<>();
@@ -90,6 +88,27 @@ public final class RawIpv4Refragmenter {
                 0;
 
         while (localOffsetBytes < payload.length) {
+            int absoluteOffsetBytes =
+                    packet.fragmentOffset() * 8
+                            + localOffsetBytes;
+
+            byte[] childOptions =
+                    absoluteOffsetBytes == 0
+                            ? parentOptions
+                            : copiedOptions;
+
+            int childHeaderBytes =
+                    20 + childOptions.length;
+
+            int maximumChildPayload =
+                    ((mtu - childHeaderBytes) / 8) * 8;
+
+            if (maximumChildPayload < 8) {
+                throw new IllegalArgumentException(
+                        "MTU too small for IPv4 re-fragmentation with options"
+                );
+            }
+
             int remaining =
                     payload.length
                             - localOffsetBytes;
@@ -135,7 +154,7 @@ public final class RawIpv4Refragmenter {
                     );
 
             children.add(
-                    RawIpv4Encoder.encode(
+                    RawIpv4Encoder.encodeWithOptions(
                             packet.sourceAddress(),
                             packet.destinationAddress(),
                             packet.dscpEcn(),
@@ -145,6 +164,7 @@ public final class RawIpv4Refragmenter {
                             childOffsetUnits,
                             outgoingTtl,
                             packet.protocol(),
+                            childOptions,
                             childPayload
                     )
             );
