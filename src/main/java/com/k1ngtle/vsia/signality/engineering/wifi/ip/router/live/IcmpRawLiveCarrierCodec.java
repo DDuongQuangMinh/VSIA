@@ -418,6 +418,19 @@ public final class IcmpRawLiveCarrierCodec {
     private static byte[] buildQuote(
             OSINetworkPacket logical
     ) {
+        if (logical.payload.contains(
+                "icmp_quote"
+        )) {
+            byte[] exact =
+                    logical.payload.getByteArray(
+                            "icmp_quote"
+                    );
+
+            if (exact.length >= 20) {
+                return exact.clone();
+            }
+        }
+
         String quotedSource =
                 logical.payload.getString(
                         "quoted_source_ip"
@@ -497,4 +510,7 @@ public final class IcmpRawLiveCarrierCodec {
 
         return quote;
     }
+
+    // W1.13 exact raw quote support
+
 }

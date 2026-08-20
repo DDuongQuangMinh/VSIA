@@ -94,6 +94,8 @@ import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4TransitForwarde
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4TransitPending;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4TransitCarrierCodec;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIpv4Refragmenter;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIcmpQuote;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.raw.RawIcmpErrorPolicy;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveController;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveScheduler;
 import com.k1ngtle.vsia.signality.engineering.wifi.tcp.live.TcpLiveSnapshot;
@@ -5809,6 +5811,21 @@ public abstract class NetworkDeviceBlockEntity
         OSINetworkPacket shell =
                 new OSINetworkPacket();
 
+        byte[] originalRawIpv4 =
+                decodedFragment.rawIpv4();
+
+        shell.payload.putByteArray(
+                "icmp_original_raw",
+                originalRawIpv4
+        );
+
+        shell.payload.putByteArray(
+                "icmp_quote",
+                RawIcmpQuote.fromRawIpv4(
+                        originalRawIpv4
+                )
+        );
+
         shell.sourceMac =
                 decodedFragment.sourceMac();
 
@@ -7029,6 +7046,32 @@ public abstract class NetworkDeviceBlockEntity
             OSINetworkPacket original,
             RouterForwardDecision decision
     ) {
+        if (original != null
+                && original.payload.contains(
+                "icmp_original_raw"
+        )) {
+            RawIcmpErrorPolicy.Decision policy =
+                    RawIcmpErrorPolicy.evaluate(
+                            original.payload.getByteArray(
+                                    "icmp_original_raw"
+                            )
+                    );
+
+            if (!policy.allowed()) {
+                traceWifiRouter(
+                        "ICMP ERROR SUPPRESSED reason="
+                                + policy.reason()
+                );
+
+                wifiIpApplication.setStatus(
+                        "Router ICMP suppressed: "
+                                + policy.reason()
+                );
+
+                return;
+            }
+        }
+
         RouterInterface ingress =
                 resolveWifiRouterIngress(
                         original
