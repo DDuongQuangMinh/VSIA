@@ -575,7 +575,7 @@ public final class WifiMacController {
                     FC_DATA | FC_TO_DS,
                     selectedBssid,
                     ownMac,
-                    selectedBssid,
+                    targetMac,
                     protectedBody,
                     category,
                     sender
@@ -860,10 +860,63 @@ public final class WifiMacController {
                     receivedSequence
             );
 
-            return unprotectReceivedData(
-                    frame,
-                    body
-            );
+            CompoundTag receivedData =
+                    unprotectReceivedData(
+                            frame,
+                            body
+                    );
+
+            if (receivedData == null) {
+                return null;
+            }
+
+            boolean toDistributionSystem =
+                    (
+                            frame.frameControl()
+                                    & FC_TO_DS
+                    ) != 0;
+
+            if (mode == WifiMode.ACCESS_POINT
+                    && toDistributionSystem) {
+                String originalSource =
+                        formatMac(
+                                frame.address2()
+                        );
+
+                String destination =
+                        formatMac(
+                                frame.address3()
+                        );
+
+                boolean localDestination =
+                        macEquals(
+                                destination,
+                                ownMac
+                        );
+
+                boolean broadcastDestination =
+                        macEquals(
+                                destination,
+                                BROADCAST
+                        );
+
+                if (!localDestination) {
+                    relayInfrastructureData(
+                            ownMac,
+                            originalSource,
+                            destination,
+                            receivedData,
+                            sender
+                    );
+                }
+
+                if (!localDestination
+                        && !broadcastDestination) {
+                    return null;
+                }
+            }
+
+            return receivedData;
         }
 
         return null;
@@ -889,31 +942,11 @@ public final class WifiMacController {
                         | 0x4000
                         : frameControl;
 
-        if (macEquals(
-                address1,
-                BROADCAST
-        )) {
-            edca.acquireLogicalMedium(
-                    category
-            );
-
-            sender.send(
-                    frame(
-                            effectiveFrameControl,
-                            address1,
-                            address2,
-                            address3,
-                            sequence,
-                            body
-                    )
-            );
-
-            edca.onSuccess(
-                    category
-            );
-
-            return true;
-        }
+        boolean broadcast =
+                macEquals(
+                        address1,
+                        BROADCAST
+                );
 
         int bodyBytes =
                 encode(
@@ -921,7 +954,8 @@ public final class WifiMacController {
                 ).length;
 
         boolean useRts =
-                bodyBytes
+                !broadcast
+                        && bodyBytes
                         >= timing.rtsThresholdBytes();
 
         int backoffSlots =
@@ -1326,6 +1360,24 @@ public final class WifiMacController {
                 .send(
                         frame
                 );
+
+        if (macEquals(
+                pending.address1(),
+                BROADCAST
+        )) {
+            pendingTransmissions.remove(
+                    pending.sequence()
+            );
+
+            edca.onSuccess(
+                    pending.category()
+            );
+
+            lastSecurityDiagnostic =
+                    "BROADCAST_EDCA_QUEUED";
+
+            return;
+        }
 
         long deadline =
                 WifiMacTimingScheduler
@@ -2158,6 +2210,62 @@ public final class WifiMacController {
         );
     }
 
+    private boolean relayInfrastructureData(
+            String apMac,
+            String originalSource,
+            String destination,
+            CompoundTag data,
+            Sender sender
+    ) {
+        if (mode != WifiMode.ACCESS_POINT) {
+            return false;
+        }
+
+        boolean broadcast =
+                macEquals(
+                        destination,
+                        BROADCAST
+                );
+
+        String normalizedDestination =
+                normalizeMac(
+                        destination
+                );
+
+        if (!broadcast
+                && !associated.contains(
+                normalizedDestination
+        )) {
+            lastSecurityDiagnostic =
+                    "DS_RELAY_DESTINATION_NOT_ASSOCIATED";
+
+            return false;
+        }
+
+        CompoundTag protectedBody =
+                protectApData(
+                        destination,
+                        data
+                );
+
+        boolean queued =
+                transmitWithRetry(
+                        FC_DATA | FC_FROM_DS,
+                        destination,
+                        apMac,
+                        originalSource,
+                        protectedBody,
+                        WifiAccessCategory.BEST_EFFORT,
+                        sender
+                );
+
+        lastSecurityDiagnostic =
+                queued
+                        ? "DS_RELAY_QUEUED"
+                        : "DS_RELAY_QUEUE_FAILED";
+
+        return queued;
+    }
     private CompoundTag protectStationData(
             CompoundTag data
     ) {
@@ -2304,8 +2412,26 @@ public final class WifiMacController {
         }
 
         if (mode == WifiMode.STATION) {
-            return isAssociated()
-                    && macEquals(
+            if (!isAssociated()) {
+                return false;
+            }
+
+            boolean fromDistributionSystem =
+                    (
+                            frame.frameControl()
+                                    & FC_FROM_DS
+                    ) != 0;
+
+            if (fromDistributionSystem) {
+                return macEquals(
+                        formatMac(
+                                frame.address2()
+                        ),
+                        selectedBssid
+                );
+            }
+
+            return macEquals(
                     formatMac(
                             frame.address3()
                     ),
