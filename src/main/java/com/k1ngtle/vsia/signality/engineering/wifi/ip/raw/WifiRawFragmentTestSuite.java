@@ -203,9 +203,25 @@ public final class WifiRawFragmentTestSuite {
                 0L
         );
 
+        byte[] overlappingFragment =
+                RawIpv4Encoder.encode(
+                        "192.0.2.10",
+                        "198.51.100.20",
+                        0,
+                        0x4242,
+                        false,
+                        true,
+                        100,
+                        64,
+                        17,
+                        payload(
+                                800
+                        )
+                );
+
         RawIpv4ReassemblyTable.ReassemblyResult overlapResult =
                 overlap.accept(
-                        fragments.get(0),
+                        overlappingFragment,
                         1L
                 );
 
@@ -217,7 +233,7 @@ public final class WifiRawFragmentTestSuite {
                                 && "OVERLAP".equals(
                                 overlapResult.reason()
                         ),
-                        "Overlapping/duplicate fragment ranges are rejected"
+                        "A non-identical fragment whose byte range overlaps an existing fragment must be rejected"
                 )
         );
 
