@@ -5,684 +5,785 @@ import com.k1ngtle.vsia.network.VsiaNetwork;
 import com.k1ngtle.vsia.signality.internet.router.RouterOsSimulator;
 import com.k1ngtle.vsia.world.inventory.RtAc68uRouterMenu;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.client.gui.screens.Screen;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public final class RtAc68uRouterScreen extends AbstractContainerScreen<RtAc68uRouterMenu> {
-    private enum Tab {
-        PHYSICAL("Physical"), CONFIG("Config"), CLI("CLI"), ATTRIBUTES("Attributes");
-        final String label;
+
+    public enum Tab {
+        PHYSICAL("Physical"),
+        CONFIG("Config"),
+        CLI("CLI"),
+        ATTRIBUTES("Attributes");
+
+        public final String label;
         Tab(String label) { this.label = label; }
     }
 
-    private Tab tab = Tab.PHYSICAL;
-    private String configItem = "Settings";
+    private Tab currentTab = Tab.PHYSICAL;
+    private String selectedConfigItem = "Settings";
     private final RouterOsSimulator os;
+    private boolean isUpdatingVisibility = false;
 
+    // UI State
+    private float configScrollOffset = 0.0f;
+    private int maxConfigScrollLines = 0;
+    private final List<String[]> configTreeItems = new ArrayList<>();
+    private float physicalScrollOffset = 0.0f;
+
+    // Fields
     private EditBox displayNameBox;
     private EditBox hostnameBox;
     private EditBox ipBox;
     private EditBox maskBox;
     private EditBox gatewayBox;
-    private Button applyButton;
-    private boolean cliStarted = false;
-    private int cliCursorTick = 0;
-
-    private static final List<String> CONFIG_ITEMS = List.of(
-            "GLOBAL", "Settings",
-            "ROUTING", "Static",
-            "INTERFACE", "GigabitEthernet0/0/0", "GigabitEthernet0/0/1", "Dot11Radio0"
-    );
+    private EditBox routeNetworkBox;
+    private EditBox routeMaskBox;
+    private EditBox routeNextHopBox;
 
     public RtAc68uRouterScreen(RtAc68uRouterMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
-        this.imageWidth = 760;
+        this.imageWidth = 720;
         this.imageHeight = 460;
-        this.os = menu.blockEntity.routerOs;
+
+        if (menu.blockEntity != null) {
+            this.os = menu.blockEntity.routerOs;
+            this.os.guiCallback = this::updateVisibility;
+        } else {
+            this.os = new RouterOsSimulator(this::updateVisibility);
+        }
+    }
+
+    @Override
+    public void onClose() {
+        if (this.os != null) this.os.guiCallback = null;
+        super.onClose();
     }
 
     @Override
     protected void init() {
         super.init();
-        titleLabelX = 10000;
-        inventoryLabelY = 10000;
+        this.titleLabelX = 10000;
+        this.inventoryLabelY = 10000;
 
-        int cx = leftPos + 185;
-        int y = topPos;
+        this.configTreeItems.clear();
+        this.configTreeItems.add(new String[]{"GLOBAL", "0xDDDDDD", "0", "header"});
+        this.configTreeItems.add(new String[]{"    Settings", "0xFFFFFF", "1", "item"});
+        this.configTreeItems.add(new String[]{"", "0x000000", "0", "empty"});
+        this.configTreeItems.add(new String[]{"ROUTING", "0xDDDDDD", "0", "header"});
+        this.configTreeItems.add(new String[]{"    Static Routes", "0xAAAAAA", "0", "item"});
+        this.configTreeItems.add(new String[]{"", "0x000000", "0", "empty"});
+        this.configTreeItems.add(new String[]{"INTERFACE", "0xDDDDDD", "0", "header"});
+        this.configTreeItems.add(new String[]{"    GigabitEthernet0/0/0", "0xAAAAAA", "0", "item"});
+        this.configTreeItems.add(new String[]{"    GigabitEthernet0/0/1", "0xAAAAAA", "0", "item"});
+        this.configTreeItems.add(new String[]{"    Dot11Radio0", "0xAAAAAA", "0", "item"});
 
-        displayNameBox = makeBox(cx + 112, y + 68, 280, "Display Name");
-        hostnameBox = makeBox(cx + 112, y + 89, 280, "Hostname");
-        ipBox = makeBox(cx + 112, y + 111, 170, "IP Address");
-        maskBox = makeBox(cx + 112, y + 132, 170, "Subnet Mask");
-        gatewayBox = makeBox(cx + 112, y + 153, 170, "Default Gateway");
+        int x = (this.width - this.imageWidth) / 2;
+        int y = (this.height - this.imageHeight) / 2;
+        int contentX = x + 180;
 
-        applyButton = addRenderableWidget(
-                Button.builder(Component.literal("Apply"), b -> applyConfig())
-                        .bounds(cx + 305, y + 151, 74, 20)
-                        .build()
-        );
+        this.displayNameBox = new EditBox(this.font, contentX + 85, y + 62, 300, 12, Component.literal("Display Name"));
+        this.displayNameBox.setMaxLength(32);
+        this.displayNameBox.setBordered(false);
+        this.displayNameBox.setTextColor(0xAAAAAA);
+        this.displayNameBox.setResponder(val -> {
+            if (!isUpdatingVisibility) os.displayName = val;
+        });
+        this.addRenderableWidget(this.displayNameBox);
 
-        refreshWidgets();
-    }
-
-    private EditBox makeBox(int x, int y, int width, String name) {
-        EditBox box = new EditBox(font, x, y, width, 16, Component.literal(name));
-        box.setMaxLength(64);
-        addRenderableWidget(box);
-        return box;
-    }
-
-    private void applyConfig() {
-        if ("Settings".equals(configItem)) {
-            os.displayName = displayNameBox.getValue().isBlank()
-                    ? "RT-AC68U"
-                    : displayNameBox.getValue().trim();
-
-            String host = hostnameBox.getValue().trim();
-            if (!host.isBlank()) {
-                sendCli("enable", "configure terminal", "hostname " + host, "end");
+        this.hostnameBox = new EditBox(this.font, contentX + 85, y + 79, 300, 12, Component.literal("Hostname"));
+        this.hostnameBox.setMaxLength(32);
+        this.hostnameBox.setBordered(false);
+        this.hostnameBox.setTextColor(0xAAAAAA);
+        this.hostnameBox.setResponder(val -> {
+            if (!isUpdatingVisibility) {
+                os.hostname = val;
+                os.appendGuiCommand("hostname " + val, selectedConfigItem);
             }
-            return;
-        }
+        });
+        this.addRenderableWidget(this.hostnameBox);
 
-        String iface = switch (configItem) {
-            case "GigabitEthernet0/0/0" -> "gigabitethernet0/0/0";
-            case "GigabitEthernet0/0/1" -> "gigabitethernet0/0/1";
-            case "Dot11Radio0" -> "dot11radio0";
-            default -> null;
-        };
+        this.ipBox = new EditBox(this.font, contentX + 85, y + 96, 140, 12, Component.literal("IP Address"));
+        this.ipBox.setBordered(false);
+        this.ipBox.setTextColor(0xFFFFFF);
+        this.ipBox.setResponder(val -> handleIpUpdate());
+        this.addRenderableWidget(this.ipBox);
 
-        if (iface == null) return;
+        this.maskBox = new EditBox(this.font, contentX + 310, y + 96, 100, 12, Component.literal("Subnet Mask"));
+        this.maskBox.setBordered(false);
+        this.maskBox.setTextColor(0xFFFFFF);
+        this.maskBox.setResponder(val -> handleIpUpdate());
+        this.addRenderableWidget(this.maskBox);
 
-        if ("Dot11Radio0".equals(configItem)) {
-            sendCli(
-                    "enable",
-                    "configure terminal",
-                    "interface " + iface,
-                    "ip address " + ipBox.getValue().trim() + " " + maskBox.getValue().trim(),
-                    "no shutdown",
-                    "exit",
-                    "ip default-gateway " + gatewayBox.getValue().trim(),
-                    "end"
-            );
-        } else {
-            sendCli(
-                    "enable",
-                    "configure terminal",
-                    "interface " + iface,
-                    "ip address " + ipBox.getValue().trim() + " " + maskBox.getValue().trim(),
-                    "no shutdown",
-                    "end"
-            );
-        }
-        refreshWidgets();
-    }
-
-    private void sendCli(String... commands) {
-        for (String command : commands) {
-            os.executeCliCore(command, false);
-        }
-        VsiaNetwork.sendToServer(
-                new DeviceCommandPacket(
-                        menu.blockEntity.getBlockPos(),
-                        0,
-                        commands
-                )
-        );
-    }
-
-    private void refreshWidgets() {
-        if (displayNameBox == null) return;
-
-        boolean config = tab == Tab.CONFIG;
-        boolean settings = config && "Settings".equals(configItem);
-        boolean iface = config && (
-                "GigabitEthernet0/0/0".equals(configItem)
-                        || "GigabitEthernet0/0/1".equals(configItem)
-                        || "Dot11Radio0".equals(configItem)
-        );
-
-        displayNameBox.setVisible(settings);
-        hostnameBox.setVisible(settings);
-        ipBox.setVisible(iface);
-        maskBox.setVisible(iface);
-        gatewayBox.setVisible(iface && "Dot11Radio0".equals(configItem));
-        applyButton.visible = settings || iface;
-
-        if (settings) {
-            if (!displayNameBox.isFocused()) displayNameBox.setValue(os.displayName);
-            if (!hostnameBox.isFocused()) hostnameBox.setValue(os.hostname);
-        } else if (iface) {
-            if ("GigabitEthernet0/0/0".equals(configItem)) {
-                if (!ipBox.isFocused()) ipBox.setValue(os.lan0Ip);
-                if (!maskBox.isFocused()) maskBox.setValue(os.lan0Mask);
-            } else if ("GigabitEthernet0/0/1".equals(configItem)) {
-                if (!ipBox.isFocused()) ipBox.setValue(os.lan1Ip);
-                if (!maskBox.isFocused()) maskBox.setValue(os.lan1Mask);
-            } else {
-                if (!ipBox.isFocused()) ipBox.setValue(os.wlanIp);
-                if (!maskBox.isFocused()) maskBox.setValue(os.wlanMask);
-                if (!gatewayBox.isFocused()) gatewayBox.setValue(os.wlanGateway);
+        this.gatewayBox = new EditBox(this.font, contentX + 85, y + 113, 140, 12, Component.literal("Gateway"));
+        this.gatewayBox.setBordered(false);
+        this.gatewayBox.setTextColor(0xFFFFFF);
+        this.gatewayBox.setResponder(val -> {
+            if (!isUpdatingVisibility && "Dot11Radio0".equals(selectedConfigItem)) {
+                os.wlanGateway = val;
+                if (!val.isBlank() && !val.equals("unassigned")) {
+                    os.appendGuiCommand("ip default-gateway " + val, "Settings");
+                }
             }
+        });
+        this.addRenderableWidget(this.gatewayBox);
+
+        this.routeNetworkBox = new EditBox(this.font, contentX - 5, y + 80, 120, 12, Component.literal("Network"));
+        this.routeNetworkBox.setBordered(false);
+        this.routeNetworkBox.setTextColor(0xFFFFFF);
+        this.addRenderableWidget(this.routeNetworkBox);
+
+        this.routeMaskBox = new EditBox(this.font, contentX + 130, y + 80, 110, 12, Component.literal("Mask"));
+        this.routeMaskBox.setBordered(false);
+        this.routeMaskBox.setTextColor(0xFFFFFF);
+        this.addRenderableWidget(this.routeMaskBox);
+
+        this.routeNextHopBox = new EditBox(this.font, contentX + 255, y + 80, 110, 12, Component.literal("Next Hop"));
+        this.routeNextHopBox.setBordered(false);
+        this.routeNextHopBox.setTextColor(0xFFFFFF);
+        this.addRenderableWidget(this.routeNextHopBox);
+
+        updateVisibility();
+    }
+
+    private void handleIpUpdate() {
+        if (isUpdatingVisibility) return;
+
+        String ip = ipBox.getValue().isEmpty() ? "unassigned" : ipBox.getValue();
+        String mask = maskBox.getValue().isEmpty() ? "unassigned" : maskBox.getValue();
+
+        if (selectedConfigItem.equals("GigabitEthernet0/0/0")) {
+            os.lan0Ip = ip; os.lan0Mask = mask;
+        } else if (selectedConfigItem.equals("GigabitEthernet0/0/1")) {
+            os.lan1Ip = ip; os.lan1Mask = mask;
+        } else if (selectedConfigItem.equals("Dot11Radio0")) {
+            os.wlanIp = ip; os.wlanMask = mask;
+        }
+
+        if (!ip.equals("unassigned") && !mask.equals("unassigned")) {
+            os.appendGuiCommand("ip address " + ip + " " + mask, selectedConfigItem);
+        }
+    }
+
+    private void updateVisibility() {
+        this.isUpdatingVisibility = true;
+
+        boolean isSettings = this.currentTab == Tab.CONFIG && this.selectedConfigItem.equals("Settings");
+        boolean isRouting = this.currentTab == Tab.CONFIG && this.selectedConfigItem.equals("Static Routes");
+        boolean isInterface = this.currentTab == Tab.CONFIG && (this.selectedConfigItem.startsWith("Gigabit") || this.selectedConfigItem.equals("Dot11Radio0"));
+        boolean isWlan = isInterface && this.selectedConfigItem.equals("Dot11Radio0");
+
+        if (this.displayNameBox != null) {
+            this.displayNameBox.setVisible(isSettings);
+            if (!this.displayNameBox.isFocused()) this.displayNameBox.setValue(os.displayName);
+        }
+        if (this.hostnameBox != null) {
+            this.hostnameBox.setVisible(isSettings);
+            if (!this.hostnameBox.isFocused()) this.hostnameBox.setValue(os.hostname);
+        }
+
+        if (this.routeNetworkBox != null) this.routeNetworkBox.setVisible(isRouting);
+        if (this.routeMaskBox != null) this.routeMaskBox.setVisible(isRouting);
+        if (this.routeNextHopBox != null) this.routeNextHopBox.setVisible(isRouting);
+
+        if (this.ipBox != null) {
+            this.ipBox.setVisible(isInterface);
+            if (isInterface && !this.ipBox.isFocused()) {
+                if (selectedConfigItem.equals("GigabitEthernet0/0/0")) this.ipBox.setValue(os.lan0Ip.equals("unassigned") ? "" : os.lan0Ip);
+                else if (selectedConfigItem.equals("GigabitEthernet0/0/1")) this.ipBox.setValue(os.lan1Ip.equals("unassigned") ? "" : os.lan1Ip);
+                else if (selectedConfigItem.equals("Dot11Radio0")) this.ipBox.setValue(os.wlanIp.equals("unassigned") ? "" : os.wlanIp);
+            }
+        }
+        if (this.maskBox != null) {
+            this.maskBox.setVisible(isInterface);
+            if (isInterface && !this.maskBox.isFocused()) {
+                if (selectedConfigItem.equals("GigabitEthernet0/0/0")) this.maskBox.setValue(os.lan0Mask.equals("unassigned") ? "" : os.lan0Mask);
+                else if (selectedConfigItem.equals("GigabitEthernet0/0/1")) this.maskBox.setValue(os.lan1Mask.equals("unassigned") ? "" : os.lan1Mask);
+                else if (selectedConfigItem.equals("Dot11Radio0")) this.maskBox.setValue(os.wlanMask.equals("unassigned") ? "" : os.wlanMask);
+            }
+        }
+        if (this.gatewayBox != null) {
+            this.gatewayBox.setVisible(isWlan);
+            if (isWlan && !this.gatewayBox.isFocused()) {
+                this.gatewayBox.setValue(os.wlanGateway.equals("unassigned") ? "" : os.wlanGateway);
+            }
+        }
+
+        this.isUpdatingVisibility = false;
+    }
+
+    private void syncCommand(String... commands) {
+        if (this.menu.blockEntity != null) {
+            VsiaNetwork.sendToServer(new DeviceCommandPacket(
+                    this.menu.blockEntity.getBlockPos(),
+                    0, // Device index 0 for Router
+                    commands
+            ));
         }
     }
 
     @Override
-    protected void containerTick() {
-        super.containerTick();
-        cliCursorTick++;
-    }
-
-    @Override
-    public boolean keyPressed(
-            int keyCode,
-            int scanCode,
-            int modifiers
-    ) {
-        if (tab == Tab.CLI) {
-            if (keyCode == GLFW.GLFW_KEY_ENTER
-                    || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
-                if (!cliStarted) {
-                    cliStarted = true;
-                    os.cliLines.add("");
+    public boolean keyPressed(int pKeyCode, int pScanCode, int pModifiers) {
+        if (this.currentTab == Tab.CLI) {
+            if (Screen.hasControlDown()) {
+                if (pKeyCode == GLFW.GLFW_KEY_Z) {
+                    if (os.cliMode == RouterOsSimulator.CliMode.GLOBAL_CONFIG || os.cliMode == RouterOsSimulator.CliMode.INTERFACE_CONFIG) {
+                        os.cliLines.add(os.getPrompt() + os.cliInput + "^Z");
+                        os.executeCliCore("end", false);
+                        syncCommand("end");
+                        os.cliInput = "";
+                        os.cliCursorPos = 0;
+                    }
+                    return true;
+                } else if (pKeyCode == GLFW.GLFW_KEY_C) {
+                    os.cliLines.add(os.getPrompt() + os.cliInput + "^C");
+                    os.cliInput = "";
+                    os.cliCursorPos = 0;
                     return true;
                 }
-
-                String command =
-                        os.cliSubmit();
-
-                if (!command.isEmpty()) {
-                    os.executeCliCore(
-                            command,
-                            true
-                    );
-
-                    VsiaNetwork.sendToServer(
-                            new DeviceCommandPacket(
-                                    menu.blockEntity.getBlockPos(),
-                                    0,
-                                    command
-                            )
-                    );
-                }
-
-                return true;
             }
 
-            if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
-                os.cliBackspace();
+            if (pKeyCode == 258) { // TAB autocomplete
+                os.handleAutocomplete();
                 return true;
-            }
-
-            if (keyCode == GLFW.GLFW_KEY_DELETE) {
-                os.cliDelete();
-                return true;
-            }
-
-            if (keyCode == GLFW.GLFW_KEY_LEFT) {
-                if (os.cliCursorPos > 0) {
+            } else if (pKeyCode == 259) { // BACKSPACE
+                if (os.cliInput.length() > 0 && os.cliCursorPos > 0) {
+                    os.cliInput = os.cliInput.substring(0, os.cliCursorPos - 1) + os.cliInput.substring(os.cliCursorPos);
                     os.cliCursorPos--;
                 }
                 return true;
-            }
-
-            if (keyCode == GLFW.GLFW_KEY_RIGHT) {
-                if (os.cliCursorPos < os.cliInput.length()) {
-                    os.cliCursorPos++;
+            } else if (pKeyCode == 257 || pKeyCode == 335) { // ENTER
+                String cmd = os.cliInput;
+                os.executeCliCore(cmd, true);
+                syncCommand(cmd);
+                os.cliInput = "";
+                os.cliCursorPos = 0;
+                return true;
+            } else if (pKeyCode == 263) { // LEFT
+                if (os.cliCursorPos > 0) os.cliCursorPos--;
+                return true;
+            } else if (pKeyCode == 262) { // RIGHT
+                if (os.cliCursorPos < os.cliInput.length()) os.cliCursorPos++;
+                return true;
+            } else if (pKeyCode == GLFW.GLFW_KEY_UP) {
+                if (!os.history.isEmpty()) {
+                    os.cliInput = os.history.get(Math.max(0, os.history.size() - 1));
+                    os.cliCursorPos = os.cliInput.length();
                 }
                 return true;
-            }
-
-            if (keyCode == GLFW.GLFW_KEY_HOME) {
+            } else if (pKeyCode == GLFW.GLFW_KEY_DOWN) {
+                os.cliInput = "";
                 os.cliCursorPos = 0;
                 return true;
             }
 
-            if (keyCode == GLFW.GLFW_KEY_END) {
-                os.cliCursorPos = os.cliInput.length();
+            if (this.minecraft != null && this.minecraft.options.keyInventory.matches(pKeyCode, pScanCode)) {
                 return true;
             }
-
-            if (keyCode == GLFW.GLFW_KEY_UP) {
-                os.cliHistoryPrevious();
-                return true;
-            }
-
-            if (keyCode == GLFW.GLFW_KEY_DOWN) {
-                os.cliHistoryNext();
-                return true;
-            }
-
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-                onClose();
-                return true;
-            }
-
-            if (this.minecraft != null
-                    && this.minecraft.options.keyInventory.matches(
-                    keyCode,
-                    scanCode
-            )) {
-                return true;
-            }
-
-            return true;
         }
 
-        return super.keyPressed(
-                keyCode,
-                scanCode,
-                modifiers
-        );
+        if (this.currentTab == Tab.CONFIG) {
+            boolean handled = false;
+            boolean anyFocused = false;
+
+            for (EditBox box : new EditBox[]{displayNameBox, hostnameBox, ipBox, maskBox, gatewayBox, routeNetworkBox, routeMaskBox, routeNextHopBox}) {
+                if (box != null && box.isVisible() && box.isFocused()) {
+                    anyFocused = true;
+                    if (box.keyPressed(pKeyCode, pScanCode, pModifiers)) handled = true;
+                }
+            }
+            if (handled) return true;
+            if (anyFocused && this.minecraft != null && this.minecraft.options.keyInventory.matches(pKeyCode, pScanCode)) return true;
+        }
+
+        if (pKeyCode == 256) { this.onClose(); return true; }
+        return super.keyPressed(pKeyCode, pScanCode, pModifiers);
     }
 
     @Override
-    public boolean charTyped(
-            char codePoint,
-            int modifiers
-    ) {
-        if (tab == Tab.CLI) {
-            if (!cliStarted) {
-                cliStarted = true;
-            }
-
-            if (codePoint >= 32
-                    && codePoint <= 126) {
-                os.cliInsert(
-                        codePoint
-                );
+    public boolean charTyped(char pCodePoint, int pModifiers) {
+        if (this.currentTab == Tab.CLI && os.isBooted) {
+            if (pCodePoint >= 32 && pCodePoint <= 126) {
+                os.cliInput = os.cliInput.substring(0, os.cliCursorPos) + pCodePoint + os.cliInput.substring(os.cliCursorPos);
+                os.cliCursorPos++;
+                if (pCodePoint == '?') {
+                    os.executeCliCore(os.cliInput, true);
+                    os.cliInput = os.cliInput.substring(0, os.cliInput.length() - 1);
+                    os.cliCursorPos--;
+                }
                 return true;
             }
-
-            return true;
         }
-
-        return super.charTyped(
-                codePoint,
-                modifiers
-        );
+        if (this.currentTab == Tab.CONFIG) {
+            for (EditBox box : new EditBox[]{displayNameBox, hostnameBox, ipBox, maskBox, gatewayBox, routeNetworkBox, routeMaskBox, routeNextHopBox}) {
+                if (box != null && box.isVisible() && box.isFocused() && box.charTyped(pCodePoint, pModifiers)) return true;
+            }
+        }
+        return super.charTyped(pCodePoint, pModifiers);
     }
 
     @Override
-    public boolean mouseScrolled(
-            double mouseX,
-            double mouseY,
-            double delta
-    ) {
-        if (tab == Tab.CLI) {
-            int maxScroll =
-                    Math.max(
-                            0,
-                            os.cliLines.size() - 27
-                    );
-
-            if (delta > 0) {
-                os.cliScrollOffset =
-                        Math.min(
-                                maxScroll,
-                                os.cliScrollOffset + 1
-                        );
-            } else if (delta < 0) {
-                os.cliScrollOffset =
-                        Math.max(
-                                0,
-                                os.cliScrollOffset - 1
-                        );
+    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        if (this.currentTab == Tab.PHYSICAL) {
+            float maxScroll = Math.max(0, 300 - (this.imageHeight - 40));
+            if (maxScroll > 0) {
+                if (delta > 0 && this.physicalScrollOffset > 0) this.physicalScrollOffset = Math.max(0.0f, this.physicalScrollOffset - 0.1f);
+                else if (delta < 0 && this.physicalScrollOffset < 1.0f) this.physicalScrollOffset = Math.min(1.0f, this.physicalScrollOffset + 0.1f);
+                return true;
             }
-
+        } else if (this.currentTab == Tab.CLI) {
+            int maxScroll = Math.max(0, os.cliLines.size() - ((this.imageHeight - 50) / 12) + 1);
+            if (delta > 0 && os.cliScrollOffset < maxScroll) os.cliScrollOffset++;
+            else if (delta < 0 && os.cliScrollOffset > 0) os.cliScrollOffset--;
             return true;
+        } else if (this.currentTab == Tab.CONFIG) {
+            int x = (this.width - this.imageWidth) / 2;
+            if (mouseX >= x && mouseX <= x + 160) {
+                if (delta > 0 && this.configScrollOffset > 0) this.configScrollOffset = Math.max(0.0f, this.configScrollOffset - 0.1f);
+                else if (delta < 0 && this.configScrollOffset < 1.0f) this.configScrollOffset = Math.min(1.0f, this.configScrollOffset + 0.1f);
+                return true;
+            }
         }
-
-        return super.mouseScrolled(
-                mouseX,
-                mouseY,
-                delta
-        );
+        return super.mouseScrolled(mouseX, mouseY, delta);
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        int x = leftPos;
-        int y = topPos;
+        int x = (this.width - this.imageWidth) / 2;
+        int y = (this.height - this.imageHeight) / 2;
 
-        int tx = x + 8;
-        for (Tab candidate : Tab.values()) {
-            int width = Math.max(76, font.width(candidate.label) + 24);
-            if (inside(mouseX, mouseY, tx, y + 7, width, 22)) {
-                tab = candidate;
-                refreshWidgets();
-                return true;
-            }
-            tx += width + 3;
-        }
-
-        if (tab == Tab.CONFIG) {
-            int rowY = y + 55;
-            for (String item : CONFIG_ITEMS) {
-                boolean header = isHeader(item);
-                if (!header && inside(mouseX, mouseY, x + 12, rowY - 2, 160, 18)) {
-                    configItem = item;
-                    refreshWidgets();
+        if (mouseY >= y + 10 && mouseY <= y + 30) {
+            for (int i = 0; i < Tab.values().length; i++) {
+                int tabX = x + 10 + (i * 82);
+                if (mouseX >= tabX && mouseX <= tabX + 80) {
+                    this.currentTab = Tab.values()[i];
+                    updateVisibility();
                     return true;
                 }
-                rowY += 19;
+            }
+        }
+
+        if (this.currentTab == Tab.CONFIG) {
+            int sbWidth = 160;
+            int listY = y + 31;
+            int listHeight = this.imageHeight - 31 - 110;
+
+            if (mouseX >= x && mouseX <= x + sbWidth && mouseY >= listY && mouseY <= listY + listHeight) {
+                int visibleItemIndex = (int) ((mouseY - listY) / 15);
+                int actualIndex = (int) (this.configScrollOffset * this.maxConfigScrollLines) + visibleItemIndex;
+
+                if (actualIndex >= 0 && actualIndex < this.configTreeItems.size()) {
+                    String[] item = this.configTreeItems.get(actualIndex);
+                    if (item[3].equals("item")) {
+                        for (String[] i : this.configTreeItems) if (i[3].equals("item")) { i[2] = "0"; i[1] = "0xAAAAAA"; }
+                        item[2] = "1";
+                        item[1] = "0xFFFFFF";
+                        this.selectedConfigItem = item[0].trim();
+
+                        if (this.selectedConfigItem.startsWith("Gigabit") || this.selectedConfigItem.equals("Dot11Radio0")) {
+                            os.iosCommands.add(os.hostname + "(config)#interface " + this.selectedConfigItem);
+                            os.iosCommands.add(os.hostname + "(config-if)#");
+                            if (os.iosCommands.size() > 8) os.iosCommands.remove(0);
+                        }
+                        updateVisibility();
+                        return true;
+                    }
+                }
+            }
+
+            int contentX = x + 180;
+            if (this.selectedConfigItem.equals("Settings")) {
+                if (mouseY >= y + 115 && mouseY <= y + 125) {
+                    if (mouseX >= contentX + 85 && mouseX <= contentX + 100) {
+                        os.forwardingEnabled = !os.forwardingEnabled;
+                        os.appendGuiCommand(os.forwardingEnabled ? "ip routing" : "no ip routing", "Settings");
+                        syncCommand("configure terminal", os.forwardingEnabled ? "ip routing" : "no ip routing", "end");
+                        return true;
+                    }
+                }
+            } else if (this.selectedConfigItem.equals("Static Routes")) {
+                int rowY = y + 100;
+                if (mouseY >= rowY && mouseY <= rowY + 16) {
+                    if (mouseX >= contentX + 380 && mouseX <= contentX + 450) {
+                        // Add Route
+                        String net = routeNetworkBox.getValue().trim();
+                        String mask = routeMaskBox.getValue().trim();
+                        String nexthop = routeNextHopBox.getValue().trim();
+                        if (!net.isEmpty() && !mask.isEmpty() && !nexthop.isEmpty()) {
+                            String cmd = "ip route " + net + " " + mask + " " + nexthop;
+                            os.executeCliCore(cmd, false);
+                            syncCommand("configure terminal", cmd, "end");
+                            os.appendGuiCommand(cmd, "Settings");
+                            routeNetworkBox.setValue(""); routeMaskBox.setValue(""); routeNextHopBox.setValue("");
+                        }
+                        return true;
+                    }
+                }
+
+                int ty = y + 140;
+                for (int i = 0; i < os.staticRoutes.size(); i++) {
+                    if (mouseY >= ty && mouseY < ty + 16 && mouseX >= contentX + 380 && mouseX <= contentX + 450) {
+                        RouterOsSimulator.RouteEntry r = os.staticRoutes.get(i);
+                        String cmd = "no ip route " + r.network + " " + r.mask + " " + r.nextHop;
+                        os.executeCliCore(cmd, false);
+                        syncCommand("configure terminal", cmd, "end");
+                        os.appendGuiCommand(cmd, "Settings");
+                        return true;
+                    }
+                    ty += 16;
+                }
+            } else if (this.selectedConfigItem.startsWith("Gigabit") || this.selectedConfigItem.equals("Dot11Radio0")) {
+                int rightColX = x + 380;
+
+                if (mouseY >= y + 65 && mouseY <= y + 77 && mouseX >= rightColX + 110 && mouseX <= rightColX + 125) {
+                    boolean currentUp = this.selectedConfigItem.equals("Dot11Radio0") ? os.wlanAdminUp : true; // Assuming wired ports are always admin up for simplification in this UI unless extended
+                    boolean targetUp = !currentUp;
+                    if (this.selectedConfigItem.equals("Dot11Radio0")) os.wlanAdminUp = targetUp;
+                    syncCommand("configure terminal", "interface " + this.selectedConfigItem, targetUp ? "no shutdown" : "shutdown", "end");
+                    os.appendGuiCommand(targetUp ? "no shutdown" : "shutdown", this.selectedConfigItem);
+                    return true;
+                }
+            }
+
+            for (EditBox box : new EditBox[]{displayNameBox, hostnameBox, ipBox, maskBox, gatewayBox, routeNetworkBox, routeMaskBox, routeNextHopBox}) {
+                if (box != null && box.isVisible()) {
+                    if (box.mouseClicked(mouseX, mouseY, button)) { box.setFocused(true); return true; }
+                    else box.setFocused(false);
+                }
             }
         }
 
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
-    private static boolean isHeader(String item) {
-        return "GLOBAL".equals(item) || "ROUTING".equals(item) || "INTERFACE".equals(item);
-    }
-
-    private static boolean inside(double mx, double my, int x, int y, int width, int height) {
-        return mx >= x && mx < x + width && my >= y && my < y + height;
-    }
-
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics);
-        super.render(graphics, mouseX, mouseY, partialTick);
-        renderTooltip(graphics, mouseX, mouseY);
+    public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        this.renderBackground(g);
+        super.render(g, mouseX, mouseY, partialTick);
+
+        int x = (this.width - this.imageWidth) / 2;
+        int y = (this.height - this.imageHeight) / 2;
+
+        g.fill(x, y + 30, x + this.imageWidth, y + this.imageHeight, 0xFF1E1E1E);
+        g.fill(x, y + 30, x + this.imageWidth, y + 31, 0xFF444444);
+        g.fill(x, y + 30, x + 1, y + this.imageHeight, 0xFF444444);
+        g.fill(x + this.imageWidth - 1, y + 30, x + this.imageWidth, y + this.imageHeight, 0xFF444444);
+        g.fill(x, y + this.imageHeight - 1, x + this.imageWidth, y + this.imageHeight, 0xFF444444);
+
+        for (int i = 0; i < Tab.values().length; i++) {
+            int tabX = x + 10 + (i * 82);
+            boolean isActive = (this.currentTab == Tab.values()[i]);
+
+            int bgColor = isActive ? 0xFF1E1E1E : 0xFF2D2D2D;
+            int textColor = isActive ? 0xFFFFFFFF : 0xFFAAAAAA;
+
+            g.fill(tabX, y + 10, tabX + 80, y + 31, bgColor);
+            g.fill(tabX, y + 10, tabX + 80, y + 11, 0xFF0092C8);
+            g.fill(tabX, y + 10, tabX + 1, y + 31, 0xFF444444);
+            g.fill(tabX + 79, y + 10, tabX + 80, y + 31, 0xFF444444);
+
+            if (!isActive) g.fill(tabX, y + 30, tabX + 80, y + 31, 0xFF0092C8);
+
+            int textWidth = this.font.width(Tab.values()[i].label);
+            g.drawString(this.font, Tab.values()[i].label, tabX + (40 - textWidth / 2), y + 16, textColor, false);
+        }
+
+        switch (this.currentTab) {
+            case PHYSICAL -> renderPhysicalTab(g, x, y, mouseX, mouseY);
+            case CONFIG -> renderConfigTab(g, x, y, mouseX, mouseY);
+            case CLI -> renderCLITab(g, x, y);
+            case ATTRIBUTES -> renderAttributesTab(g, x, y);
+        }
     }
 
-    @Override
-    protected void renderBg(GuiGraphics g, float partialTick, int mouseX, int mouseY) {
-        int x = leftPos;
-        int y = topPos;
-
-        g.fill(x, y, x + imageWidth, y + imageHeight, 0xFF202020);
-        g.fill(x, y, x + imageWidth, y + 35, 0xFF292929);
-        g.fill(x, y + 34, x + imageWidth, y + 35, 0xFF707070);
-
-        int tx = x + 8;
-        for (Tab candidate : Tab.values()) {
-            int width = Math.max(76, font.width(candidate.label) + 24);
-            g.fill(tx, y + 7, tx + width, y + 29, candidate == tab ? 0xFF4B4B4B : 0xFF292929);
-            g.renderOutline(tx, y + 7, width, 22, 0xFF777777);
-            g.drawCenteredString(font, candidate.label, tx + width / 2, y + 14, 0xFFFFFFFF);
-            tx += width + 3;
-        }
-
-        switch (tab) {
-            case PHYSICAL -> renderPhysical(g, x, y);
-            case CONFIG -> renderConfig(g, x, y);
-            case CLI -> renderCli(g, x, y);
-            case ATTRIBUTES -> renderAttributes(g, x, y);
-        }
-    }
-
-    private void renderPhysical(GuiGraphics g, int x, int y) {
-        g.fill(x + 10, y + 44, x + 165, y + imageHeight - 18, 0xFF252525);
-        g.renderOutline(x + 10, y + 44, 155, imageHeight - 62, 0xFF555555);
-        g.drawString(font, "MODULES", x + 23, y + 52, 0xFFFFFFFF, false);
-
-        String[] modules = {
-                "NIM-2T", "NIM-Cover", "NIM-ES2-4", "GLC-GE-100FX",
-                "GLC-LH-SMD", "GLC-T", "GLC-TE"
-        };
-        int yy = y + 71;
-        for (String module : modules) {
-            g.fill(x + 18, yy - 2, x + 154, yy + 12, 0xFF313131);
-            g.drawString(font, module, x + 26, yy, 0xFFD0D0D0, false);
-            yy += 17;
-        }
+    private void renderPhysicalTab(GuiGraphics g, int x, int y, int mouseX, int mouseY) {
+        g.drawString(this.font, "Physical Device View", x + 20, y + 45, 0xFFFFFF, false);
 
         int px = x + 180;
-        int right = x + imageWidth - 12;
-        g.drawCenteredString(
-                font,
-                "Zoom In                 Original Size                 Zoom Out",
-                (px + right) / 2,
-                y + 51,
-                0xFFD0D0D0
-        );
-        g.fill(px, y + 68, right, y + imageHeight - 76, 0xFF1D1D1D);
-        g.renderOutline(px, y + 68, right - px, imageHeight - 144, 0xFF555555);
+        int py = y + 80;
+        int pw = 430;
+        int ph = 120;
 
-        int dx = px + 55;
-        int dy = y + 135;
-        g.fill(dx, dy, dx + 430, dy + 94, 0xFF0D0D0D);
-        g.renderOutline(dx, dy, 430, 94, 0xFF666666);
-        g.drawString(font, "ASUS RT-AC68U", dx + 14, dy + 10, 0xFFB8B8B8, false);
+        g.fill(px, py, px + pw, py + ph, 0xFF111111);
+        g.fill(px + 1, py + 1, px + pw - 1, py + ph - 1, 0xFF222222);
 
-        for (int i = 0; i < 5; i++) {
-            int portX = dx + 50 + i * 62;
-            g.fill(portX, dy + 48, portX + 39, dy + 69, 0xFF151515);
-            g.renderOutline(portX, dy + 48, 39, 21, 0xFF858585);
+        g.pose().pushPose();
+        g.pose().translate(px + 14, py + 14, 0);
+        g.pose().scale(1.2f, 1.2f, 1.0f);
+        g.drawString(this.font, "ASUS RT-AC68U", 0, 0, 0xFF0092C8, false);
+        g.pose().popPose();
+
+        g.drawString(this.font, "Wireless-AC1900 Gigabit Router", px + 14, py + 34, 0xFFAAAAAA, false);
+
+        long time = System.currentTimeMillis();
+
+        // 3 Antennas
+        for (int i = 0; i < 3; i++) {
+            int antX = px + 150 + (i * 90);
+            g.fill(antX, py - 40, antX + 12, py, 0xFF050505);
+            g.fill(antX + 2, py - 38, antX + 10, py, 0xFF181A1D);
         }
 
-        g.drawString(
-                font,
-                "Option B: consumer RT-AC68U hardware with Packet Tracer-style management.",
-                px + 14,
-                y + imageHeight - 57,
-                0xFFBDBDBD,
-                false
-        );
+        // WAN Port (Blue)
+        int wanX = px + 80;
+        int wanY = py + 70;
+        g.fill(wanX, wanY, wanX + 26, wanY + 22, 0xFF000000);
+        g.fill(wanX + 3, wanY + 3, wanX + 23, wanY + 19, 0xFF1A3355);
+        boolean wanUp = true;
+        g.fill(wanX + 6, wanY - 4, wanX + 12, wanY - 1, wanUp ? (((time % 800) > 400) ? 0xFF22C55E : 0xFF16823B) : 0xFF444444);
+        g.drawString(this.font, "WAN", wanX + 2, wanY + 25, 0xFF0092C8, false);
+
+        // LAN Ports (Yellow)
+        for (int i = 0; i < 4; i++) {
+            int lanX = px + 150 + (i * 40);
+            int lanY = py + 70;
+            g.fill(lanX, lanY, lanX + 26, lanY + 22, 0xFF000000);
+            g.fill(lanX + 3, lanY + 3, lanX + 23, lanY + 19, 0xFF55551A);
+
+            boolean lanUp = true;
+            g.fill(lanX + 6, lanY - 4, lanX + 12, lanY - 1, lanUp ? (((time + i * 150) % 800) > 400 ? 0xFF22C55E : 0xFF16823B) : 0xFF444444);
+            g.drawString(this.font, "LAN" + (i + 1), lanX + 2, lanY + 25, 0xFFE6A23C, false);
+        }
     }
 
-    private void renderConfig(GuiGraphics g, int x, int y) {
-        g.fill(x + 10, y + 44, x + 175, y + imageHeight - 18, 0xFF252525);
-        g.renderOutline(x + 10, y + 44, 165, imageHeight - 62, 0xFF555555);
+    private void renderConfigTab(GuiGraphics g, int x, int y, int mouseX, int mouseY) {
+        int sbWidth = 160;
+        int listY = y + 31;
+        int terminalHeight = 110;
+        int listHeight = this.imageHeight - 31 - terminalHeight;
 
-        int rowY = y + 55;
-        for (String item : CONFIG_ITEMS) {
-            boolean header = isHeader(item);
-            if (!header && item.equals(configItem)) {
-                g.fill(x + 14, rowY - 2, x + 168, rowY + 14, 0xFF515151);
+        g.fill(x, listY, x + sbWidth, listY + listHeight, 0xFF1E1E1E);
+        g.fill(x + sbWidth, listY, x + sbWidth + 1, listY + listHeight, 0xFF444444);
+
+        int totalItemsHeight = this.configTreeItems.size() * 15;
+        this.maxConfigScrollLines = Math.max(0, this.configTreeItems.size() - (listHeight / 15) + 1);
+        int startIndex = (int)(this.configScrollOffset * this.maxConfigScrollLines);
+
+        int currentY = listY + 10;
+        g.enableScissor(x, listY, x + sbWidth, listY + listHeight);
+        for (int i = startIndex; i < this.configTreeItems.size() && currentY < listY + listHeight; i++) {
+            String[] item = this.configTreeItems.get(i);
+            String text = item[0];
+            int color = Long.decode(item[1]).intValue();
+            boolean isSelected = item[2].equals("1");
+            String type = item[3];
+
+            if (type.equals("empty")) { currentY += 10; continue; }
+
+            if (isSelected) g.fill(x, currentY - 3, x + sbWidth, currentY + 11, 0xFF404040);
+            if (type.equals("header")) {
+                g.fill(x, currentY - 3, x + sbWidth, currentY + 11, 0xFF1E1E1E);
+                g.fill(x, currentY + 10, x + sbWidth, currentY + 11, 0xFF444444);
             }
-            g.drawString(
-                    font,
-                    header ? item : "   " + item,
-                    x + 18,
-                    rowY,
-                    header ? 0xFFFFFFFF : 0xFFC8C8C8,
-                    false
-            );
-            rowY += 19;
+            g.drawString(this.font, text, x + 10, currentY, color, false);
+            currentY += 15;
+        }
+        g.disableScissor();
+
+        int contentX = x + sbWidth + 20;
+        int rightColX = x + 380;
+
+        g.fill(contentX - 20, y + 31, x + this.imageWidth, y + 45, 0xFF1E1E1E);
+        g.fill(contentX - 20, y + 45, x + this.imageWidth, y + 46, 0xFF444444);
+
+        String headerText = this.selectedConfigItem.equals("Settings") ? "Global Settings" : this.selectedConfigItem;
+        g.drawString(this.font, headerText, contentX - 20 + ((this.imageWidth - sbWidth) - this.font.width(headerText))/2, y + 35, 0xFFFFFF, false);
+
+        if (this.selectedConfigItem.equals("Settings")) {
+            drawFormBackground(g, contentX, y, 4, 60);
+            g.drawString(this.font, "Display Name", contentX - 5, y + 64, 0xFFFFFF, false);
+            g.drawString(this.font, "Hostname", contentX - 5, y + 81, 0xFFFFFF, false);
+
+            g.drawString(this.font, "IP Routing", contentX - 5, y + 115, 0xFFFFFF, false);
+            g.drawString(this.font, "On", rightColX + 125, y + 115, 0xFFFFFF, false);
+            drawCheckbox(g, contentX + 85, y + 115, os.forwardingEnabled);
+
+            int btnY = y + 140;
+            g.fill(contentX - 10, btnY - 5, x + this.imageWidth - 10, btnY - 4, 0xFF444444);
+            g.drawString(this.font, "NVRAM", contentX - 5, btnY + 4, 0xFFFFFF, false);
+            drawBoxBtn(g, contentX + 81, btnY, 180, 16, "Erase");
+            drawBoxBtn(g, contentX + 261, btnY, 180, 16, "Save");
+
+            btnY += 22;
+            g.fill(contentX - 10, btnY - 5, x + this.imageWidth - 10, btnY - 4, 0xFF444444);
+            g.drawString(this.font, "Device Clock: 00:10:51 Mon Mar 1 1993 UTC", contentX - 5, btnY + 10, 0xAAAAAA, false);
+
+            g.fill(contentX - 10, y + 135, contentX - 9, btnY - 4, 0xFF444444);
+            g.fill(contentX + 80, y + 135, contentX + 81, btnY - 4, 0xFF444444);
+            g.fill(contentX + 261, y + 135, contentX + 262, btnY - 4, 0xFF444444);
+            g.fill(x + this.imageWidth - 10, y + 135, x + this.imageWidth - 9, btnY - 4, 0xFF444444);
+
+        } else if (this.selectedConfigItem.equals("Static Routes")) {
+            drawFormBackground(g, contentX, y, 1, 76);
+            drawBoxBtn(g, contentX + 380, y + 78, 70, 16, "Add Route");
+
+            int tableY = y + 120;
+            g.fill(contentX - 10, tableY, x + this.imageWidth - 10, tableY + 14, 0xFF2A2A2A);
+            g.fill(contentX - 10, tableY, x + this.imageWidth - 10, tableY + 1, 0xFF444444);
+            g.fill(contentX - 10, tableY + 14, x + this.imageWidth - 10, tableY + 15, 0xFF444444);
+            g.drawString(this.font, "Network", contentX - 5, tableY + 4, 0xFFFFFF, false);
+            g.drawString(this.font, "Mask", contentX + 130, tableY + 4, 0xFFFFFF, false);
+            g.drawString(this.font, "Next Hop", contentX + 255, tableY + 4, 0xFFFFFF, false);
+
+            int ty = tableY + 20;
+            for (RouterOsSimulator.RouteEntry r : os.staticRoutes) {
+                g.drawString(this.font, r.network, contentX - 5, ty + 4, 0xFFFFFF, false);
+                g.drawString(this.font, r.mask, contentX + 130, ty + 4, 0xFFFFFF, false);
+                g.drawString(this.font, r.nextHop, contentX + 255, ty + 4, 0xFFFFFF, false);
+                drawBoxBtn(g, contentX + 380, ty, 70, 16, "Remove");
+                ty += 16;
+            }
+        } else if (this.selectedConfigItem.startsWith("Gigabit") || this.selectedConfigItem.equals("Dot11Radio0")) {
+            boolean isWlan = this.selectedConfigItem.equals("Dot11Radio0");
+            boolean portUp = isWlan ? os.wlanAdminUp : true;
+
+            int rowY = y + 65;
+
+            g.drawString(this.font, "Port Status", contentX, rowY + 1, 0xFFFFFF, false);
+            g.drawString(this.font, "On", rightColX + 125, rowY + 1, 0xFFFFFF, false);
+            drawCheckbox(g, rightColX + 110, rowY, portUp);
+
+            rowY += 25;
+            g.fill(contentX - 10, rowY - 5, x + this.imageWidth - 10, rowY - 4, 0xFF444444);
+            g.drawString(this.font, "IP Configuration", contentX, rowY + 4, 0xFFFFFF, false);
+
+            rowY += 25;
+            g.drawString(this.font, "IP Address", contentX, rowY + 1, 0xFFFFFF, false);
+            g.drawString(this.font, "Subnet Mask", contentX + 225, rowY + 1, 0xFFFFFF, false);
+            this.ipBox.setPosition(contentX + 85, rowY - 1);
+            this.maskBox.setPosition(contentX + 310, rowY - 1);
+
+            if (isWlan) {
+                rowY += 17;
+                g.drawString(this.font, "Gateway", contentX, rowY + 1, 0xFFFFFF, false);
+                this.gatewayBox.setPosition(contentX + 85, rowY - 1);
+            }
         }
 
-        int cx = x + 185;
-        g.drawCenteredString(font, configItem, cx + 280, y + 48, 0xFFE5E5E5);
+        int terminalY = y + this.imageHeight - terminalHeight;
+        g.fill(x, terminalY, x + this.imageWidth, y + this.imageHeight, 0xFF1E1E1E);
+        g.fill(x, terminalY, x + this.imageWidth, terminalY + 1, 0xFF444444);
+        g.drawString(this.font, "Equivalent IOS Commands", x + 10, terminalY + 5, 0xFFFFFF, false);
 
-        if ("Settings".equals(configItem)) {
-            g.drawString(font, "Display Name", cx + 12, y + 72, 0xFFCCCCCC, false);
-            g.drawString(font, "Hostname", cx + 12, y + 93, 0xFFCCCCCC, false);
-            g.drawString(font, "NVRAM", cx + 12, y + 127, 0xFFCCCCCC, false);
-            g.fill(cx + 112, y + 123, cx + 250, y + 141, 0xFF393939);
-            g.drawCenteredString(font, "Erase", cx + 181, y + 128, 0xFFDADADA);
-            g.fill(cx + 255, y + 123, cx + 393, y + 141, 0xFF393939);
-            g.drawCenteredString(font, "Save", cx + 324, y + 128, 0xFFDADADA);
-            g.drawString(font, "Device Clock", cx + 12, y + 180, 0xFFCCCCCC, false);
-            g.drawString(font, "VSIA server/world clock", cx + 112, y + 180, 0xFFFFFFFF, false);
-        } else if ("Static".equals(configItem)) {
-            g.drawString(font, "Static Routes", cx + 14, y + 73, 0xFFFFFFFF, false);
-            int yy = y + 96;
-            if (os.staticRoutes.isEmpty()) {
-                g.drawString(font, "No static routes configured.", cx + 14, yy, 0xFFAAAAAA, false);
-            } else {
-                for (RouterOsSimulator.RouteEntry route : os.staticRoutes) {
-                    g.drawString(font, route.network() + " via " + route.nextHop(), cx + 14, yy, 0xFFCCCCCC, false);
-                    yy += 16;
+        g.fill(x + 10, terminalY + 18, x + this.imageWidth - 10, y + this.imageHeight - 10, 0xFFFFFFFF);
+        g.fill(x + 10, terminalY + 18, x + this.imageWidth - 10, terminalY + 19, 0xFF888888);
+        g.fill(x + 10, terminalY + 18, x + 11, y + this.imageHeight - 10, 0xFF888888);
+        g.fill(x + this.imageWidth - 11, terminalY + 18, x + this.imageWidth - 10, y + this.imageHeight - 10, 0xFF888888);
+        g.fill(x + 10, y + this.imageHeight - 11, x + this.imageWidth - 10, y + this.imageHeight - 10, 0xFF888888);
+
+        int txtY = terminalY + 22;
+        for (String cmd : os.iosCommands) {
+            g.drawString(this.font, cmd, x + 14, txtY, 0x000000, false);
+            txtY += 10;
+        }
+    }
+
+    private void renderCLITab(GuiGraphics g, int x, int y) {
+        if (!os.isBooted) {
+            long bootTime = System.currentTimeMillis() - os.bootStartTime;
+            if (os.bootStep == 0 && bootTime > 500) { os.cliLines.add("System Bootstrap, Version 2.1(0)RT"); os.bootStep++; }
+            if (os.bootStep == 1 && bootTime > 1000) { os.cliLines.add("Copyright (c) 1986-2026 by k1ngtle systems, Inc."); os.bootStep++; }
+            if (os.bootStep == 2 && bootTime > 1800) { os.cliLines.add("Platform ASUS RT-AC68U, 256 MB RAM, Broadcom BCM4708"); os.bootStep++; }
+            if (os.bootStep == 3 && bootTime > 2500) { os.cliLines.add("Loading disk0:/rt-os-9.1.4.bin... [OK]"); os.bootStep++; }
+            if (os.bootStep == 4 && bootTime > 3100) { os.cliLines.add("Starting networking services... [OK]"); os.bootStep++; }
+            if (os.bootStep == 5 && bootTime > 3800) { os.cliLines.add(""); os.cliLines.add("Press RETURN to get started."); os.cliLines.add(""); os.bootStep++; os.isBooted = true; }
+        }
+
+        g.fill(x, y + 31, x + this.imageWidth, y + this.imageHeight, 0xFF000000);
+
+        int textY = y + 40;
+        int maxLines = (this.imageHeight - 50) / 12;
+        int startLogIdx = Math.max(0, os.cliLines.size() - maxLines - os.cliScrollOffset + 1);
+
+        int[] COL_X = {0, 115, 230, 310, 420, 500, 580};
+
+        for (int i = startLogIdx; i < os.cliLines.size() - os.cliScrollOffset; i++) {
+            String line = os.cliLines.get(i);
+
+            if (line.contains("\t")) {
+                String[] parts = line.split("\t", -1);
+                for (int p = 0; p < parts.length; p++) {
+                    if (!parts[p].isEmpty()) {
+                        int drawX = x + 10 + (p < COL_X.length ? COL_X[p] : COL_X[COL_X.length-1] + (p - COL_X.length + 1) * 80);
+                        g.drawString(this.font, parts[p], drawX, textY, 0xFFCCCCCC, false);
+                    }
                 }
+            } else {
+                g.drawString(this.font, line, x + 10, textY, 0xFFCCCCCC, false);
             }
-            g.drawString(font, "Configure additional routes in CLI with 'ip route ...'.", cx + 14, yy + 16, 0xFF8FC7FF, false);
-        } else {
-            g.drawString(font, "IP Address", cx + 12, y + 115, 0xFFCCCCCC, false);
-            g.drawString(font, "Subnet Mask", cx + 12, y + 136, 0xFFCCCCCC, false);
-            if ("Dot11Radio0".equals(configItem)) {
-                g.drawString(font, "Default Gateway", cx + 12, y + 157, 0xFFCCCCCC, false);
-                g.drawString(
-                        font,
-                        "W1.20 station/application IPv4. Configure Router B here.",
-                        cx + 12,
-                        y + 198,
-                        0xFF8FC7FF,
-                        false
-                );
+            textY += 12;
+        }
+
+        if (os.isBooted && os.cliScrollOffset == 0) {
+            String prompt = os.getPrompt();
+            g.drawString(this.font, prompt + os.cliInput, x + 10, textY, 0xFFFFFFFF, false);
+
+            if ((System.currentTimeMillis() / 500) % 2 == 0) {
+                int cursorX = x + 10 + this.font.width(prompt) + this.font.width(os.cliInput.substring(0, os.cliCursorPos));
+                g.fill(cursorX, textY - 1, cursorX + 6, textY + 9, 0xFFFFFFFF);
             }
         }
-
-        g.drawString(font, "Equivalent IOS Commands", cx + 8, y + imageHeight - 104, 0xFFCCCCCC, false);
-        g.fill(cx, y + imageHeight - 87, x + imageWidth - 12, y + imageHeight - 20, 0xFFF6F6F6);
-
-        String equivalent = "show running-config";
-        if ("Dot11Radio0".equals(configItem)) {
-            equivalent = "interface dot11radio0 ; ip address " + os.wlanIp + " " + os.wlanMask;
-        }
-        g.drawString(font, equivalent, cx + 8, y + imageHeight - 70, 0xFF202020, false);
     }
 
-    private void renderCli(
-            GuiGraphics g,
-            int x,
-            int y
-    ) {
-        int terminalLeft = x + 10;
-        int terminalTop = y + 45;
-        int terminalRight = x + imageWidth - 10;
-        int terminalBottom = y + imageHeight - 18;
+    private void renderAttributesTab(GuiGraphics g, int x, int y) {
+        int tableX = x + 20;
+        int tableY = y + 50;
 
-        g.fill(
-                terminalLeft,
-                terminalTop,
-                terminalRight,
-                terminalBottom,
-                0xFFF7F7F7
-        );
+        g.drawString(this.font, "Attribute", tableX, tableY, 0xFFFFFF, false);
+        g.drawString(this.font, "Value", tableX + 150, tableY, 0xFFFFFF, false);
+        g.fill(tableX, tableY + 12, x + this.imageWidth - 20, tableY + 13, 0xFF444444);
 
-        int lineHeight = 13;
-        int textX = x + 18;
-        int firstLineY = y + 55;
-        int promptY = terminalBottom - 20;
-
-        int availableHistoryLines =
-                Math.max(
-                        1,
-                        (promptY - firstLineY) / lineHeight
-                );
-
-        int naturalStart =
-                Math.max(
-                        0,
-                        os.cliLines.size()
-                                - availableHistoryLines
-                );
-
-        int start =
-                Math.max(
-                        0,
-                        naturalStart - os.cliScrollOffset
-                );
-
-        int end =
-                Math.min(
-                        os.cliLines.size(),
-                        start + availableHistoryLines
-                );
-
-        int yy = firstLineY;
-
-        for (int i = start;
-             i < end;
-             i++) {
-
-            g.drawString(
-                    font,
-                    os.cliLines.get(i),
-                    textX,
-                    yy,
-                    0xFF151515,
-                    false
-            );
-
-            yy += lineHeight;
-        }
-
-        if (!cliStarted) {
-            g.drawString(
-                    font,
-                    "Press RETURN to get started.",
-                    textX,
-                    promptY,
-                    0xFF151515,
-                    false
-            );
-
-            return;
-        }
-
-        String prompt =
-                os.getPrompt();
-
-        String beforeCursor =
-                os.cliInput.substring(
-                        0,
-                        Math.min(
-                                os.cliCursorPos,
-                                os.cliInput.length()
-                        )
-                );
-
-        String afterCursor =
-                os.cliInput.substring(
-                        Math.min(
-                                os.cliCursorPos,
-                                os.cliInput.length()
-                        )
-                );
-
-        boolean cursorVisible =
-                ((cliCursorTick / 10) % 2) == 0;
-
-        String liveLine =
-                prompt
-                        + beforeCursor
-                        + (cursorVisible ? "_" : "")
-                        + afterCursor;
-
-        g.drawString(
-                font,
-                liveLine,
-                textX,
-                promptY,
-                0xFF151515,
-                false
-        );
-    }
-
-    private void renderAttributes(GuiGraphics g, int x, int y) {
-        g.drawString(font, "Attributes:", x + 18, y + 52, 0xFFFFFFFF, false);
-
-        String[][] rows = {
-                {"MTBF", "587250 hours"},
-                {"cost", "3000"},
-                {"power source", "Internal"},
-                {"rack units", "1"},
-                {"wattage", "30 W"},
-                {"PT_MODEL", "RT-AC68U"},
-                {"PT_VERSION", "VSIA W1.20.4"}
+        int rowY = tableY + 20;
+        String[][] attributes = {
+                {"Model", "ASUS RT-AC68U"}, {"Cost", "$ 199"}, {"Power", "12 W"},
+                {"Interfaces", "4x GigabitEthernet LAN, 1x WAN, 1x WLAN"}, {"Form Factor", "Desktop"},
+                {"Wireless Standard", "802.11ac (WiFi 5)"}, {"Firmware", "VSIA RouterOS 15.0"}
         };
-
-        int yy = y + 77;
-        for (String[] row : rows) {
-            g.fill(x + 18, yy - 3, x + 285, yy + 15, 0xFF303030);
-            g.fill(x + 287, yy - 3, x + imageWidth - 18, yy + 15, 0xFF292929);
-            g.drawString(font, row[0], x + 26, yy, 0xFFD0D0D0, false);
-            g.drawString(font, row[1], x + 300, yy, 0xFFFFFFFF, false);
-            yy += 22;
+        for (String[] attr : attributes) {
+            g.drawString(this.font, attr[0], tableX, rowY, 0xAAAAAA, false);
+            g.drawString(this.font, attr[1], tableX + 150, rowY, 0xAAAAAA, false);
+            rowY += 20;
         }
+    }
+
+    private void drawFormBackground(GuiGraphics g, int contentX, int y, int rows, int startYOffset) {
+        int guiX = (this.width - this.imageWidth) / 2;
+        int startY = y + startYOffset;
+        int endY = startY + (17 * rows) - 1;
+        g.fill(contentX - 10, startY, guiX + this.imageWidth - 10, endY, 0xFF1E1E1E);
+        for (int i = 0; i <= rows; i++) {
+            g.fill(contentX - 10, startY + (i * 17), guiX + this.imageWidth - 10, startY + (i * 17) + 1, 0xFF444444);
+        }
+        g.fill(contentX - 10, startY, contentX - 9, endY, 0xFF444444);
+        g.fill(guiX + this.imageWidth - 10, startY, guiX + this.imageWidth - 9, endY, 0xFF444444);
+    }
+
+    private void drawBoxBtn(GuiGraphics g, int x, int y, int w, int h, String text) {
+        g.fill(x, y, x + w, y + h, 0xFF2A2A2A);
+        g.fill(x, y, x + w, y + 1, 0xFF444444);
+        g.fill(x, y + h - 1, x + w, y + h, 0xFF444444);
+        g.fill(x, y, x + 1, y + h, 0xFF444444);
+        g.fill(x + w - 1, y, x + w, y + h, 0xFF444444);
+        int tw = this.font.width(text);
+        g.drawString(this.font, text, x + (w - tw)/2, y + 4, 0xFFFFFF, false);
+    }
+
+    private void drawCheckbox(GuiGraphics g, int x, int y, boolean checked) {
+        g.fill(x, y, x + 9, y + 9, 0xFFFFFFFF);
+        g.fill(x, y, x + 9, y + 1, 0xFF888888);
+        g.fill(x, y, x + 1, y + 9, 0xFF888888);
+        if (checked) g.fill(x + 2, y + 2, x + 7, y + 7, 0xFF0078D7);
     }
 
     @Override
-    protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
-    }
+    protected void renderBg(GuiGraphics g, float partialTick, int mouseX, int mouseY) {}
+    @Override
+    protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {}
 }

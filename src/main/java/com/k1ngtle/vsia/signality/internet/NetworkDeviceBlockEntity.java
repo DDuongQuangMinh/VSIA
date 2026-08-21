@@ -4239,7 +4239,7 @@ private final WifiPhyController wifiPhy =
                         serverLevel
                 )
                         : 0L,
-                this::transmitPacket
+                this::transmitGeneratedWifiResponse
         )) {
             if ("ARP".equalsIgnoreCase(
                     packet.applicationProtocol
@@ -5177,6 +5177,69 @@ private final WifiPhyController wifiPhy =
         );
 
         transmitPacket(packet);
+    }
+
+    // W1.20.6 GENERATED WIFI RESPONSE EGRESS
+    private void transmitGeneratedWifiResponse(
+            OSINetworkPacket packet
+    ) {
+        if (packet == null) {
+            return;
+        }
+
+        packet.payload.putBoolean(
+                "w1206_generated_wifi_response",
+                true
+        );
+
+        packet.payload.putString(
+                "w1206_response_protocol",
+                packet.applicationProtocol == null
+                        ? ""
+                        : packet.applicationProtocol
+        );
+
+        if (isWifiProfile()
+                && wifiMac.mode() == WifiMode.STATION
+                && wifiMac.isAssociated()
+                && packet.targetMac != null
+                && !packet.targetMac.isBlank()) {
+
+            CompoundTag body =
+                    new CompoundTag();
+
+            body.put(
+                    "osi_packet",
+                    packet.serializeNBT()
+            );
+
+            wifiMac.sendData(
+                    macAddress,
+                    packet.targetMac,
+                    body,
+                    classifyAccessCategory(
+                            packet
+                    ),
+                    wifiSender()
+            );
+
+            packet.payload.putString(
+                    "w1206_egress",
+                    "STATION_TODS"
+            );
+
+            setChanged();
+            return;
+        }
+
+        packet.payload.putString(
+                "w1206_egress",
+                "NORMAL_TRANSMIT_FALLBACK"
+        );
+
+        transmitPacket(
+                packet
+        );
     }
 
     protected void transmitPacket(
@@ -6953,7 +7016,7 @@ private final WifiPhyController wifiPhy =
                         serverLevel
                 )
                         : 0L,
-                this::transmitPacket
+                this::transmitGeneratedWifiResponse
         );
 
         return true;

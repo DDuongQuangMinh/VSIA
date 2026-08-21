@@ -5,19 +5,34 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
+import java.util.Map;
 
 public final class RouterOsSimulator {
     public enum CliMode {
-        USER_EXEC,
-        PRIVILEGED_EXEC,
+        EXEC,
+        PRIVILEGED,
         GLOBAL_CONFIG,
         INTERFACE_CONFIG
     }
 
+    public static class RouteEntry {
+        public String network;
+        public String mask;
+        public String nextHop;
+
+        public RouteEntry(String network, String mask, String nextHop) {
+            this.network = network;
+            this.mask = mask;
+            this.nextHop = nextHop;
+        }
+    }
+
     public String displayName = "RT-AC68U";
     public String hostname = "Router";
+
+    // Core legacy variables exactly as expected by RtAc68uRouterBlockEntity
     public String wlanIp = "192.168.1.1";
     public String wlanMask = "255.255.255.0";
     public String wlanGateway = "";
@@ -29,331 +44,440 @@ public final class RouterOsSimulator {
     public String lan1Ip = "192.168.2.1";
     public String lan1Mask = "255.255.255.0";
 
-    public CliMode cliMode = CliMode.USER_EXEC;
+    public final List<RouteEntry> staticRoutes = new ArrayList<>();
+
+    public CliMode cliMode = CliMode.EXEC;
     public String cliTarget = "";
     public String cliInput = "";
     public int cliCursorPos = 0;
     public int cliScrollOffset = 0;
+
+    public final List<String> iosCommands = new ArrayList<>();
     public final List<String> cliLines = new ArrayList<>();
     public final List<String> history = new ArrayList<>();
-    public final List<RouteEntry> staticRoutes = new ArrayList<>();
 
-    private transient Runnable stateCallback;
+    public boolean isBooted = false;
+    public long bootStartTime;
+    public int bootStep = 0;
 
-    public RouterOsSimulator(Runnable stateCallback) {
-        this.stateCallback = stateCallback;
-        resetBanner();
+    public transient Runnable guiCallback;
+
+    public RouterOsSimulator(Runnable guiCallback) {
+        this.guiCallback = guiCallback;
+        this.bootStartTime = System.currentTimeMillis();
     }
 
-    public void setStateCallback(Runnable callback) {
-        this.stateCallback = callback;
+    // Required by RtAc68uRouterBlockEntity logic!
+    public static int maskToPrefix(String mask) {
+        String[] p = mask.split("\\.");
+        if (p.length != 4) return 24;
+        int bits = 0;
+        try {
+            for (String part : p) bits += Integer.bitCount(Integer.parseInt(part) & 0xFF);
+        } catch (NumberFormatException ex) {
+            return 24;
+        }
+        return bits;
     }
 
     public String getPrompt() {
         return switch (cliMode) {
-            case USER_EXEC -> hostname + ">";
-            case PRIVILEGED_EXEC -> hostname + "#";
+            case EXEC -> hostname + ">";
+            case PRIVILEGED -> hostname + "#";
             case GLOBAL_CONFIG -> hostname + "(config)#";
             case INTERFACE_CONFIG -> hostname + "(config-if)#";
         };
     }
 
-    public void resetBanner() {
-        cliLines.clear();
-        cliLines.add("");
-        cliLines.add("VSIA Router OS Software, RT-AC68U Software");
-        cliLines.add("Copyright (c) 2026 k1ngtle Systems, Inc.");
-        cliLines.add("");
-        cliLines.add("RT-AC68U processor with VSIA network simulation.");
-        cliLines.add("2 routed LAN interfaces");
-        cliLines.add("1 IEEE 802.11 wireless interface");
-        cliLines.add("");
-        cliLines.add("Press RETURN to get started.");
+    public void appendGuiCommand(String cmd, String targetContext) {
+        if (targetContext.equals("Settings")) {
+            iosCommands.add(hostname + "(config)#" + cmd);
+        } else {
+            iosCommands.add(hostname + "(config-if)#" + cmd);
+        }
+        while (iosCommands.size() > 8) iosCommands.remove(0);
+        if (guiCallback != null) guiCallback.run();
     }
 
     public void executeCliCore(String input, boolean echo) {
-        if (input == null) return;
-        String cmd = input.trim();
-        if (cmd.isEmpty()) return;
+        if (input.endsWith("?")) {
+            if (echo) { cliLines.add(getPrompt() + input); cliScrollOffset = 0; }
+            String prefix = input.substring(0, input.length() - 1);
+            showHelp(prefix.trim().toLowerCase(), prefix.endsWith(" "), cliMode);
+            if (guiCallback != null) guiCallback.run();
+            return;
+        }
 
-        if (echo) cliLines.add(getPrompt() + cmd);
-        history.add(cmd);
+        String cmd = input.trim();
+        if (cmd.isEmpty()) { if (echo) { cliLines.add(getPrompt()); cliScrollOffset = 0; } return; }
+
+        String lower = cmd.toLowerCase();
+        boolean isDo = false;
+        if (lower.startsWith("do ") && (cliMode == CliMode.GLOBAL_CONFIG || cliMode == CliMode.INTERFACE_CONFIG)) {
+            isDo = true;
+            lower = lower.substring(3).trim();
+            cmd = cmd.substring(3).trim();
+        }
+
+        CliMode executionMode = isDo ? CliMode.PRIVILEGED : cliMode;
+        if (echo) { cliLines.add(getPrompt() + input); cliScrollOffset = 0; }
+
+        history.add(input);
         while (history.size() > 100) history.remove(0);
 
-        String lower = cmd.toLowerCase(Locale.ROOT);
-
-        if (lower.equals("enable") && cliMode == CliMode.USER_EXEC) {
-            cliMode = CliMode.PRIVILEGED_EXEC;
-            return;
-        }
-        if (lower.equals("disable") && cliMode == CliMode.PRIVILEGED_EXEC) {
-            cliMode = CliMode.USER_EXEC;
-            return;
-        }
-        if ((lower.equals("configure terminal") || lower.equals("conf t"))
-                && cliMode == CliMode.PRIVILEGED_EXEC) {
-            cliMode = CliMode.GLOBAL_CONFIG;
-            return;
-        }
-        if (lower.equals("end")) {
-            cliMode = CliMode.PRIVILEGED_EXEC;
-            cliTarget = "";
-            return;
-        }
-        if (lower.equals("exit")) {
-            if (cliMode == CliMode.INTERFACE_CONFIG) {
-                cliMode = CliMode.GLOBAL_CONFIG;
-                cliTarget = "";
-            } else if (cliMode == CliMode.GLOBAL_CONFIG) {
-                cliMode = CliMode.PRIVILEGED_EXEC;
-            } else if (cliMode == CliMode.PRIVILEGED_EXEC) {
-                cliMode = CliMode.USER_EXEC;
-            }
+        if (lower.equals("help")) {
+            showHelp("", false, executionMode);
             return;
         }
 
-        if (lower.equals("show version")) {
-            cliLines.add("VSIA Router OS Software, RT-AC68U Software");
-            cliLines.add("System image: vsia:rt_ac68u_router");
-            cliLines.add("Configuration register is persistent");
+        String[] tokens = lower.split("\\s+");
+        String first = resolveAlias(tokens[0], executionMode);
+
+        if (first == null) {
+            if (echo) appendInvalidMarker(input, tokens[0]);
             return;
-        }
-        if (lower.equals("show ip interface brief") || lower.equals("show ip int brief")) {
-            cliLines.add("Interface              IP-Address      OK? Method Status                Protocol");
-            cliLines.add(String.format("%-22s %-15s YES manual %-21s %s",
-                    "lan0", lan0Ip, "up", "up"));
-            cliLines.add(String.format("%-22s %-15s YES manual %-21s %s",
-                    "lan1", lan1Ip, "up", "up"));
-            cliLines.add(String.format("%-22s %-15s YES manual %-21s %s",
-                    "wlan0", wlanIp,
-                    wlanAdminUp ? "up" : "administratively down",
-                    wlanAdminUp ? "up" : "down"));
-            return;
-        }
-        if (lower.equals("show ip route")) {
-            cliLines.add("Codes: C - connected, S - static");
-            cliLines.add("C    192.168.1.0/24 is directly connected, lan0");
-            cliLines.add("C    192.168.2.0/24 is directly connected, lan1");
-            for (RouteEntry route : staticRoutes) {
-                cliLines.add("S    " + route.network + " via " + route.nextHop);
-            }
-            if (!wlanGateway.isBlank()) {
-                cliLines.add("S*   0.0.0.0/0 via " + wlanGateway);
-            }
-            return;
-        }
-        if (lower.equals("show arp") || lower.equals("show ip arp")) {
-            cliLines.add("Protocol  Address          Age (min)  Hardware Addr   Type   Interface");
-            cliLines.add("ARP entries are maintained by the live VSIA host/router data plane.");
-            return;
-        }
-        if (lower.equals("show history")) {
-            int start = Math.max(0, history.size() - 20);
-            for (int i = start; i < history.size(); i++) {
-                cliLines.add(String.format("%3d  %s", i + 1, history.get(i)));
-            }
-            return;
-        }
-        if (lower.equals("show running-config") || lower.equals("show run")) {
-            for (String line : runningConfig().split("\n")) cliLines.add(line);
-            return;
-        }
-        if (lower.equals("write memory") || lower.equals("wr")
-                || lower.equals("copy running-config startup-config")) {
-            cliLines.add("Building configuration...");
-            cliLines.add("[OK]");
-            changed();
+        } else if (first.equals("AMBIGUOUS")) {
+            if (echo) cliLines.add("% Ambiguous command:  \"" + tokens[0] + "\"");
             return;
         }
 
-        if (cliMode == CliMode.GLOBAL_CONFIG) {
-            if (lower.startsWith("hostname ")) {
-                hostname = cmd.substring(9).trim();
-                if (hostname.isBlank()) hostname = "Router";
-                changed();
-                return;
+        if (executionMode == CliMode.EXEC) {
+            if (first.equals("enable")) cliMode = CliMode.PRIVILEGED;
+            else if (first.equals("ping") && tokens.length > 1) runPing(tokens[1], echo);
+            else if (first.equals("ping")) cliLines.add("% Incomplete command.");
+            else if (first.equals("exit") || first.equals("logout")) { /* No-op */ }
+            else if (echo) appendInvalidMarker(input, tokens[0]);
+        }
+        else if (executionMode == CliMode.PRIVILEGED) {
+            if (first.equals("configure")) {
+                if (tokens.length > 1 && "terminal".startsWith(tokens[1])) {
+                    if (echo) cliLines.add("Enter configuration commands, one per line.  End with CNTL/Z.");
+                    cliMode = CliMode.GLOBAL_CONFIG;
+                } else if (tokens.length == 1) {
+                    if (echo) {
+                        cliLines.add("Configuring from terminal, memory, or network [terminal]?");
+                        cliLines.add("Enter configuration commands, one per line.  End with CNTL/Z.");
+                    }
+                    cliMode = CliMode.GLOBAL_CONFIG;
+                } else if (echo) appendInvalidMarker(input, tokens[1]);
             }
-            if (lower.equals("ip routing")) {
-                forwardingEnabled = true;
-                changed();
-                return;
+            else if (first.equals("disable") || first.equals("exit")) cliMode = CliMode.EXEC;
+            else if (first.equals("write") || first.equals("copy")) {
+                if (echo) { cliLines.add("Building configuration..."); cliLines.add("[OK]"); }
             }
-            if (lower.equals("no ip routing")) {
-                forwardingEnabled = false;
-                changed();
-                return;
-            }
-            if (lower.startsWith("ip default-gateway ")) {
-                wlanGateway = cmd.substring("ip default-gateway ".length()).trim();
-                changed();
-                return;
-            }
-            if (lower.equals("no ip default-gateway")) {
-                wlanGateway = "";
-                changed();
-                return;
-            }
-            if (lower.startsWith("interface ")) {
-                String target = normalizeInterface(cmd.substring(10).trim());
-                if (target == null) {
-                    cliLines.add("% Invalid interface.");
-                    return;
+            else if (first.equals("show")) {
+                if (tokens.length == 1) { cliLines.add("% Incomplete command."); return; }
+                String second = resolveAlias(tokens[1], executionMode, first);
+
+                if (second == null) { if (echo) appendInvalidMarker(input, tokens[1]); }
+                else if (second.equals("AMBIGUOUS")) { if (echo) cliLines.add("% Ambiguous command:  \"" + tokens[1] + "\""); }
+                else if (second.equals("version")) runShowVersion(echo);
+                else if (second.equals("running-config")) runShowRun(echo);
+                else if (second.equals("ip")) {
+                    if (tokens.length > 2 && "interface".startsWith(tokens[2])) runShowIpIntBrief(echo);
+                    else if (tokens.length > 2 && "route".startsWith(tokens[2])) runShowRoute(echo);
+                    else if (echo) appendInvalidMarker(input, tokens[2]);
                 }
-                cliTarget = target;
-                cliMode = CliMode.INTERFACE_CONFIG;
-                return;
+                else if (echo) appendInvalidMarker(input, tokens[1]);
             }
-            if (lower.startsWith("ip route ")) {
-                String[] t = cmd.split("\\s+");
-                if (t.length < 5) {
-                    cliLines.add("% Incomplete command.");
-                    return;
+            else if (first.equals("ping") && tokens.length > 1) runPing(tokens[1], echo);
+            else if (echo) appendInvalidMarker(input, tokens[0]);
+        }
+        else if (executionMode == CliMode.GLOBAL_CONFIG) {
+            if (first.equals("interface")) {
+                if (tokens.length == 1) { cliLines.add("% Incomplete command."); return; }
+                String rawIface = cmd.substring(tokens[0].length()).trim().replaceAll("\\s+", "");
+                String lowerIface = rawIface.toLowerCase();
+                String iface = rawIface;
+
+                if (lowerIface.startsWith("gi") || lowerIface.startsWith("gigabitethernet")) {
+                    String num = lowerIface.replace("gigabitethernet", "").replace("gi", "");
+                    iface = "GigabitEthernet" + num;
+                } else if (lowerIface.startsWith("do") || lowerIface.startsWith("dot11radio") || lowerIface.startsWith("wlan")) {
+                    iface = "Dot11Radio0";
                 }
-                String prefix = t[2] + "/" + maskToPrefix(t[3]);
-                staticRoutes.removeIf(r -> r.network.equals(prefix));
-                staticRoutes.add(new RouteEntry(prefix, t[4]));
-                if ("0.0.0.0".equals(t[2]) && "0.0.0.0".equals(t[3])) {
-                    wlanGateway = t[4];
-                }
-                changed();
-                return;
+
+                if (iface.equals("GigabitEthernet0/0/0") || iface.equals("GigabitEthernet0/0/1") || iface.equals("Dot11Radio0")) {
+                    cliMode = CliMode.INTERFACE_CONFIG; cliTarget = iface;
+                } else if (echo) appendInvalidMarker(input, tokens[1]);
             }
+            else if (first.equals("hostname")) {
+                if (tokens.length > 1) hostname = cmd.substring(tokens[0].length()).trim();
+                else cliLines.add("% Incomplete command.");
+            }
+            else if (first.equals("ip")) {
+                if (tokens.length > 1 && "routing".startsWith(tokens[1])) forwardingEnabled = true;
+                else if (tokens.length > 3 && "route".startsWith(tokens[1])) {
+                    staticRoutes.removeIf(r -> r.network.equals(tokens[2]) && r.mask.equals(tokens[3]));
+                    staticRoutes.add(new RouteEntry(tokens[2], tokens[3], tokens[4]));
+                }
+                else if (tokens.length > 2 && "default-gateway".startsWith(tokens[1])) wlanGateway = tokens[2];
+                else if (echo) appendInvalidMarker(input, tokens[1]);
+            }
+            else if (first.equals("no")) {
+                if (tokens.length > 2 && "ip".startsWith(tokens[1]) && "routing".startsWith(tokens[2])) forwardingEnabled = false;
+                else if (tokens.length > 2 && "ip".startsWith(tokens[1]) && "default-gateway".startsWith(tokens[2])) wlanGateway = "";
+                else if (tokens.length > 4 && "ip".startsWith(tokens[1]) && "route".startsWith(tokens[2])) {
+                    staticRoutes.removeIf(r -> r.network.equals(tokens[3]) && r.mask.equals(tokens[4]) && r.nextHop.equals(tokens[5]));
+                }
+                else if (echo) appendInvalidMarker(input, tokens[1]);
+            }
+            else if (first.equals("exit") || first.equals("end")) { cliMode = CliMode.PRIVILEGED; }
+            else if (echo) appendInvalidMarker(input, tokens[0]);
+        }
+        else if (executionMode == CliMode.INTERFACE_CONFIG) {
+            if (first.equals("exit")) { cliMode = CliMode.GLOBAL_CONFIG; return; }
+            if (first.equals("end")) { cliMode = CliMode.PRIVILEGED; return; }
+
+            if (first.equals("shutdown")) {
+                if (cliTarget.equals("Dot11Radio0")) wlanAdminUp = false;
+            }
+            else if (first.equals("no") && tokens.length > 1 && "shutdown".startsWith(tokens[1])) {
+                if (cliTarget.equals("Dot11Radio0")) wlanAdminUp = true;
+            }
+            else if (first.equals("ip") && tokens.length >= 3 && "address".startsWith(tokens[1])) {
+                String ip = tokens[2];
+                String mask = tokens.length > 3 ? tokens[3] : "255.255.255.0";
+                if (cliTarget.equals("GigabitEthernet0/0/0")) { lan0Ip = ip; lan0Mask = mask; }
+                else if (cliTarget.equals("GigabitEthernet0/0/1")) { lan1Ip = ip; lan1Mask = mask; }
+                else if (cliTarget.equals("Dot11Radio0")) { wlanIp = ip; wlanMask = mask; }
+            }
+            else if (first.equals("no") && tokens.length > 2 && "ip".startsWith(tokens[1]) && "address".startsWith(tokens[2])) {
+                if (cliTarget.equals("GigabitEthernet0/0/0")) { lan0Ip = "0.0.0.0"; lan0Mask = "0.0.0.0"; }
+                else if (cliTarget.equals("GigabitEthernet0/0/1")) { lan1Ip = "0.0.0.0"; lan1Mask = "0.0.0.0"; }
+                else if (cliTarget.equals("Dot11Radio0")) { wlanIp = "0.0.0.0"; wlanMask = "0.0.0.0"; }
+            }
+            else if (echo) appendInvalidMarker(input, tokens[0]);
         }
 
-        if (cliMode == CliMode.INTERFACE_CONFIG) {
-            if (lower.equals("shutdown")) {
-                if ("wlan0".equals(cliTarget)) wlanAdminUp = false;
-                changed();
-                return;
-            }
-            if (lower.equals("no shutdown")) {
-                if ("wlan0".equals(cliTarget)) wlanAdminUp = true;
-                changed();
-                return;
-            }
-            if (lower.startsWith("ip address ")) {
-                String[] t = cmd.split("\\s+");
-                if (t.length < 4) {
-                    cliLines.add("% Incomplete command.");
-                    return;
+        if (guiCallback != null) guiCallback.run();
+    }
+
+    public void handleAutocomplete() {
+        if (cliInput.isEmpty()) return;
+        String lower = cliInput.toLowerCase();
+
+        String[] options = getOptionsForPrefix(lower, cliMode);
+        if (options.length == 1) {
+            String[] tokens = lower.split(" ", -1);
+            if (tokens.length > 1) {
+                String lastToken = tokens[tokens.length - 1];
+                if (!lastToken.isEmpty() && options[0].startsWith(lastToken)) {
+                    cliInput = cliInput.substring(0, cliInput.lastIndexOf(lastToken)) + options[0] + " ";
+                    cliCursorPos = cliInput.length();
+                    if (guiCallback != null) guiCallback.run();
                 }
-                setInterfaceAddress(cliTarget, t[2], t[3]);
-                changed();
-                return;
+            } else if (!lower.endsWith(" ")) {
+                cliInput = options[0] + " ";
+                cliCursorPos = cliInput.length();
+                if (guiCallback != null) guiCallback.run();
             }
-            if (lower.equals("no ip address")) {
-                setInterfaceAddress(cliTarget, "0.0.0.0", "0.0.0.0");
-                changed();
-                return;
+        } else if (options.length > 1) {
+            String match = findCommonPrefix("", options);
+            if (match != null) {
+                String[] tokens = lower.split(" ", -1);
+                String lastToken = tokens[tokens.length - 1];
+                if (match.length() > lastToken.length()) {
+                    cliInput = cliInput.substring(0, cliInput.lastIndexOf(lastToken)) + match;
+                    cliCursorPos = cliInput.length();
+                    if (guiCallback != null) guiCallback.run();
+                }
             }
         }
+    }
 
+    private void appendInvalidMarker(String input, String faultyWord) {
+        cliLines.add(getPrompt() + input);
+        int idx = input.toLowerCase().indexOf(faultyWord);
+        if (idx == -1) idx = input.length();
+        StringBuilder marker = new StringBuilder();
+        for(int i=0; i<getPrompt().length() + idx; i++) marker.append(" ");
+        marker.append("^");
+        cliLines.add(marker.toString());
         cliLines.add("% Invalid input detected at '^' marker.");
     }
 
-    private String normalizeInterface(String value) {
-        String v = value.toLowerCase(Locale.ROOT).replace(" ", "");
-        if (v.equals("wlan0") || v.equals("dot11radio0") || v.equals("wireless0")) return "wlan0";
-        if (v.equals("lan0") || v.equals("gigabitethernet0/0/0") || v.equals("gi0/0/0")) return "lan0";
-        if (v.equals("lan1") || v.equals("gigabitethernet0/0/1") || v.equals("gi0/0/1")) return "lan1";
+    private String resolveAlias(String token, CliMode mode, String... context) {
+        String fullPrefix = String.join(" ", context) + (context.length > 0 ? " " : "") + token;
+        String[] opts = getOptionsForPrefix(fullPrefix, mode);
+        if (opts.length == 1) {
+            String[] split = opts[0].split(" ");
+            if (split.length > context.length) return split[context.length];
+            return token;
+        }
+        if (opts.length > 1) {
+            for (String opt : opts) {
+                String[] split = opt.split(" ");
+                if (split.length > context.length && split[context.length].equals(token)) return token;
+            }
+            String commonWord = null;
+            boolean ambiguous = false;
+            for (String opt : opts) {
+                String[] split = opt.split(" ");
+                if (split.length > context.length) {
+                    if (commonWord == null) {
+                        commonWord = split[context.length];
+                    } else if (!commonWord.equals(split[context.length])) {
+                        ambiguous = true;
+                        break;
+                    }
+                }
+            }
+            if (!ambiguous && commonWord != null) return commonWord;
+            return "AMBIGUOUS";
+        }
         return null;
     }
 
-    private void setInterfaceAddress(String iface, String ip, String mask) {
-        if ("wlan0".equals(iface)) {
-            wlanIp = ip;
-            wlanMask = mask;
-        } else if ("lan0".equals(iface)) {
-            lan0Ip = ip;
-            lan0Mask = mask;
-        } else if ("lan1".equals(iface)) {
-            lan1Ip = ip;
-            lan1Mask = mask;
+    private String[] getOptionsForPrefix(String prefix, CliMode mode) {
+        if (prefix.startsWith("do ") && (mode == CliMode.GLOBAL_CONFIG || mode == CliMode.INTERFACE_CONFIG)) {
+            String subPrefix = prefix.substring(3);
+            String[] subOpts = getOptionsForPrefix(subPrefix, CliMode.PRIVILEGED);
+            for (int i = 0; i < subOpts.length; i++) subOpts[i] = "do " + subOpts[i];
+            return subOpts;
         }
+
+        List<String> matches = new ArrayList<>();
+        List<String> allContexts = new ArrayList<>();
+
+        if (mode == CliMode.EXEC) {
+            allContexts.addAll(List.of("enable", "ping", "show version", "show running-config", "show ip interface brief", "show ip route", "exit", "logout", "help"));
+        } else if (mode == CliMode.PRIVILEGED) {
+            allContexts.addAll(List.of("configure terminal", "disable", "exit", "write memory", "copy running-config startup-config", "show version", "show running-config", "show ip interface brief", "show ip route", "ping", "help"));
+        } else if (mode == CliMode.GLOBAL_CONFIG) {
+            allContexts.addAll(List.of("interface GigabitEthernet0/0/0", "interface GigabitEthernet0/0/1", "interface Dot11Radio0", "hostname", "ip routing", "no ip routing", "ip default-gateway", "no ip default-gateway", "ip route", "no ip route", "exit", "end", "do", "help"));
+        } else if (mode == CliMode.INTERFACE_CONFIG) {
+            allContexts.addAll(List.of("ip address", "no ip address", "shutdown", "no shutdown", "exit", "end", "do", "help"));
+        }
+
+        for (String ctx : allContexts) {
+            if (ctx.startsWith(prefix)) matches.add(ctx);
+        }
+        return matches.toArray(new String[0]);
     }
 
-
-    public void cliInsert(char c) {
-        if (cliCursorPos < 0) cliCursorPos = 0;
-        if (cliCursorPos > cliInput.length()) cliCursorPos = cliInput.length();
-
-        cliInput =
-                cliInput.substring(0, cliCursorPos)
-                        + c
-                        + cliInput.substring(cliCursorPos);
-
-        cliCursorPos++;
+    private String findCommonPrefix(String input, String[] options) {
+        if (options.length == 0) return null;
+        String common = options[0];
+        for (int i = 1; i < options.length; i++) {
+            int j = 0;
+            while (j < common.length() && j < options[i].length() && common.charAt(j) == options[i].charAt(j)) j++;
+            common = common.substring(0, j);
+        }
+        return common.isEmpty() ? null : common;
     }
 
-    public void cliBackspace() {
-        if (cliCursorPos <= 0 || cliInput.isEmpty()) {
+    private void showHelp(String prefix, boolean spaceBefore, CliMode mode) {
+        List<String> matches = new ArrayList<>();
+        String[] opts = getOptionsForPrefix(prefix, mode);
+
+        if (opts.length == 0) {
+            if (prefix.isEmpty()) {
+                cliLines.add("Exec commands:");
+                cliLines.add("  enable       Turn on privileged commands");
+                cliLines.add("  exit         Exit from the EXEC");
+                cliLines.add("  ping         Send echo messages");
+                cliLines.add("  show         Show running system information");
+            } else {
+                cliLines.add("% Unrecognized command");
+            }
             return;
         }
 
-        cliInput =
-                cliInput.substring(0, cliCursorPos - 1)
-                        + cliInput.substring(cliCursorPos);
-
-        cliCursorPos--;
-    }
-
-    public void cliDelete() {
-        if (cliCursorPos < 0
-                || cliCursorPos >= cliInput.length()) {
-            return;
+        if (spaceBefore) {
+            for (String opt : opts) {
+                String[] split = opt.split(" ");
+                int prefixSpaces = prefix.trim().split(" ").length;
+                if (split.length > prefixSpaces) matches.add("  " + split[prefixSpaces]);
+                else if (split.length == prefixSpaces && opt.equals(prefix.trim())) matches.add("  <cr>");
+            }
+        } else {
+            for (String opt : opts) {
+                String[] split = opt.split(" ");
+                matches.add("  " + split[split.length - 1]);
+            }
         }
 
-        cliInput =
-                cliInput.substring(0, cliCursorPos)
-                        + cliInput.substring(cliCursorPos + 1);
+        if (matches.isEmpty()) cliLines.add("% Unrecognized command");
+        else cliLines.addAll(matches.stream().distinct().toList());
     }
 
-    public String cliSubmit() {
-        String command = cliInput.trim();
-        cliInput = "";
-        cliCursorPos = 0;
-        cliScrollOffset = 0;
-        return command;
-    }
+    private void runShowRun(boolean echo) {
+        if (!echo) return;
+        cliLines.add("Building configuration...");
+        cliLines.add("");
+        cliLines.add("version 15.0");
+        cliLines.add("hostname " + hostname);
+        cliLines.add("!");
+        cliLines.add(forwardingEnabled ? "ip routing" : "no ip routing");
+        cliLines.add("!");
 
-    public void cliHistoryPrevious() {
-        if (history.isEmpty()) {
-            return;
-        }
+        cliLines.add("interface GigabitEthernet0/0/0");
+        if (!lan0Ip.equals("0.0.0.0") && !lan0Ip.equals("unassigned")) cliLines.add(" ip address " + lan0Ip + " " + lan0Mask);
+        else cliLines.add(" no ip address");
+        cliLines.add(" no shutdown");
+        cliLines.add("!");
 
-        cliInput = history.get(history.size() - 1);
-        cliCursorPos = cliInput.length();
-    }
+        cliLines.add("interface GigabitEthernet0/0/1");
+        if (!lan1Ip.equals("0.0.0.0") && !lan1Ip.equals("unassigned")) cliLines.add(" ip address " + lan1Ip + " " + lan1Mask);
+        else cliLines.add(" no ip address");
+        cliLines.add(" no shutdown");
+        cliLines.add("!");
 
-    public void cliHistoryNext() {
-        cliInput = "";
-        cliCursorPos = 0;
-    }
+        cliLines.add("interface Dot11Radio0");
+        if (!wlanIp.equals("0.0.0.0") && !wlanIp.equals("unassigned")) cliLines.add(" ip address " + wlanIp + " " + wlanMask);
+        else cliLines.add(" no ip address");
+        if (!wlanAdminUp) cliLines.add(" shutdown");
+        cliLines.add("!");
 
-    public String runningConfig() {
-        StringBuilder out = new StringBuilder();
-        out.append("version 15.0\n");
-        out.append("hostname ").append(hostname).append('\n');
-        out.append(forwardingEnabled ? "ip routing\n" : "no ip routing\n");
-        appendInterface(out, "GigabitEthernet0/0/0", lan0Ip, lan0Mask, true);
-        appendInterface(out, "GigabitEthernet0/0/1", lan1Ip, lan1Mask, true);
-        appendInterface(out, "Dot11Radio0", wlanIp, wlanMask, wlanAdminUp);
-        if (!wlanGateway.isBlank()) {
-            out.append("ip default-gateway ").append(wlanGateway).append('\n');
+        if (!wlanGateway.isEmpty() && !wlanGateway.equals("unassigned")) {
+            cliLines.add("ip default-gateway " + wlanGateway);
+            cliLines.add("!");
         }
         for (RouteEntry route : staticRoutes) {
-            out.append("ip route ").append(route.network).append(' ').append(route.nextHop).append('\n');
+            cliLines.add("ip route " + route.network + " " + route.mask + " " + route.nextHop);
         }
-        out.append("end");
-        return out.toString();
+        cliLines.add("end");
     }
 
-    private void appendInterface(StringBuilder out, String name, String ip, String mask, boolean up) {
-        out.append("interface ").append(name).append('\n');
-        if (!"0.0.0.0".equals(ip)) {
-            out.append(" ip address ").append(ip).append(' ').append(mask).append('\n');
+    private void runShowIpIntBrief(boolean echo) {
+        if (!echo) return;
+        cliLines.add("Interface              IP-Address      OK? Method Status                Protocol");
+        cliLines.add(String.format("%-22s %-15s YES manual %-21s %s", "GigabitEthernet0/0/0", lan0Ip, "up", "up"));
+        cliLines.add(String.format("%-22s %-15s YES manual %-21s %s", "GigabitEthernet0/0/1", lan1Ip, "up", "up"));
+        cliLines.add(String.format("%-22s %-15s YES manual %-21s %s", "Dot11Radio0", wlanIp, wlanAdminUp ? "up" : "administratively down", wlanAdminUp ? "up" : "down"));
+    }
+
+    private void runShowRoute(boolean echo) {
+        if (!echo) return;
+        cliLines.add("Codes: C - connected, S - static");
+        cliLines.add("");
+
+        if (!lan0Ip.equals("0.0.0.0") && !lan0Ip.equals("unassigned")) cliLines.add("C    " + lan0Ip + " is directly connected, GigabitEthernet0/0/0");
+        if (!lan1Ip.equals("0.0.0.0") && !lan1Ip.equals("unassigned")) cliLines.add("C    " + lan1Ip + " is directly connected, GigabitEthernet0/0/1");
+        if (wlanAdminUp && !wlanIp.equals("0.0.0.0") && !wlanIp.equals("unassigned")) cliLines.add("C    " + wlanIp + " is directly connected, Dot11Radio0");
+
+        for (RouteEntry route : staticRoutes) {
+            cliLines.add("S    " + route.network + " via " + route.nextHop);
         }
-        out.append(up ? " no shutdown\n" : " shutdown\n");
+        if (!wlanGateway.isBlank() && !wlanGateway.equals("unassigned")) {
+            cliLines.add("S*   0.0.0.0/0 via " + wlanGateway);
+        }
+    }
+
+    private void runShowVersion(boolean echo) {
+        if (!echo) return;
+        cliLines.add("VSIA Router OS Software, RT-AC68U Software");
+        cliLines.add("System image: vsia:rt_ac68u_router");
+        cliLines.add("Configuration register is persistent");
+    }
+
+    private void runPing(String target, boolean echo) {
+        if (!echo) return;
+        cliLines.add("Type escape sequence to abort.");
+        cliLines.add("Sending 5, 100-byte ICMP Echos to " + target + ", timeout is 2 seconds:");
+        cliLines.add("!!!!!");
+        cliLines.add("Success rate is 100 percent (5/5), round-trip min/avg/max = 1/2/4 ms");
     }
 
     public CompoundTag save() {
@@ -374,6 +498,7 @@ public final class RouterOsSimulator {
         for (RouteEntry route : staticRoutes) {
             CompoundTag r = new CompoundTag();
             r.putString("Network", route.network);
+            r.putString("Mask", route.mask);
             r.putString("NextHop", route.nextHop);
             routes.add(r);
         }
@@ -399,26 +524,8 @@ public final class RouterOsSimulator {
             ListTag list = tag.getList("Routes", Tag.TAG_COMPOUND);
             for (int i = 0; i < list.size(); i++) {
                 CompoundTag r = list.getCompound(i);
-                staticRoutes.add(new RouteEntry(r.getString("Network"), r.getString("NextHop")));
+                staticRoutes.add(new RouteEntry(r.getString("Network"), r.contains("Mask") ? r.getString("Mask") : "255.255.255.0", r.getString("NextHop")));
             }
         }
     }
-
-    private void changed() {
-        if (stateCallback != null) stateCallback.run();
-    }
-
-    public static int maskToPrefix(String mask) {
-        String[] p = mask.split("\\.");
-        if (p.length != 4) return 24;
-        int bits = 0;
-        try {
-            for (String part : p) bits += Integer.bitCount(Integer.parseInt(part) & 0xFF);
-        } catch (NumberFormatException ex) {
-            return 24;
-        }
-        return bits;
-    }
-
-    public record RouteEntry(String network, String nextHop) {}
 }
