@@ -385,6 +385,68 @@ private final WifiPhyController wifiPhy =
                     }
             );
 
+    // W1.19.3 LOCAL UNICAST MAC IDENTITY
+    private static String generateLocalUnicastMac() {
+        byte[] bytes = new byte[6];
+
+        java.util.concurrent.ThreadLocalRandom
+                .current()
+                .nextBytes(bytes);
+
+        /*
+         * IEEE 802 first-octet semantics:
+         * bit 0 = I/G. 0 => individual/unicast.
+         * bit 1 = U/L. 1 => locally administered.
+         */
+        bytes[0] = (byte) ((bytes[0] & 0xFC) | 0x02);
+
+        StringBuilder out = new StringBuilder(12);
+
+        for (byte value : bytes) {
+            out.append(
+                    String.format(
+                            java.util.Locale.ROOT,
+                            "%02x",
+                            value & 0xFF
+                    )
+            );
+        }
+
+        return out.toString();
+    }
+
+    private static String ensureLocalUnicastMac(String value) {
+        if (value == null) {
+            return generateLocalUnicastMac();
+        }
+
+        String compact =
+                value.replace(":", "")
+                        .replace("-", "")
+                        .trim()
+                        .toLowerCase(java.util.Locale.ROOT);
+
+        if (!compact.matches("[0-9a-f]{12}")) {
+            return generateLocalUnicastMac();
+        }
+
+        int firstOctet =
+                Integer.parseInt(
+                        compact.substring(0, 2),
+                        16
+                );
+
+        // Preserve the lower 46 identity bits; repair only I/G and U/L.
+        firstOctet = (firstOctet & 0xFC) | 0x02;
+
+        return String.format(
+                java.util.Locale.ROOT,
+                "%02x%s",
+                firstOctet,
+                compact.substring(2)
+        );
+    }
+
     public NetworkDeviceBlockEntity(
             BlockEntityType<?> type,
             BlockPos pos,
@@ -393,10 +455,7 @@ private final WifiPhyController wifiPhy =
         super(type, pos, state);
 
         this.macAddress =
-                UUID.randomUUID()
-                        .toString()
-                        .replace("-", "")
-                        .substring(0, 12);
+                generateLocalUnicastMac();
     }
 
     @Override
@@ -2427,6 +2486,59 @@ private final WifiPhyController wifiPhy =
         body.putByteArray(
                 "wifi_engineering_payload",
                 payload
+        );
+
+        OSINetworkPacket bridgePacket =
+                new OSINetworkPacket();
+
+        bridgePacket.sourceMac =
+                macAddress;
+
+        bridgePacket.targetMac =
+                targetMac;
+
+        bridgePacket.sourceIp =
+                ipAddress == null
+                        || ipAddress.isBlank()
+                        ? "0.0.0.0"
+                        : ipAddress;
+
+        bridgePacket.targetIp =
+                "255.255.255.255";
+
+        bridgePacket.sourcePort =
+                49152;
+
+        bridgePacket.targetPort =
+                9;
+
+        bridgePacket.ipProtocol =
+                17;
+
+        bridgePacket.applicationProtocol =
+                "W1.19_ENGINEERING_DATA";
+
+        bridgePacket.ttl =
+                64;
+
+        bridgePacket.payload.putString(
+                "type",
+                "W1.19_ENGINEERING_DATA"
+        );
+
+        bridgePacket.payload.putInt(
+                "length",
+                dataBytes
+        );
+
+        bridgePacket.payload.putByteArray(
+                "data",
+                payload
+        );
+
+        body.put(
+                "osi_packet",
+                bridgePacket.serializeNBT()
         );
 
         return wifiMac.sendData(
@@ -8699,7 +8811,12 @@ private final WifiPhyController wifiPhy =
 
         if (tag.contains("MacAddress")) {
             macAddress =
-                    tag.getString("MacAddress");
+                    ensureLocalUnicastMac(
+                            tag.getString("MacAddress")
+                    );
+        } else {
+            macAddress =
+                    ensureLocalUnicastMac(macAddress);
         }
 
         if (tag.contains("IpAddress")) {
