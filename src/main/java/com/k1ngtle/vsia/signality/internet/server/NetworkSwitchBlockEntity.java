@@ -1,6 +1,7 @@
 package com.k1ngtle.vsia.signality.internet.server;
 
 import com.k1ngtle.vsia.signality.SignalityBlocks;
+import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
 import com.k1ngtle.vsia.signality.engineering.firewall.w117.W117HostEndpoint;
 import com.k1ngtle.vsia.world.inventory.NetworkSwitchMenu;
@@ -190,6 +191,11 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
                     sw.receiveWiredPacket(forwardedPacket, this.worldPosition);
                 } else if (be instanceof FirewallBlockEntity fw) {
                     fw.receiveWiredPacket(forwardedPacket, this.worldPosition);
+                } else if (be instanceof NetworkDeviceBlockEntity networkDevice) {
+                    networkDevice.w119ReceiveWiredPacket(
+                            forwardedPacket,
+                            this.worldPosition
+                    );
                 }
             } else {
                 W117HostEndpoint endpoint =
@@ -212,6 +218,129 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
                 }
             }
         }
+    }
+
+    // ========================================================================
+    // W1.19.4 AP DISTRIBUTION SYSTEM ATTACHMENT
+    // ========================================================================
+
+    public String w119PortNameForConnectedDevice(
+            BlockPos connectedPos
+    ) {
+        if (connectedPos == null) {
+            return null;
+        }
+
+        return getInterfaceNameForPos(
+                connectedPos
+        );
+    }
+
+    public boolean w119PortOperational(
+            BlockPos connectedPos
+    ) {
+        String port =
+                w119PortNameForConnectedDevice(
+                        connectedPos
+                );
+
+        if (port == null) {
+            return false;
+        }
+
+        SwitchOsSimulator.PortConfig config =
+                osSimulators[0]
+                        .portConfigs
+                        .get(port);
+
+        return config != null
+                && config.up
+                && "FWD".equals(
+                        config.stpState
+                );
+    }
+
+    public String w119DescribeConnectedDevice(
+            BlockPos connectedPos
+    ) {
+        String port =
+                w119PortNameForConnectedDevice(
+                        connectedPos
+                );
+
+        if (port == null) {
+            return "link=NO_PORT"
+                    + " switch="
+                    + worldPosition.toShortString();
+        }
+
+        SwitchOsSimulator.PortConfig config =
+                osSimulators[0]
+                        .portConfigs
+                        .get(port);
+
+        if (config == null) {
+            return "link=NO_PORT_CONFIG"
+                    + " switch="
+                    + worldPosition.toShortString()
+                    + " port="
+                    + port;
+        }
+
+        return "link="
+                + (
+                config.up
+                        && "FWD".equals(
+                        config.stpState
+                )
+                ? "UP"
+                : "BLOCKED"
+        )
+                + " switch="
+                + worldPosition.toShortString()
+                + " port="
+                + port
+                + " admin="
+                + (
+                config.up
+                        ? "up"
+                        : "down"
+        )
+                + " stp="
+                + config.stpState
+                + " vlan="
+                + config.accessVlan;
+    }
+
+    public boolean w119AcceptAccessPointFrame(
+            OSINetworkPacket packet,
+            BlockPos accessPointPos
+    ) {
+        if (level == null
+                || level.isClientSide
+                || packet == null
+                || accessPointPos == null) {
+            return false;
+        }
+
+        if (!connectedDevices.contains(
+                accessPointPos
+        )) {
+            return false;
+        }
+
+        if (!w119PortOperational(
+                accessPointPos
+        )) {
+            return false;
+        }
+
+        receiveWiredPacket(
+                packet,
+                accessPointPos
+        );
+
+        return true;
     }
 
     public boolean w1161InjectProbeToward(
@@ -494,6 +623,11 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
                 sw.receiveWiredPacket(forwarded, this.worldPosition);
             } else if (be instanceof FirewallBlockEntity fw) {
                 fw.receiveWiredPacket(forwarded, this.worldPosition);
+            } else if (be instanceof NetworkDeviceBlockEntity networkDevice) {
+                networkDevice.w119ReceiveWiredPacket(
+                        forwarded,
+                        this.worldPosition
+                );
             }
 
             return;

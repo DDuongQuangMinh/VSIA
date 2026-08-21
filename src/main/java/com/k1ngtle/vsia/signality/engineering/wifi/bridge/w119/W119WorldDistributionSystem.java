@@ -4,6 +4,7 @@ import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
 import com.k1ngtle.vsia.signality.internet.server.NetworkSwitchBlockEntity;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
@@ -14,7 +15,7 @@ public final class W119WorldDistributionSystem {
     private static final int HORIZONTAL_SEARCH_RADIUS = 16;
     private static final int VERTICAL_SEARCH_RADIUS = 6;
 
-    private static final Map<BlockPos, BlockPos> SWITCH_CACHE =
+    private static final Map<AttachmentKey, BlockPos> SWITCH_CACHE =
             new HashMap<>();
 
     private W119WorldDistributionSystem() {
@@ -32,8 +33,7 @@ public final class W119WorldDistributionSystem {
         Level level =
                 accessPoint.getLevel();
 
-        if (level == null
-                || level.isClientSide) {
+        if (!(level instanceof ServerLevel)) {
             return false;
         }
 
@@ -55,20 +55,93 @@ public final class W119WorldDistributionSystem {
                         packet.serializeNBT().copy()
                 );
 
-        linkedSwitch.receiveWiredPacket(
+        return linkedSwitch.w119AcceptAccessPointFrame(
                 forwarded,
                 apPos
         );
+    }
 
-        return true;
+    public static String status(
+            NetworkDeviceBlockEntity accessPoint
+    ) {
+        if (accessPoint == null) {
+            return "W1.19 DS link=INVALID_AP";
+        }
+
+        Level level =
+                accessPoint.getLevel();
+
+        if (!(level instanceof ServerLevel)) {
+            return "W1.19 DS link=NO_SERVER_LEVEL";
+        }
+
+        BlockPos apPos =
+                accessPoint.getBlockPos();
+
+        NetworkSwitchBlockEntity linkedSwitch =
+                cachedOrFindLinkedSwitch(
+                        level,
+                        apPos
+                );
+
+        if (linkedSwitch == null) {
+            return "W1.19 DS link=UNRESOLVED ap="
+                    + apPos.toShortString();
+        }
+
+        return "W1.19 DS "
+                + linkedSwitch.w119DescribeConnectedDevice(
+                        apPos
+                );
+    }
+
+    public static void invalidate(
+            NetworkDeviceBlockEntity accessPoint
+    ) {
+        if (accessPoint == null
+                || accessPoint.getLevel() == null) {
+            return;
+        }
+
+        SWITCH_CACHE.remove(
+                key(
+                        accessPoint.getLevel(),
+                        accessPoint.getBlockPos()
+                )
+        );
+    }
+
+    public static void invalidate(
+            Level level,
+            BlockPos accessPointPos
+    ) {
+        if (level == null
+                || accessPointPos == null) {
+            return;
+        }
+
+        SWITCH_CACHE.remove(
+                key(
+                        level,
+                        accessPointPos
+                )
+        );
     }
 
     private static NetworkSwitchBlockEntity cachedOrFindLinkedSwitch(
             Level level,
             BlockPos apPos
     ) {
+        AttachmentKey attachmentKey =
+                key(
+                        level,
+                        apPos
+                );
+
         BlockPos cached =
-                SWITCH_CACHE.get(apPos);
+                SWITCH_CACHE.get(
+                        attachmentKey
+                );
 
         if (cached != null) {
             BlockEntity candidate =
@@ -82,7 +155,9 @@ public final class W119WorldDistributionSystem {
                 return networkSwitch;
             }
 
-            SWITCH_CACHE.remove(apPos);
+            SWITCH_CACHE.remove(
+                    attachmentKey
+            );
         }
 
         NetworkSwitchBlockEntity found =
@@ -93,7 +168,7 @@ public final class W119WorldDistributionSystem {
 
         if (found != null) {
             SWITCH_CACHE.put(
-                    apPos.immutable(),
+                    attachmentKey,
                     found.getBlockPos().immutable()
             );
         }
@@ -141,5 +216,23 @@ public final class W119WorldDistributionSystem {
         }
 
         return null;
+    }
+
+    private static AttachmentKey key(
+            Level level,
+            BlockPos apPos
+    ) {
+        return new AttachmentKey(
+                level.dimension()
+                        .location()
+                        .toString(),
+                apPos.asLong()
+        );
+    }
+
+    private record AttachmentKey(
+            String dimension,
+            long accessPointPos
+    ) {
     }
 }

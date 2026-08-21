@@ -3881,6 +3881,25 @@ private final WifiPhyController wifiPhy =
         return false;
     }
 
+    public boolean w119ReceiveWiredPacket(
+            OSINetworkPacket packet,
+            BlockPos ingressSwitchPos
+    ) {
+        if (packet == null
+                || level == null
+                || level.isClientSide
+                || wifiMac.mode()
+                != WifiMode.ACCESS_POINT) {
+            return false;
+        }
+
+        return w119ReceiveFromDistributionSystem(
+                OSINetworkPacket.deserializeNBT(
+                        packet.serializeNBT().copy()
+                )
+        );
+    }
+
     public void w119SetClientIsolation(
             boolean enabled
     ) {
@@ -3908,7 +3927,10 @@ private final WifiPhyController wifiPhy =
         return w119Bridge()
                 .status(
                         System.currentTimeMillis()
-                );
+                )
+                + " | "
+                + W119WorldDistributionSystem
+                .status(this);
     }
 
     private void processCellularEnvelope(

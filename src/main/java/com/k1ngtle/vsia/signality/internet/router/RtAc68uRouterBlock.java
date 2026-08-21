@@ -1,5 +1,7 @@
 package com.k1ngtle.vsia.signality.internet.router;
 
+import com.k1ngtle.vsia.signality.internet.server.NetworkCableItem;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -104,6 +106,12 @@ public final class RtAc68uRouterBlock extends BaseEntityBlock {
             InteractionHand hand,
             BlockHitResult hit
     ) {
+        if (player.getItemInHand(hand)
+                .getItem()
+                instanceof NetworkCableItem) {
+            return InteractionResult.PASS;
+        }
+
         if (!level.isClientSide()) {
             BlockEntity blockEntity =
                     level.getBlockEntity(pos);

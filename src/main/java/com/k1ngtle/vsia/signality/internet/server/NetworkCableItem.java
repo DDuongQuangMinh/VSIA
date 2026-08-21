@@ -1,5 +1,8 @@
 package com.k1ngtle.vsia.signality.internet.server;
 
+import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
+import com.k1ngtle.vsia.signality.engineering.wifi.bridge.w119.W119WorldDistributionSystem;
+
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -30,7 +33,16 @@ public class NetworkCableItem extends Item {
         return be instanceof StorageServerBlockEntity
                 || be instanceof ServerRackBlockEntity
                 || be instanceof NetworkSwitchBlockEntity
-                || be instanceof FirewallBlockEntity;
+                || be instanceof FirewallBlockEntity
+                || be instanceof NetworkDeviceBlockEntity;
+    }
+
+    private boolean isGenericNetworkEndpoint(BlockEntity be) {
+        return be instanceof NetworkDeviceBlockEntity
+                && !(be instanceof ServerRackBlockEntity)
+                && !(be instanceof NetworkSwitchBlockEntity)
+                && !(be instanceof FirewallBlockEntity)
+                && !(be instanceof StorageServerBlockEntity);
     }
 
     private int devicePriority(BlockEntity be) {
@@ -48,6 +60,10 @@ public class NetworkCableItem extends Item {
 
         if (be instanceof StorageServerBlockEntity) {
             return 3;
+        }
+
+        if (be instanceof NetworkDeviceBlockEntity) {
+            return 4;
         }
 
         return 100;
@@ -609,6 +625,41 @@ public class NetworkCableItem extends Item {
                             true;
                 }
 
+            // W1.19.4 AP/SWITCH PHYSICAL LINK
+            } else if (targetEntity instanceof NetworkSwitchBlockEntity
+                    && storedEntity instanceof NetworkDeviceBlockEntity) {
+                netSwitch =
+                        (NetworkSwitchBlockEntity) targetEntity;
+
+                if (netSwitch.connectDevice(
+                        storedPos
+                )) {
+                    W119WorldDistributionSystem.invalidate(
+                            level,
+                            storedPos
+                    );
+
+                    isValidConnection =
+                            true;
+                }
+
+            } else if (storedEntity instanceof NetworkSwitchBlockEntity
+                    && targetEntity instanceof NetworkDeviceBlockEntity) {
+                netSwitch =
+                        (NetworkSwitchBlockEntity) storedEntity;
+
+                if (netSwitch.connectDevice(
+                        pos
+                )) {
+                    W119WorldDistributionSystem.invalidate(
+                            level,
+                            pos
+                    );
+
+                    isValidConnection =
+                            true;
+                }
+
             } else if (targetEntity instanceof FirewallBlockEntity
                     && storedEntity instanceof FirewallBlockEntity) {
                 firewall =
@@ -625,6 +676,82 @@ public class NetworkCableItem extends Item {
                     isValidConnection =
                             true;
                 }
+            }
+
+            // W1.19.4 ROUTER/SWITCH CABLE HOTFIX
+            if (!isValidConnection
+                    && targetEntity instanceof NetworkSwitchBlockEntity
+                    && storedEntity instanceof NetworkDeviceBlockEntity) {
+                netSwitch =
+                        (NetworkSwitchBlockEntity) targetEntity;
+
+                if (netSwitch.connectDevice(
+                        storedPos
+                )) {
+                    W119WorldDistributionSystem.invalidate(
+                            level,
+                            storedPos
+                    );
+
+                    isValidConnection =
+                            true;
+                }
+            }
+
+            if (!isValidConnection
+                    && storedEntity instanceof NetworkSwitchBlockEntity
+                    && targetEntity instanceof NetworkDeviceBlockEntity) {
+                netSwitch =
+                        (NetworkSwitchBlockEntity) storedEntity;
+
+                if (netSwitch.connectDevice(
+                        pos
+                )) {
+                    W119WorldDistributionSystem.invalidate(
+                            level,
+                            pos
+                    );
+
+                    isValidConnection =
+                            true;
+                }
+            }
+
+            // W1.19.4 V2 GENERIC NETWORK ENDPOINT ADMISSION
+            if (!isValidConnection
+                    && targetEntity instanceof NetworkSwitchBlockEntity
+                    && isGenericNetworkEndpoint(storedEntity)) {
+                netSwitch = (NetworkSwitchBlockEntity) targetEntity;
+                if (netSwitch.connectDevice(storedPos)) {
+                    W119WorldDistributionSystem.invalidate(level, storedPos);
+                    isValidConnection = true;
+                }
+            }
+
+            if (!isValidConnection
+                    && storedEntity instanceof NetworkSwitchBlockEntity
+                    && isGenericNetworkEndpoint(targetEntity)) {
+                netSwitch = (NetworkSwitchBlockEntity) storedEntity;
+                if (netSwitch.connectDevice(pos)) {
+                    W119WorldDistributionSystem.invalidate(level, pos);
+                    isValidConnection = true;
+                }
+            }
+
+            if (!isValidConnection
+                    && targetEntity instanceof ServerRackBlockEntity
+                    && isGenericNetworkEndpoint(storedEntity)) {
+                serverRack = (ServerRackBlockEntity) targetEntity;
+                serverRack.connectCable(storedPos);
+                isValidConnection = true;
+            }
+
+            if (!isValidConnection
+                    && storedEntity instanceof ServerRackBlockEntity
+                    && isGenericNetworkEndpoint(targetEntity)) {
+                serverRack = (ServerRackBlockEntity) storedEntity;
+                serverRack.connectCable(pos);
+                isValidConnection = true;
             }
 
             if (isValidConnection) {
