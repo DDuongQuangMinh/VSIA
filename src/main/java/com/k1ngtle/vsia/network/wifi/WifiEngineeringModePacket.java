@@ -1,5 +1,11 @@
 package com.k1ngtle.vsia.network.wifi;
 
+
+
+
+import com.k1ngtle.vsia.signality.engineering.wifi.instrument.W1191LocalTargetAuthorization;
+import net.minecraft.network.chat.Component;
+import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
 import com.k1ngtle.vsia.network.VsiaNetwork;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringProbe;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringResolution;
@@ -64,6 +70,35 @@ public final class WifiEngineeringModePacket {
                 () -> {
                     ServerPlayer player =
                             context.getSender();
+
+            // W1.19.1 V4 LOCAL ENDPOINT AUTH BEGIN
+            BlockPos w1191Anchor =
+                    this.pos;
+
+            if (!W1191LocalTargetAuthorization
+                    .isLocalWifiEndpoint(
+                            player.serverLevel(),
+                            w1191Anchor
+                    )) {
+                player.sendSystemMessage(
+                        Component.literal(
+                                "W1.19.1 REMOTE ENGINEERING VIEW: "
+                                        + "configuration blocked at "
+                                        + w1191Anchor.getX()
+                                        + " "
+                                        + w1191Anchor.getY()
+                                        + " "
+                                        + w1191Anchor.getZ()
+                                        + ". The engineering resolver reached "
+                                        + "a different Wi-Fi endpoint. "
+                                        + "Open/configure that actual endpoint "
+                                        + "to change live PHY mode."
+                        )
+                );
+                return;
+            }
+            // W1.19.1 V4 LOCAL ENDPOINT AUTH END
+
 
                     if (player == null
                             || player.blockPosition()
