@@ -219,6 +219,99 @@ public class NetworkCableItem extends Item {
                 + devicePriority(blockEntity);
     }
 
+    // W1.19.4 V3 CABLE LIFECYCLE HELPERS
+
+    private boolean isGenericNetworkEndpointV3(
+            BlockEntity blockEntity
+    ) {
+        return blockEntity instanceof NetworkDeviceBlockEntity
+                && !(blockEntity instanceof ServerRackBlockEntity)
+                && !(blockEntity instanceof NetworkSwitchBlockEntity)
+                && !(blockEntity instanceof FirewallBlockEntity)
+                && !(blockEntity instanceof StorageServerBlockEntity);
+    }
+
+    private boolean ensureSwitchConnection(
+            Level level,
+            NetworkSwitchBlockEntity networkSwitch,
+            BlockPos endpointPos
+    ) {
+        if (networkSwitch == null
+                || endpointPos == null) {
+            return false;
+        }
+
+        boolean connected =
+                networkSwitch
+                        .getConnectedDevices()
+                        .contains(endpointPos)
+                        || networkSwitch
+                        .connectDevice(endpointPos);
+
+        if (connected) {
+            W119WorldDistributionSystem.invalidate(
+                    level,
+                    endpointPos
+            );
+        }
+
+        return connected;
+    }
+
+    private boolean ensureRackConnection(
+            ServerRackBlockEntity rack,
+            BlockPos endpointPos
+    ) {
+        if (rack == null
+                || endpointPos == null) {
+            return false;
+        }
+
+        return rack.hasCableLinkTo(endpointPos)
+                || rack.connectCable(endpointPos);
+    }
+
+    private boolean disconnectEndpoint(
+            BlockEntity blockEntity,
+            BlockPos peerPos
+    ) {
+        if (blockEntity == null
+                || peerPos == null) {
+            return false;
+        }
+
+        if (blockEntity
+                instanceof NetworkSwitchBlockEntity networkSwitch) {
+            return networkSwitch.disconnectDevice(peerPos);
+        }
+
+        if (blockEntity
+                instanceof ServerRackBlockEntity rack) {
+            return rack.disconnectCable(peerPos);
+        }
+
+        if (blockEntity
+                instanceof FirewallBlockEntity firewall) {
+            return firewall.disconnectDevice(peerPos);
+        }
+
+        if (blockEntity
+                instanceof StorageServerBlockEntity storageServer) {
+            BlockPos connected =
+                    storageServer.getConnectedRackPos();
+
+            if (connected != null
+                    && connected.equals(peerPos)) {
+                storageServer.setConnectedRackPos(null);
+                return true;
+            }
+
+            return false;
+        }
+
+        return false;
+    }
+
     private boolean isSwitchPortUp(
             NetworkSwitchBlockEntity netSwitch,
             BlockPos connectedPos
@@ -271,6 +364,173 @@ public class NetworkCableItem extends Item {
                         level,
                         clickedPos
                 );
+
+        // W1.19.4 V3 REMOVE MODE
+        if (stack.hasTag()
+                && stack.getTag().getBoolean(
+                "CableRemoveMode"
+        )) {
+            CompoundTag removeTag =
+                    stack.getTag();
+
+            BlockPos rawStoredPos =
+                    new BlockPos(
+                            removeTag.getInt("StoredX"),
+                            removeTag.getInt("StoredY"),
+                            removeTag.getInt("StoredZ")
+                    );
+
+            ResolvedCableEndpoint stored =
+                    resolveEndpoint(
+                            level,
+                            rawStoredPos
+                    );
+
+            if (stored == null
+                    || target == null) {
+                player.displayClientMessage(
+                        Component.literal(
+                                "Disconnect failed: one endpoint no longer resolves."
+                        ).withStyle(
+                                ChatFormatting.RED
+                        ),
+                        true
+                );
+
+                stack.setTag(null);
+                return InteractionResult.FAIL;
+            }
+
+            BlockPos storedPos =
+                    stored.pos();
+
+            BlockPos targetPos =
+                    target.pos();
+
+            if (storedPos.equals(targetPos)) {
+                player.displayClientMessage(
+                        Component.literal(
+                                "Disconnect cancelled: both clicks resolve to the same endpoint."
+                        ).withStyle(
+                                ChatFormatting.RED
+                        ),
+                        true
+                );
+
+                stack.setTag(null);
+                return InteractionResult.FAIL;
+            }
+
+            boolean removedStoredSide =
+                    disconnectEndpoint(
+                            stored.blockEntity(),
+                            targetPos
+                    );
+
+            boolean removedTargetSide =
+                    disconnectEndpoint(
+                            target.blockEntity(),
+                            storedPos
+                    );
+
+            W119WorldDistributionSystem.invalidate(
+                    level,
+                    storedPos
+            );
+
+            W119WorldDistributionSystem.invalidate(
+                    level,
+                    targetPos
+            );
+
+            stack.setTag(null);
+
+            if (removedStoredSide
+                    || removedTargetSide) {
+                level.sendBlockUpdated(
+                        storedPos,
+                        level.getBlockState(storedPos),
+                        level.getBlockState(storedPos),
+                        3
+                );
+
+                level.sendBlockUpdated(
+                        targetPos,
+                        level.getBlockState(targetPos),
+                        level.getBlockState(targetPos),
+                        3
+                );
+
+                player.displayClientMessage(
+                        Component.literal(
+                                "Network cable disconnected: "
+                                        + storedPos.toShortString()
+                                        + " <-> "
+                                        + targetPos.toShortString()
+                        ).withStyle(
+                                ChatFormatting.GREEN
+                        ),
+                        true
+                );
+
+                return InteractionResult.SUCCESS;
+            }
+
+            player.displayClientMessage(
+                    Component.literal(
+                            "No existing cable relationship was found between "
+                                    + storedPos.toShortString()
+                                    + " and "
+                                    + targetPos.toShortString()
+                    ).withStyle(
+                            ChatFormatting.YELLOW
+                    ),
+                    true
+            );
+
+            return InteractionResult.FAIL;
+        }
+
+        if ((!stack.hasTag()
+                || !stack.getTag().contains("StoredX"))
+                && player.isShiftKeyDown()) {
+            if (target == null) {
+                player.displayClientMessage(
+                        Component.literal(
+                                "No VSIA network endpoint found for disconnect selection."
+                        ).withStyle(
+                                ChatFormatting.RED
+                        ),
+                        true
+                );
+
+                return InteractionResult.FAIL;
+            }
+
+            CompoundTag removeTag =
+                    stack.getOrCreateTag();
+
+            BlockPos normalized =
+                    target.pos();
+
+            removeTag.putInt("StoredX", normalized.getX());
+            removeTag.putInt("StoredY", normalized.getY());
+            removeTag.putInt("StoredZ", normalized.getZ());
+            removeTag.putBoolean("CableRemoveMode", true);
+
+            player.displayClientMessage(
+                    Component.literal(
+                            "Disconnect endpoint selected: "
+                                    + normalized.toShortString()
+                                    + ". Click the peer endpoint to remove the cable."
+                    ).withStyle(
+                            ChatFormatting.YELLOW
+                    ),
+                    true
+            );
+
+            return InteractionResult.SUCCESS;
+        }
 
         if (stack.hasTag()
                 && stack.getTag()
@@ -754,6 +1014,65 @@ public class NetworkCableItem extends Item {
                 isValidConnection = true;
             }
 
+            // W1.19.4 V3 NORMALIZED ENDPOINT RECOVERY
+            if (!isValidConnection
+                    && targetEntity
+                    instanceof NetworkSwitchBlockEntity targetSwitch
+                    && isGenericNetworkEndpointV3(storedEntity)) {
+                netSwitch =
+                        targetSwitch;
+
+                isValidConnection =
+                        ensureSwitchConnection(
+                                level,
+                                targetSwitch,
+                                storedPos
+                        );
+            }
+
+            if (!isValidConnection
+                    && storedEntity
+                    instanceof NetworkSwitchBlockEntity storedSwitch
+                    && isGenericNetworkEndpointV3(targetEntity)) {
+                netSwitch =
+                        storedSwitch;
+
+                isValidConnection =
+                        ensureSwitchConnection(
+                                level,
+                                storedSwitch,
+                                pos
+                        );
+            }
+
+            if (!isValidConnection
+                    && targetEntity
+                    instanceof ServerRackBlockEntity targetRack
+                    && isGenericNetworkEndpointV3(storedEntity)) {
+                serverRack =
+                        targetRack;
+
+                isValidConnection =
+                        ensureRackConnection(
+                                targetRack,
+                                storedPos
+                        );
+            }
+
+            if (!isValidConnection
+                    && storedEntity
+                    instanceof ServerRackBlockEntity storedRack
+                    && isGenericNetworkEndpointV3(targetEntity)) {
+                serverRack =
+                        storedRack;
+
+                isValidConnection =
+                        ensureRackConnection(
+                                storedRack,
+                                pos
+                        );
+            }
+
             if (isValidConnection) {
                 boolean handledDhcp =
                         false;
@@ -1178,7 +1497,7 @@ public class NetworkCableItem extends Item {
     ) {
         tooltipComponents.add(
                 Component.literal(
-                        "Use on network devices (Rack, Server, Switch, Firewall) to connect them."
+                        "Use on network devices to connect them. Sneak + use starts disconnect mode."
                 ).withStyle(
                         ChatFormatting.GRAY
                 )
