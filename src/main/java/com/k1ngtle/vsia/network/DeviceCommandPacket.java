@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.network;
 
 import com.k1ngtle.vsia.signality.internet.server.FirewallBlockEntity;
 import com.k1ngtle.vsia.signality.internet.server.NetworkSwitchBlockEntity;
+import com.k1ngtle.vsia.signality.internet.router.RtAc68uRouterBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
@@ -56,6 +57,12 @@ public class DeviceCommandPacket {
                         fw.osSimulators[deviceIndex].executeCliCore(cmd, false);
                     }
                     fw.setChanged();
+                } else if (be instanceof RtAc68uRouterBlockEntity router) {
+                    for (String cmd : commands) {
+                        router.routerOs.executeCliCore(cmd, false);
+                    }
+                    router.applyRouterOsToLiveNetwork();
+                    router.setChanged();
                 }
             }
         });

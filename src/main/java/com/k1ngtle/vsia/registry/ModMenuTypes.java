@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.registry;
 
 import com.k1ngtle.vsia.Vsia;
 import com.k1ngtle.vsia.world.inventory.StorageServerMenu;
+import com.k1ngtle.vsia.world.inventory.RtAc68uRouterMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraftforge.common.extensions.IForgeMenuType;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -24,6 +25,9 @@ public class ModMenuTypes {
 
     public static final RegistryObject<MenuType<com.k1ngtle.vsia.world.inventory.FirewallMenu>> FIREWALL_MENU =
             MENUS.register("firewall_menu", () -> IForgeMenuType.create(com.k1ngtle.vsia.world.inventory.FirewallMenu::new));
+
+    public static final RegistryObject<MenuType<RtAc68uRouterMenu>> RT_AC68U_ROUTER_MENU =
+            MENUS.register("rt_ac68u_router_menu", () -> IForgeMenuType.create(RtAc68uRouterMenu::new));
 
     public static void register(IEventBus eventBus) {
         MENUS.register(eventBus);

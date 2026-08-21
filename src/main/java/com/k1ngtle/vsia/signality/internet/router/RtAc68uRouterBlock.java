@@ -5,6 +5,7 @@ import com.k1ngtle.vsia.signality.internet.server.NetworkCableItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -22,6 +23,7 @@ import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraftforge.network.NetworkHooks;
 import org.jetbrains.annotations.Nullable;
 
 public final class RtAc68uRouterBlock extends BaseEntityBlock {
@@ -117,19 +119,12 @@ public final class RtAc68uRouterBlock extends BaseEntityBlock {
                     level.getBlockEntity(pos);
 
             if (blockEntity
-                    instanceof RtAc68uRouterBlockEntity router) {
-                player.sendSystemMessage(
-                        Component.literal(
-                                "RT-AC68U Router | "
-                                        + router.wifiIpAddress()
-                                        + " | forwarding "
-                                        + (
-                                        router.wifiLiveRouterEnabled()
-                                                ? "ON"
-                                                : "OFF"
-                                )
-                                        + " | lan0 192.168.1.1/24 | lan1 192.168.2.1/24"
-                        )
+                    instanceof RtAc68uRouterBlockEntity router
+                    && player instanceof ServerPlayer serverPlayer) {
+                NetworkHooks.openScreen(
+                        serverPlayer,
+                        router,
+                        pos
                 );
             }
         }

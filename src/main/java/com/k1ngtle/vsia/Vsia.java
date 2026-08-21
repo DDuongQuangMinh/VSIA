@@ -1,5 +1,8 @@
 package com.k1ngtle.vsia;
 
+import com.k1ngtle.vsia.client.screen.RtAc68uRouterScreen;
+import net.minecraft.client.gui.screens.MenuScreens;
+
 import com.k1ngtle.vsia.network.NVGNetwork;
 import com.k1ngtle.vsia.registry.ModCreativeTabs;
 import com.k1ngtle.vsia.registry.ModItems;
@@ -52,5 +55,11 @@ public class Vsia {
 
     private void clientSetup(final FMLClientSetupEvent event) {
         LOGGER.info("VSIA Client Setup: Loading 3D Armor Renderers...");
+        event.enqueueWork(() ->
+                MenuScreens.register(
+                        ModMenuTypes.RT_AC68U_ROUTER_MENU.get(),
+                        RtAc68uRouterScreen::new
+                )
+        );
     }
 }
