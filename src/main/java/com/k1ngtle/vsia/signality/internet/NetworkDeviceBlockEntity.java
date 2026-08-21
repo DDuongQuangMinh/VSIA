@@ -3751,6 +3751,51 @@ private final WifiPhyController wifiPhy =
         long nowMillis =
                 System.currentTimeMillis();
 
+        // W1.20.2 802.11 -> ETHERNET ADDRESS PRESERVATION
+        if (toDs && !fromDs && packet != null) {
+            String stationSource =
+                    formatEngineeringMac(
+                            frame.address2()
+                    );
+
+            String distributionDestination =
+                    formatEngineeringMac(
+                            frame.address3()
+                    );
+
+            if (!stationSource.isBlank()) {
+                packet.sourceMac =
+                        stationSource;
+            }
+
+            if (!distributionDestination.isBlank()) {
+                packet.targetMac =
+                        distributionDestination;
+            }
+
+            packet.payload.putBoolean(
+                    "w1202_sta_mac_preserved",
+                    true
+            );
+
+            packet.payload.putString(
+                    "w1202_80211_address1",
+                    formatEngineeringMac(
+                            frame.address1()
+                    )
+            );
+
+            packet.payload.putString(
+                    "w1202_80211_address2",
+                    stationSource
+            );
+
+            packet.payload.putString(
+                    "w1202_80211_address3",
+                    distributionDestination
+            );
+        }
+
         W119BridgeDecision decision =
                 w119Bridge()
                         .wirelessIngress(
