@@ -168,6 +168,10 @@ public final class WifiIpApplicationEngine {
                 "operation",
                 "REQUEST"
         );
+        packet.payload.putString(
+                "arp_op",
+                "REQUEST"
+        );
 
         packet.payload.putString(
                 "sender_ip",
@@ -682,10 +686,19 @@ public final class WifiIpApplicationEngine {
             long nowMicros,
             Consumer<OSINetworkPacket> transmitter
     ) {
+        // W1.20.3 ARP SCHEMA INTEROPERABILITY
         String operation =
                 packet.payload.getString(
                         "operation"
                 );
+
+        if (operation == null
+                || operation.isBlank()) {
+            operation =
+                    packet.payload.getString(
+                            "arp_op"
+                    );
+        }
 
         String senderIp =
                 packet.payload.getString(
@@ -737,6 +750,10 @@ public final class WifiIpApplicationEngine {
 
             response.payload.putString(
                     "operation",
+                    "REPLY"
+            );
+            response.payload.putString(
+                    "arp_op",
                     "REPLY"
             );
 

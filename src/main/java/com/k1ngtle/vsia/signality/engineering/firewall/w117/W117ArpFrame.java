@@ -10,25 +10,44 @@ public final class W117ArpFrame {
     private W117ArpFrame() {
     }
 
+    // W1.20.3 ARP SCHEMA INTEROPERABILITY
     public static boolean isArp(OSINetworkPacket packet) {
         return packet != null
                 && PROTOCOL.equalsIgnoreCase(packet.applicationProtocol)
                 && packet.payload != null
-                && packet.payload.contains("arp_op");
+                && (
+                packet.payload.contains("arp_op")
+                        || packet.payload.contains("operation")
+        );
     }
 
     public static boolean isRequest(OSINetworkPacket packet) {
         return isArp(packet)
                 && "REQUEST".equalsIgnoreCase(
-                packet.payload.getString("arp_op")
+                operation(packet)
         );
     }
 
     public static boolean isReply(OSINetworkPacket packet) {
         return isArp(packet)
                 && "REPLY".equalsIgnoreCase(
-                packet.payload.getString("arp_op")
+                operation(packet)
         );
+    }
+
+    public static String operation(OSINetworkPacket packet) {
+        if (packet == null || packet.payload == null) {
+            return "";
+        }
+
+        String arpOp =
+                packet.payload.getString("arp_op");
+
+        if (arpOp != null && !arpOp.isBlank()) {
+            return arpOp;
+        }
+
+        return packet.payload.getString("operation");
     }
 
     public static OSINetworkPacket request(
@@ -51,6 +70,7 @@ public final class W117ArpFrame {
 
         CompoundTag payload = new CompoundTag();
         payload.putString("arp_op", "REQUEST");
+        payload.putString("operation", "REQUEST");
         payload.putString("sender_mac", senderMac);
         payload.putString("sender_ip", senderIp);
         payload.putString("target_mac", "00:00:00:00:00:00");
@@ -82,6 +102,7 @@ public final class W117ArpFrame {
 
         CompoundTag payload = new CompoundTag();
         payload.putString("arp_op", "REPLY");
+        payload.putString("operation", "REPLY");
         payload.putString("sender_mac", senderMac);
         payload.putString("sender_ip", senderIp);
         payload.putString("target_mac", targetMac);
