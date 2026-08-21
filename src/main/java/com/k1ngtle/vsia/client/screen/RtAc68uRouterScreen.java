@@ -30,9 +30,9 @@ public final class RtAc68uRouterScreen extends AbstractContainerScreen<RtAc68uRo
     private EditBox ipBox;
     private EditBox maskBox;
     private EditBox gatewayBox;
-    private EditBox cliBox;
     private Button applyButton;
     private boolean cliStarted = false;
+    private int cliCursorTick = 0;
 
     private static final List<String> CONFIG_ITEMS = List.of(
             "GLOBAL", "Settings",
@@ -67,17 +67,6 @@ public final class RtAc68uRouterScreen extends AbstractContainerScreen<RtAc68uRo
                         .bounds(cx + 305, y + 151, 74, 20)
                         .build()
         );
-
-        cliBox = new EditBox(
-                font,
-                leftPos + 24,
-                topPos + imageHeight - 32,
-                imageWidth - 48,
-                18,
-                Component.literal("Router CLI")
-        );
-        cliBox.setMaxLength(512);
-        addRenderableWidget(cliBox);
 
         refreshWidgets();
     }
@@ -165,7 +154,6 @@ public final class RtAc68uRouterScreen extends AbstractContainerScreen<RtAc68uRo
         maskBox.setVisible(iface);
         gatewayBox.setVisible(iface && "Dot11Radio0".equals(configItem));
         applyButton.visible = settings || iface;
-        cliBox.setVisible(tab == Tab.CLI);
 
         if (settings) {
             if (!displayNameBox.isFocused()) displayNameBox.setValue(os.displayName);
@@ -186,24 +174,35 @@ public final class RtAc68uRouterScreen extends AbstractContainerScreen<RtAc68uRo
     }
 
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (tab == Tab.CLI) {
-            if (cliBox != null && !cliBox.isFocused()) {
-                this.setFocused(cliBox);
-                cliBox.setFocused(true);
-            }
+    protected void containerTick() {
+        super.containerTick();
+        cliCursorTick++;
+    }
 
+    @Override
+    public boolean keyPressed(
+            int keyCode,
+            int scanCode,
+            int modifiers
+    ) {
+        if (tab == Tab.CLI) {
             if (keyCode == GLFW.GLFW_KEY_ENTER
                     || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
-                String command = cliBox == null ? "" : cliBox.getValue().trim();
-
                 if (!cliStarted) {
                     cliStarted = true;
                     os.cliLines.add("");
+                    return true;
                 }
 
+                String command =
+                        os.cliSubmit();
+
                 if (!command.isEmpty()) {
-                    os.executeCliCore(command, true);
+                    os.executeCliCore(
+                            command,
+                            true
+                    );
+
                     VsiaNetwork.sendToServer(
                             new DeviceCommandPacket(
                                     menu.blockEntity.getBlockPos(),
@@ -213,13 +212,50 @@ public final class RtAc68uRouterScreen extends AbstractContainerScreen<RtAc68uRo
                     );
                 }
 
-                if (cliBox != null) {
-                    cliBox.setValue("");
-                    cliBox.setCursorPosition(0);
-                    cliBox.setFocused(true);
-                    this.setFocused(cliBox);
-                }
+                return true;
+            }
 
+            if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
+                os.cliBackspace();
+                return true;
+            }
+
+            if (keyCode == GLFW.GLFW_KEY_DELETE) {
+                os.cliDelete();
+                return true;
+            }
+
+            if (keyCode == GLFW.GLFW_KEY_LEFT) {
+                if (os.cliCursorPos > 0) {
+                    os.cliCursorPos--;
+                }
+                return true;
+            }
+
+            if (keyCode == GLFW.GLFW_KEY_RIGHT) {
+                if (os.cliCursorPos < os.cliInput.length()) {
+                    os.cliCursorPos++;
+                }
+                return true;
+            }
+
+            if (keyCode == GLFW.GLFW_KEY_HOME) {
+                os.cliCursorPos = 0;
+                return true;
+            }
+
+            if (keyCode == GLFW.GLFW_KEY_END) {
+                os.cliCursorPos = os.cliInput.length();
+                return true;
+            }
+
+            if (keyCode == GLFW.GLFW_KEY_UP) {
+                os.cliHistoryPrevious();
+                return true;
+            }
+
+            if (keyCode == GLFW.GLFW_KEY_DOWN) {
+                os.cliHistoryNext();
                 return true;
             }
 
@@ -229,54 +265,89 @@ public final class RtAc68uRouterScreen extends AbstractContainerScreen<RtAc68uRo
             }
 
             if (this.minecraft != null
-                    && this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
-                return true;
-            }
-
-            if (cliBox != null && cliBox.keyPressed(keyCode, scanCode, modifiers)) {
+                    && this.minecraft.options.keyInventory.matches(
+                    keyCode,
+                    scanCode
+            )) {
                 return true;
             }
 
             return true;
         }
 
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return super.keyPressed(
+                keyCode,
+                scanCode,
+                modifiers
+        );
     }
 
     @Override
-    public boolean charTyped(char codePoint, int modifiers) {
+    public boolean charTyped(
+            char codePoint,
+            int modifiers
+    ) {
         if (tab == Tab.CLI) {
-            if (cliBox == null) {
-                return true;
-            }
-
             if (!cliStarted) {
                 cliStarted = true;
             }
 
-            if (!cliBox.isFocused()) {
-                this.setFocused(cliBox);
-                cliBox.setFocused(true);
-            }
-
-            if (codePoint >= 32 && codePoint <= 126) {
-                return cliBox.charTyped(codePoint, modifiers);
+            if (codePoint >= 32
+                    && codePoint <= 126) {
+                os.cliInsert(
+                        codePoint
+                );
+                return true;
             }
 
             return true;
         }
 
-        return super.charTyped(codePoint, modifiers);
+        return super.charTyped(
+                codePoint,
+                modifiers
+        );
+    }
+
+    @Override
+    public boolean mouseScrolled(
+            double mouseX,
+            double mouseY,
+            double delta
+    ) {
+        if (tab == Tab.CLI) {
+            int maxScroll =
+                    Math.max(
+                            0,
+                            os.cliLines.size() - 27
+                    );
+
+            if (delta > 0) {
+                os.cliScrollOffset =
+                        Math.min(
+                                maxScroll,
+                                os.cliScrollOffset + 1
+                        );
+            } else if (delta < 0) {
+                os.cliScrollOffset =
+                        Math.max(
+                                0,
+                                os.cliScrollOffset - 1
+                        );
+            }
+
+            return true;
+        }
+
+        return super.mouseScrolled(
+                mouseX,
+                mouseY,
+                delta
+        );
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // W1.20.4.2 CLI CLICK FOCUS
-        if (tab == Tab.CLI && cliBox != null) {
-            this.setFocused(cliBox);
-            cliBox.setFocused(true);
-        }
-
         int x = leftPos;
         int y = topPos;
 
@@ -286,13 +357,6 @@ public final class RtAc68uRouterScreen extends AbstractContainerScreen<RtAc68uRo
             if (inside(mouseX, mouseY, tx, y + 7, width, 22)) {
                 tab = candidate;
                 refreshWidgets();
-
-                if (tab == Tab.CLI
-                        && cliBox != null) {
-                    this.setFocused(cliBox);
-                    cliBox.setFocused(true);
-                }
-
                 return true;
             }
             tx += width + 3;
@@ -477,26 +541,122 @@ public final class RtAc68uRouterScreen extends AbstractContainerScreen<RtAc68uRo
         g.drawString(font, equivalent, cx + 8, y + imageHeight - 70, 0xFF202020, false);
     }
 
-    private void renderCli(GuiGraphics g, int x, int y) {
-        g.fill(x + 10, y + 45, x + imageWidth - 10, y + imageHeight - 43, 0xFFF7F7F7);
+    private void renderCli(
+            GuiGraphics g,
+            int x,
+            int y
+    ) {
+        int terminalLeft = x + 10;
+        int terminalTop = y + 45;
+        int terminalRight = x + imageWidth - 10;
+        int terminalBottom = y + imageHeight - 18;
 
-        int yy = y + 55;
-        int start = Math.max(0, os.cliLines.size() - 27);
-        for (int i = start; i < os.cliLines.size(); i++) {
-            g.drawString(font, os.cliLines.get(i), x + 18, yy, 0xFF151515, false);
-            yy += 13;
-        }
+        g.fill(
+                terminalLeft,
+                terminalTop,
+                terminalRight,
+                terminalBottom,
+                0xFFF7F7F7
+        );
 
-        if (cliStarted) {
+        int lineHeight = 13;
+        int textX = x + 18;
+        int firstLineY = y + 55;
+        int promptY = terminalBottom - 20;
+
+        int availableHistoryLines =
+                Math.max(
+                        1,
+                        (promptY - firstLineY) / lineHeight
+                );
+
+        int naturalStart =
+                Math.max(
+                        0,
+                        os.cliLines.size()
+                                - availableHistoryLines
+                );
+
+        int start =
+                Math.max(
+                        0,
+                        naturalStart - os.cliScrollOffset
+                );
+
+        int end =
+                Math.min(
+                        os.cliLines.size(),
+                        start + availableHistoryLines
+                );
+
+        int yy = firstLineY;
+
+        for (int i = start;
+             i < end;
+             i++) {
+
             g.drawString(
                     font,
-                    os.getPrompt(),
-                    x + 18,
-                    y + imageHeight - 60,
+                    os.cliLines.get(i),
+                    textX,
+                    yy,
                     0xFF151515,
                     false
             );
+
+            yy += lineHeight;
         }
+
+        if (!cliStarted) {
+            g.drawString(
+                    font,
+                    "Press RETURN to get started.",
+                    textX,
+                    promptY,
+                    0xFF151515,
+                    false
+            );
+
+            return;
+        }
+
+        String prompt =
+                os.getPrompt();
+
+        String beforeCursor =
+                os.cliInput.substring(
+                        0,
+                        Math.min(
+                                os.cliCursorPos,
+                                os.cliInput.length()
+                        )
+                );
+
+        String afterCursor =
+                os.cliInput.substring(
+                        Math.min(
+                                os.cliCursorPos,
+                                os.cliInput.length()
+                        )
+                );
+
+        boolean cursorVisible =
+                ((cliCursorTick / 10) % 2) == 0;
+
+        String liveLine =
+                prompt
+                        + beforeCursor
+                        + (cursorVisible ? "_" : "")
+                        + afterCursor;
+
+        g.drawString(
+                font,
+                liveLine,
+                textX,
+                promptY,
+                0xFF151515,
+                false
+        );
     }
 
     private void renderAttributes(GuiGraphics g, int x, int y) {

@@ -31,6 +31,9 @@ public final class RouterOsSimulator {
 
     public CliMode cliMode = CliMode.USER_EXEC;
     public String cliTarget = "";
+    public String cliInput = "";
+    public int cliCursorPos = 0;
+    public int cliScrollOffset = 0;
     public final List<String> cliLines = new ArrayList<>();
     public final List<String> history = new ArrayList<>();
     public final List<RouteEntry> staticRoutes = new ArrayList<>();
@@ -267,6 +270,64 @@ public final class RouterOsSimulator {
             lan1Ip = ip;
             lan1Mask = mask;
         }
+    }
+
+
+    public void cliInsert(char c) {
+        if (cliCursorPos < 0) cliCursorPos = 0;
+        if (cliCursorPos > cliInput.length()) cliCursorPos = cliInput.length();
+
+        cliInput =
+                cliInput.substring(0, cliCursorPos)
+                        + c
+                        + cliInput.substring(cliCursorPos);
+
+        cliCursorPos++;
+    }
+
+    public void cliBackspace() {
+        if (cliCursorPos <= 0 || cliInput.isEmpty()) {
+            return;
+        }
+
+        cliInput =
+                cliInput.substring(0, cliCursorPos - 1)
+                        + cliInput.substring(cliCursorPos);
+
+        cliCursorPos--;
+    }
+
+    public void cliDelete() {
+        if (cliCursorPos < 0
+                || cliCursorPos >= cliInput.length()) {
+            return;
+        }
+
+        cliInput =
+                cliInput.substring(0, cliCursorPos)
+                        + cliInput.substring(cliCursorPos + 1);
+    }
+
+    public String cliSubmit() {
+        String command = cliInput.trim();
+        cliInput = "";
+        cliCursorPos = 0;
+        cliScrollOffset = 0;
+        return command;
+    }
+
+    public void cliHistoryPrevious() {
+        if (history.isEmpty()) {
+            return;
+        }
+
+        cliInput = history.get(history.size() - 1);
+        cliCursorPos = cliInput.length();
+    }
+
+    public void cliHistoryNext() {
+        cliInput = "";
+        cliCursorPos = 0;
     }
 
     public String runningConfig() {
