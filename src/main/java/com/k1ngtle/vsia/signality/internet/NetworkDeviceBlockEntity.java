@@ -116,6 +116,10 @@ import com.k1ngtle.vsia.signality.engineering.reality.NetworkTimebase;
 import com.k1ngtle.vsia.signality.engineering.reality.RfMicroTiming;
 import com.k1ngtle.vsia.signality.engineering.reality.RfMicroTimingRegistry;
 import com.k1ngtle.vsia.signality.engineering.channel.RfTransmissionRegistry;
+import com.k1ngtle.vsia.signality.engineering.wifi.bridge.w119.W119ApBridgeEngine;
+import com.k1ngtle.vsia.signality.engineering.wifi.bridge.w119.W119BridgeAction;
+import com.k1ngtle.vsia.signality.engineering.wifi.bridge.w119.W119BridgeDecision;
+import com.k1ngtle.vsia.signality.engineering.wifi.bridge.w119.W119WorldDistributionSystem;
 import com.k1ngtle.vsia.signality.internet.network.NetworkKind;
 import com.k1ngtle.vsia.signality.internet.network.NetworkProfile;
 import com.k1ngtle.vsia.signality.internet.network.NetworkProfileRegistry;
@@ -214,7 +218,9 @@ public abstract class NetworkDeviceBlockEntity
     private final WifiMacController wifiMac =
             new WifiMacController();
 
-    private final WifiPhyController wifiPhy =
+    
+    private W119ApBridgeEngine w119Bridge;
+private final WifiPhyController wifiPhy =
             new WifiPhyController();
 
     private WifiLivePhyMode wifiLivePhyMode =
@@ -3561,322 +3567,35 @@ public abstract class NetworkDeviceBlockEntity
             return;
         }
 
-        RfMicroTiming incomingTiming =
-                envelope.hasUUID(
-                        "rf_tx_id"
-                )
-                        ? RfMicroTimingRegistry.get(
-                        envelope.getUUID(
-                                "rf_tx_id"
-                        )
-                )
-                        : null;
-
-        activeWifiResponseReferenceMicros =
-                incomingTiming == null
-                        ? -1L
-                        : incomingTiming.endMicros();
-
-        CompoundTag data;
-
-        try {
-            data =
-                    wifiMac.receive(
-                            macAddress,
-                            frame,
-                            networkProfile().id().toString(),
-                            activeFrequencyHz,
-                            wifiSender()
-                    );
-        } finally {
-            activeWifiResponseReferenceMicros =
-                    -1L;
-        }
+        CompoundTag data =
+                wifiMac.receive(
+                        macAddress,
+                        frame,
+                        networkProfile().id().toString(),
+                        activeFrequencyHz,
+                        wifiSender()
+                );
 
         if (data != null
-                && RawIpv4LiveCarrierCodec.isRawFragmentCarrier(
-                data
-        )) {
-            try {
-                RawIpv4LiveCarrierCodec.DecodedFragment decodedFragment =
-                        RawIpv4LiveCarrierCodec.decodeFragment(
-                                data
-                        );
-
-
-                RawIpv4HeaderValidator.ValidationResult headerValidation =
-                        RawIpv4HeaderValidator.validate(
-                                decodedFragment.rawIpv4()
-                        );
-
-                if (!headerValidation.valid()) {
-                    handleWifiRawIpv4HeaderValidationFailure(
-                            decodedFragment,
-                            headerValidation
-                    );
-
-                    setChanged();
-                    return;
-                }
-
-                if (handleWifiRouterRawIpv4Fragment(
-                        decodedFragment
-                )) {
-                    setChanged();
-                    return;
-                }
-
-                RawIpv4ReassemblyTable.ReassemblyResult result =
-                        wifiRawIpv4Reassembly.accept(
-                                decodedFragment.rawIpv4(),
-                                wifiNetworkNowMicros()
-                        );
-
-                switch (result.status()) {
-                    case WAITING -> {
-                        if (level instanceof ServerLevel serverLevel
-                                && result.key() != null) {
-                            RawIpv4ReassemblyTimeoutManager.schedule(
-                                    serverLevel,
-                                    worldPosition,
-                                    result.key(),
-                                    wifiRawIpv4Reassembly.timeoutMicros()
-                            );
-                        }
-
-                        wifiIpApplication.setStatus(
-                                "RAW IPv4 fragment waiting | count="
-                                        + result.fragments()
-                        );
-
-                        setChanged();
-                        return;
-                    }
-
-                    case DUPLICATE -> {
-                        if (level instanceof ServerLevel serverLevel
-                                && result.key() != null) {
-                            RawIpv4ReassemblyTimeoutManager.schedule(
-                                    serverLevel,
-                                    worldPosition,
-                                    result.key(),
-                                    wifiRawIpv4Reassembly.timeoutMicros()
-                            );
-                        }
-
-                        wifiIpApplication.setStatus(
-                                "RAW IPv4 duplicate fragment ignored | count="
-                                        + result.fragments()
-                        );
-
-                        setChanged();
-                        return;
-                    }
-
-                    case REJECTED -> {
-                        if (level instanceof ServerLevel serverLevel
-                                && result.key() != null) {
-                            RawIpv4ReassemblyTimeoutManager.cancel(
-                                    serverLevel,
-                                    worldPosition,
-                                    result.key()
-                            );
-                        }
-
-                        wifiIpApplication.setStatus(
-                                "RAW IPv4 fragment rejected: "
-                                        + result.reason()
-                        );
-
-                        setChanged();
-                        return;
-                    }
-
-                    case COMPLETE -> {
-                        if (level instanceof ServerLevel serverLevel
-                                && result.key() != null) {
-                            RawIpv4ReassemblyTimeoutManager.cancel(
-                                    serverLevel,
-                                    worldPosition,
-                                    result.key()
-                            );
-                        }
-
-                        OSINetworkPacket logical =
-                                RawIpv4LiveCarrierCodec.toLogical(
-                                        result.rawPacket(),
-                                        decodedFragment.sourceMac(),
-                                        decodedFragment.targetMac(),
-                                        decodedFragment.metadata()
-                                );
-
-                        processLayer2(
-                                logical
-                        );
-
-                        setChanged();
-                        return;
-                    }
-                }
-            } catch (Exception exception) {
-                wifiIpApplication.setStatus(
-                        "RAW IPv4 fragment drop: "
-                                + exception.getMessage()
-                );
-
-                setChanged();
-                return;
-            }
-        }
-
-        if (data != null
-                && IcmpRawLiveCarrierCodec.isRawCarrier(
-                data
-        )) {
-            try {
-                processLayer2(
-                        IcmpRawLiveCarrierCodec.decode(
-                                data
-                        )
-                );
-            } catch (Exception exception) {
-                wifiIpApplication.setStatus(
-                        "RAW ICMP drop: "
-                                + exception.getMessage()
-                );
-            }
-        } else if (data != null
-                && DnsRawLiveCarrierCodec.isRawDnsCarrier(
-                data
-        )) {
-            try {
-                OSINetworkPacket rawDns =
-                        DnsRawLiveCarrierCodec.decode(
-                                data
-                        );
-
-                if (rawDns.sourceMac != null
-                        && !rawDns.sourceMac.isBlank()) {
-                    wifiRawDnsPeers.add(
-                            rawDns.sourceMac
-                    );
-                }
-
-                processLayer2(
-                        rawDns
-                );
-            } catch (Exception exception) {
-                wifiIpApplication.setStatus(
-                        "RAW DNS drop: "
-                                + exception.getMessage()
-                );
-            }
-        } else if (data != null
-                && DhcpRawLiveCarrierCodec.isRawDhcpCarrier(
-                data
-        )) {
-            try {
-                OSINetworkPacket rawDhcp =
-                        DhcpRawLiveCarrierCodec.decode(
-                                data
-                        );
-
-                if (rawDhcp.sourceMac != null
-                        && !rawDhcp.sourceMac.isBlank()) {
-                    wifiRawDhcpPeers.add(
-                            rawDhcp.sourceMac
-                    );
-                }
-
-                wifiIpApplication.setStatus(
-                        "DHCP RAW RX "
-                                + rawDhcp.payload.getString(
-                                "type"
-                        )
-                                + " | xid "
-                                + Integer.toUnsignedString(
-                                rawDhcp.payload.getInt(
-                                        "xid"
-                                )
-                        )
-                                + " | link "
-                                + rawDhcp.sourceMac
-                                + " -> "
-                                + rawDhcp.targetMac
-                );
-
-                processLayer2(
-                        rawDhcp
-                );
-            } catch (Exception exception) {
-                wifiIpApplication.setStatus(
-                        "RAW DHCP drop: "
-                                + exception.getMessage()
-                );
-            }
-        } else if (data != null
-                && ArpRawLiveCarrierCodec.isRawArpCarrier(
-                data
-        )) {
-            try {
-                OSINetworkPacket rawArp =
-                        ArpRawLiveCarrierCodec.decode(
-                                data
-                        );
-
-                if (rawArp.sourceMac != null
-                        && !rawArp.sourceMac.isBlank()) {
-                    wifiRawArpPeers.add(
-                            rawArp.sourceMac
-                    );
-                }
-
-                processLayer2(
-                        rawArp
-                );
-            } catch (Exception exception) {
-                wifiIpApplication.setStatus(
-                        "RAW ARP drop: "
-                                + exception.getMessage()
-                );
-            }
-        } else if (data != null
-                && TcpRawLiveCarrierCodec.isRawCarrier(
-                data
-        )) {
-            try {
-                OSINetworkPacket rawTcp =
-                        TcpRawLiveCarrierCodec.decode(
-                                data
-                        );
-
-                if (rawTcp.sessionId != null
-                        && !rawTcp.sessionId.isBlank()) {
-                    wifiRawTcpSessions.add(
-                            rawTcp.sessionId
-                    );
-                }
-
-                processLayer2(
-                        rawTcp
-                );
-            } catch (Exception exception) {
-                wifiIpApplication.setStatus(
-                        "RAW IPv4/TCP drop: "
-                                + exception.getMessage()
-                );
-            }
-        } else if (data != null
                 && data.contains(
                 "osi_packet"
         )) {
-            processLayer2(
+            OSINetworkPacket packet =
                     OSINetworkPacket.deserializeNBT(
                             data.getCompound(
                                     "osi_packet"
                             )
-                    )
-            );
+                    );
+
+            if (wifiMac.mode()
+                    == WifiMode.ACCESS_POINT) {
+                w119HandleWirelessData(
+                        packet,
+                        frame
+                );
+            } else {
+                processLayer2(packet);
+            }
         }
 
         PduSession session =
@@ -3891,6 +3610,193 @@ public abstract class NetworkDeviceBlockEntity
         }
 
         setChanged();
+    }
+
+    private W119ApBridgeEngine w119Bridge() {
+        if (w119Bridge == null) {
+            w119Bridge =
+                    new W119ApBridgeEngine(
+                            macAddress
+                    );
+        }
+
+        return w119Bridge;
+    }
+
+    private void w119HandleWirelessData(
+            OSINetworkPacket packet,
+            WifiMacFrame frame
+    ) {
+        int frameControl =
+                frame.frameControl();
+
+        boolean toDs =
+                (frameControl & 0x0100) != 0;
+
+        boolean fromDs =
+                (frameControl & 0x0200) != 0;
+
+        long nowMillis =
+                System.currentTimeMillis();
+
+        W119BridgeDecision decision =
+                w119Bridge()
+                        .wirelessIngress(
+                                packet,
+                                toDs,
+                                fromDs,
+                                nowMillis
+                        );
+
+        switch (decision.action()) {
+            case LOCAL ->
+                    processLayer2(packet);
+
+            case TO_DISTRIBUTION_SYSTEM ->
+                    w119ForwardToDistributionSystem(
+                            packet
+                    );
+
+            case TO_WIRELESS ->
+                    w119TransmitToWireless(
+                            packet
+                    );
+
+            case TO_WIRELESS_AND_DISTRIBUTION_SYSTEM -> {
+                w119TransmitToWireless(
+                        packet
+                );
+
+                w119ForwardToDistributionSystem(
+                        packet
+                );
+            }
+
+            case CONTROLLER_HANDLED,
+                 DROP -> {
+            }
+        }
+    }
+
+    private boolean w119ForwardToDistributionSystem(
+            OSINetworkPacket packet
+    ) {
+        boolean forwarded =
+                W119WorldDistributionSystem
+                        .forwardFromAccessPoint(
+                                this,
+                                packet
+                        );
+
+        if (forwarded) {
+            w119Bridge()
+                    .noteDistributionTransmit();
+        } else {
+            w119Bridge()
+                    .noteDistributionFailure();
+        }
+
+        return forwarded;
+    }
+
+    private void w119TransmitToWireless(
+            OSINetworkPacket packet
+    ) {
+        CompoundTag body =
+                new CompoundTag();
+
+        body.put(
+                "osi_packet",
+                packet.serializeNBT()
+        );
+
+        wifiMac.sendData(
+                macAddress,
+                packet.targetMac,
+                body,
+                classifyAccessCategory(packet),
+                wifiSender()
+        );
+
+        w119Bridge()
+                .noteWirelessTransmit();
+    }
+
+    public boolean w119ReceiveFromDistributionSystem(
+            OSINetworkPacket packet
+    ) {
+        if (packet == null
+                || !isWifiProfile()
+                || wifiMac.mode()
+                != WifiMode.ACCESS_POINT) {
+            return false;
+        }
+
+        W119BridgeDecision decision =
+                w119Bridge()
+                        .distributionIngress(
+                                packet,
+                                System.currentTimeMillis()
+                        );
+
+        switch (decision.action()) {
+            case LOCAL -> {
+                return false;
+            }
+
+            case TO_WIRELESS -> {
+                w119TransmitToWireless(
+                        packet
+                );
+
+                return !decision.broadcastOrMulticast();
+            }
+
+            case DROP -> {
+                return true;
+            }
+
+            case CONTROLLER_HANDLED -> {
+                return true;
+            }
+
+            case TO_DISTRIBUTION_SYSTEM,
+                 TO_WIRELESS_AND_DISTRIBUTION_SYSTEM -> {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void w119SetClientIsolation(
+            boolean enabled
+    ) {
+        w119Bridge()
+                .setClientIsolation(
+                        enabled
+                );
+
+        setChanged();
+    }
+
+    public boolean w119ClientIsolation() {
+        return w119Bridge()
+                .clientIsolation();
+    }
+
+    public void w119ClearBridgeState() {
+        w119Bridge()
+                .clearDynamic();
+
+        setChanged();
+    }
+
+    public String w119BridgeStatus() {
+        return w119Bridge()
+                .status(
+                        System.currentTimeMillis()
+                );
     }
 
     private void processCellularEnvelope(

@@ -185,7 +185,13 @@ public final class ServerRackBlockEntity extends NetworkDeviceBlockEntity implem
         }
         super.transmitPacket(packet);
     }
-    public void receiveWiredPacket(OSINetworkPacket packet){processLayer2(packet);}
+    public void receiveWiredPacket(OSINetworkPacket packet){
+        if (w119ReceiveFromDistributionSystem(
+                packet
+        )) {
+            return;
+        }
+processLayer2(packet);}
     private OSINetworkPacket copyPrpPacket(OSINetworkPacket packet,long sequence,String lane){OSINetworkPacket copy=OSINetworkPacket.deserializeNBT(packet.serializeNBT().copy());copy.payload=copy.payload.copy();copy.payload.putLong("_prp_sequence",sequence);copy.payload.putString("_prp_source",ipAddress);copy.payload.putString("_prp_lane",lane);return copy;}
     public void receivePrpPacket(OSINetworkPacket packet){String key=packet.payload.getString("_prp_source")+":"+packet.payload.getLong("_prp_sequence");long now=System.currentTimeMillis();prpSeenFrames.entrySet().removeIf(e->now-e.getValue()>30_000L);if(prpSeenFrames.putIfAbsent(key,now)!=null){getPersistentData().putLong("PrpDuplicatesDiscarded",getPersistentData().getLong("PrpDuplicatesDiscarded")+1);setChanged();return;}processLayer2(packet);}
     public boolean beginInteraction(long gameTime){
