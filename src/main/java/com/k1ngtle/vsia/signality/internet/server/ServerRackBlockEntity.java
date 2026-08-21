@@ -3,6 +3,7 @@ package com.k1ngtle.vsia.signality.internet.server;
 import com.k1ngtle.vsia.signality.SignalityBlocks;
 import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
+import com.k1ngtle.vsia.signality.engineering.host.w120.W120HostStack;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.EnumSet;
@@ -17,6 +18,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import software.bernie.geckolib.animatable.GeoBlockEntity;
 import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
@@ -54,6 +56,10 @@ public final class ServerRackBlockEntity extends NetworkDeviceBlockEntity implem
     private ServerRackProfile profile = ServerRackProfile.INTRA_DATA_CENTER;
     private boolean wiredBackboneConnected;
     private final Set<BlockPos> cableLinks = new LinkedHashSet<>();
+
+    // W1.20 REAL WIRED HOST STACK
+    private final W120HostStack w120Host = new W120HostStack();
+    private long w120LastTickGameTime = Long.MIN_VALUE;
     private String ipv6Address="fd00::2", ipv6Gateway="fd00::1", ipv6DnsServer="fd00::2";
     private int ipv6PrefixLength=64;
     private boolean ipv6Automatic;
@@ -159,6 +165,76 @@ public final class ServerRackBlockEntity extends NetworkDeviceBlockEntity implem
         return null;
     }
 
+    // W1.20 REAL HOST METHODS
+    private void w120ConfigureHost(){
+        w120Host.configure(displayName,ipAddress,subnetMask,gatewayIp,macAddress);
+    }
+
+    private boolean w120EmitFrames(java.util.List<OSINetworkPacket> frames){
+        if(frames==null||frames.isEmpty())return true;
+        if(!(level instanceof ServerLevel))return false;
+        boolean emitted=false;
+        for(BlockPos peerPos:new java.util.ArrayList<>(cableLinks)){
+            BlockEntity peer=level.getBlockEntity(peerPos);
+            if(peer instanceof NetworkSwitchBlockEntity sw
+                    && sw.getConnectedDevices().contains(worldPosition)){
+                for(OSINetworkPacket frame:frames){
+                    if(frame==null)continue;
+                    sw.receiveWiredPacket(
+                            OSINetworkPacket.deserializeNBT(frame.serializeNBT().copy()),
+                            worldPosition
+                    );
+                }
+                emitted=true;
+            }
+        }
+        if(!emitted)w120Host.noteNoPhysicalLink(frames.size());
+        return emitted;
+    }
+
+    private String w120Ping(String input,ServerLevel serverLevel){
+        String[] args=input==null?new String[0]:input.trim().split("\\s+");
+        String target=args.length==0?"":args[0];
+        if(!validIp(target)){
+            String resolved=ServerRackDirectory.resolve(serverLevel,target.toLowerCase());
+            if(resolved==null)return "Ping could not resolve host "+target+".";
+            target=resolved;
+        }
+        w120ConfigureHost();
+        java.util.List<OSINetworkPacket> frames=w120Host.ping(target,System.currentTimeMillis());
+        boolean emitted=w120EmitFrames(frames);
+        return "Pinging "+target+" with 32 bytes of data:\n"
+                +(emitted?"W1.20 real Ethernet/IP probe injected. ARP/ICMP processing is asynchronous."
+                :"Request could not enter the wired data plane: no operational switch cable link.")
+                +"\n"+w120Host.status(System.currentTimeMillis());
+    }
+
+    public String w120HostStatus(){
+        w120ConfigureHost();
+        return w120Host.status(System.currentTimeMillis())+" | cables="+cableLinkData();
+    }
+
+    public void w120Tick(){
+        if(!(level instanceof ServerLevel serverLevel))return;
+        long gameTime=serverLevel.getGameTime();
+        if(w120LastTickGameTime!=Long.MIN_VALUE&&gameTime-w120LastTickGameTime<20L)return;
+        w120LastTickGameTime=gameTime;
+        w120ConfigureHost();
+        w120EmitFrames(w120Host.tick(System.currentTimeMillis()));
+    }
+
+    private boolean w120AcceptWiredFrame(OSINetworkPacket packet){
+        if(packet==null)return false;
+        w120ConfigureHost();
+        boolean arp="ARP".equalsIgnoreCase(packet.applicationProtocol);
+        boolean forIp=ipAddress.equals(packet.targetIp);
+        boolean forMac=macAddress!=null&&!macAddress.isBlank()&&macAddress.equalsIgnoreCase(packet.targetMac);
+        boolean group="ff:ff:ff:ff:ff:ff".equalsIgnoreCase(packet.targetMac);
+        if(!arp&&!forIp&&!forMac&&!group)return false;
+        w120EmitFrames(w120Host.receive(packet,System.currentTimeMillis()));
+        return arp||forIp||forMac;
+    }
+
     public String cableLinkData(){if(cableLinks.isEmpty())return "No physical links";return cableLinks.stream().map(p->p.getX()+", "+p.getY()+", "+p.getZ()).collect(java.util.stream.Collectors.joining("; "));}
     public double configuredMaximumRangeBlocks(){return profile.maximumRangeBlocks();}
     public double effectiveMaximumRangeBlocks(){return profile.wiredBeyondCampus()&&!wiredBackboneConnected?10_000.0:profile.maximumRangeBlocks();}
@@ -189,6 +265,11 @@ public final class ServerRackBlockEntity extends NetworkDeviceBlockEntity implem
         if (w119ReceiveFromDistributionSystem(
                 packet
         )) {
+            return;
+        }
+
+        // W1.20 REAL HOST RX
+        if (w120AcceptWiredFrame(packet)) {
             return;
         }
 processLayer2(packet);}
@@ -378,7 +459,8 @@ processLayer2(packet);}
         if(!validIpv6(address6)||prefix<0||prefix>128||!validIpv6(router6)||!validIpv6(resolver6))return "Invalid IPv6 address, prefix, gateway, or DNS server.";
         usesDhcp=automatic;ipAddress=address;subnetMask=mask;gatewayIp=router;dnsServer=resolver;ipv6Address=address6;ipv6PrefixLength=prefix;ipv6Gateway=router6;ipv6DnsServer=resolver6;ipv6Automatic=automatic;setChanged();return automatic?"DHCP/automatic addressing enabled. Current addresses retained until a lease is received.":"Static IPv4 and IPv6 configuration saved.";
     }
-    private String ping(String input,ServerLevel level){String[] args=input.trim().split("\\s+");String target=args.length==0?"":args[0];int count=4;if(args.length>1)try{count=Math.max(1,Math.min(10,Integer.parseInt(args[1])));}catch(Exception ignored){}if(!validIp(target)&&!validIpv6(target)){String resolved=ServerRackDirectory.resolve(level,target.toLowerCase());if(resolved!=null)target=resolved;else return "Ping could not resolve host "+target+".";}ServerRackBlockEntity r=ServerRackDirectory.byIp(level,target);if(r==null)return "Pinging "+target+" with 32 bytes of data:\nRequest timed out.\n\nPackets: Sent = "+count+", Received = 0, Lost = "+count+" (100% loss)";double distance=Math.sqrt(getBlockPos().distSqr(r.getBlockPos()));double allowed=Math.min(effectiveMaximumRangeBlocks(),r.effectiveMaximumRangeBlocks());if(distance>allowed)return "Pinging "+target+":\nRequest timed out. Host is "+String.format("%.1f",distance)+" blocks away; allowed range is "+(long)allowed+" blocks."+(profile.wiredBeyondCampus()&&!wiredBackboneConnected?"\nConnect a wired backbone for this network profile.":"")+"\n\nPackets: Sent = "+count+", Received = 0, Lost = "+count+" (100% loss)";long latency=Math.max(1,Math.round(distance/250.0));StringBuilder out=new StringBuilder("Pinging ").append(target).append(" [").append(r.displayName()).append("] with 32 bytes of data:\n");for(int i=0;i<count;i++)out.append("Reply from ").append(target).append(": bytes=32 time=").append(latency).append("ms TTL=64\n");return out.append("\nPackets: Sent = ").append(count).append(", Received = ").append(count).append(", Lost = 0 (0% loss)\nApproximate round trip: ").append(latency).append("ms; distance: ").append(String.format("%.1f",distance)).append(" blocks").toString();}
+    private String ping(String input,ServerLevel level){return w120Ping(input,level);}
+    private String pingLegacyW120(String input,ServerLevel level){String[] args=input.trim().split("\\s+");String target=args.length==0?"":args[0];int count=4;if(args.length>1)try{count=Math.max(1,Math.min(10,Integer.parseInt(args[1])));}catch(Exception ignored){}if(!validIp(target)&&!validIpv6(target)){String resolved=ServerRackDirectory.resolve(level,target.toLowerCase());if(resolved!=null)target=resolved;else return "Ping could not resolve host "+target+".";}ServerRackBlockEntity r=ServerRackDirectory.byIp(level,target);if(r==null)return "Pinging "+target+" with 32 bytes of data:\nRequest timed out.\n\nPackets: Sent = "+count+", Received = 0, Lost = "+count+" (100% loss)";double distance=Math.sqrt(getBlockPos().distSqr(r.getBlockPos()));double allowed=Math.min(effectiveMaximumRangeBlocks(),r.effectiveMaximumRangeBlocks());if(distance>allowed)return "Pinging "+target+":\nRequest timed out. Host is "+String.format("%.1f",distance)+" blocks away; allowed range is "+(long)allowed+" blocks."+(profile.wiredBeyondCampus()&&!wiredBackboneConnected?"\nConnect a wired backbone for this network profile.":"")+"\n\nPackets: Sent = "+count+", Received = 0, Lost = "+count+" (100% loss)";long latency=Math.max(1,Math.round(distance/250.0));StringBuilder out=new StringBuilder("Pinging ").append(target).append(" [").append(r.displayName()).append("] with 32 bytes of data:\n");for(int i=0;i<count;i++)out.append("Reply from ").append(target).append(": bytes=32 time=").append(latency).append("ms TTL=64\n");return out.append("\nPackets: Sent = ").append(count).append(", Received = ").append(count).append(", Lost = 0 (0% loss)\nApproximate round trip: ").append(latency).append("ms; distance: ").append(String.format("%.1f",distance)).append(" blocks").toString();}
     private String dnsLookup(String input,ServerLevel level){
         String[] arguments=input.trim().split("\\s+");
         if(arguments.length==0||arguments[0].isBlank())return "Usage: nslookup <name> [A|AAAA|CNAME|MX|PTR] [server-ip]";
@@ -420,7 +502,7 @@ processLayer2(packet);}
     }
     private static String browserResult(int status,String url,String title,String content){return "VSIA_BROWSER\t"+status+"\t"+url.replace('\t',' ')+"\t"+title.replace('\t',' ')+'\n'+content;}
     private String mailbox(String address){if(!mailEnabled)return "SMTP service is disabled.";if(address.isBlank())return "Enter a mailbox address.";ListTag messages=mailboxes.get(address.toLowerCase());if(messages==null||messages.isEmpty())return "Mailbox "+address+" is empty.";StringBuilder out=new StringBuilder("Mailbox: ").append(address).append('\n');for(int i=0;i<messages.size();i++){CompoundTag m=messages.getCompound(i);out.append(i+1).append(". ").append(m.getString("subject")).append(" - from ").append(m.getString("from")).append('\n');}return out.toString();}
-    private String command(String command,ServerLevel level){String[] p=command.trim().split("\\s+",2);String name=p.length==0?"":p[0].toLowerCase();String arg=p.length>1?p[1]:"";return switch(name){case "ipconfig"->ipConfiguration();case "ping"->ping(arg,level);case "nslookup"->dnsLookup(arg,level);case "curl"->browse(arg,level);case "mail"->mailbox(arg);case "ftp"->desktopTransfer(arg,level,true);case "tftp"->desktopTransfer(arg,level,false);case "help"->"Commands: ipconfig, ping <ip>, nslookup <domain>, curl <url>, mail <address>, ftp <server> <action> <file> <user> <password> [content], tftp <server> <action> <file> [content], help";case ""->"Enter a command.";default->"Unknown command: "+name+"\nType help for available commands.";};}
+    private String command(String command,ServerLevel level){String[] p=command.trim().split("\\s+",2);String name=p.length==0?"":p[0].toLowerCase();String arg=p.length>1?p[1]:"";return switch(name){case "ipconfig"->ipConfiguration();case "arp","netstat","hostnet"->w120HostStatus();case "ping"->ping(arg,level);case "nslookup"->dnsLookup(arg,level);case "curl"->browse(arg,level);case "mail"->mailbox(arg);case "ftp"->desktopTransfer(arg,level,true);case "tftp"->desktopTransfer(arg,level,false);case "help"->"Commands: ipconfig, hostnet, arp, netstat, ping <ip>, nslookup <domain>, curl <url>, mail <address>, ftp <server> <action> <file> <user> <password> [content], tftp <server> <action> <file> [content], help";case ""->"Enter a command.";default->"Unknown command: "+name+"\nType help for available commands.";};}
     private OSINetworkPacket response(OSINetworkPacket q,int port,String protocol){
         OSINetworkPacket r=new OSINetworkPacket(); r.sourceMac=macAddress;r.targetMac=q.sourceMac;r.sourceIp=ipAddress;
         r.targetIp=q.sourceIp;r.sourcePort=port;r.targetPort=q.sourcePort;r.applicationProtocol=protocol;r.isResponse=true;r.sessionId=q.sessionId;return r;

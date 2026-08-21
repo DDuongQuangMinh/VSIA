@@ -19,6 +19,8 @@ import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityTicker;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
@@ -153,6 +155,18 @@ public final class ServerRackBlock extends HorizontalDirectionalBlock implements
         return state.getValue(HALF) == DoubleBlockHalf.LOWER
                 ? new ServerRackBlockEntity(pos, state)
                 : null;
+    }
+
+    // W1.20 HOST TICKER
+    @Nullable
+    @Override
+    public <T extends BlockEntity> BlockEntityTicker<T> getTicker(
+            Level level, BlockState state, BlockEntityType<T> type
+    ) {
+        if (level.isClientSide) return null;
+        return (tickLevel,tickPos,tickState,be) -> {
+            if (be instanceof ServerRackBlockEntity rack) rack.w120Tick();
+        };
     }
 
     @Override
