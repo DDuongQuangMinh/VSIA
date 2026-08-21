@@ -170,6 +170,12 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
         String ingressPort = getInterfaceNameForPos(ingressPos);
         if (ingressPort == null) return;
 
+        // W1.20.1 PHYSICAL INGRESS FDB LEARNING
+        osSimulators[0].learnDynamicSourceMac(
+                packet.sourceMac,
+                ingressPort
+        );
+
         // Process through the Primary Switch OS Simulator (VLANs, MAC learning, Forwarding, STP)
         List<String> egressPorts = osSimulators[0].processAndForwardPacket(packet, ingressPort);
 

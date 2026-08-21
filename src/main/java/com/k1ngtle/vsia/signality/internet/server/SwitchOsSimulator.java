@@ -214,6 +214,76 @@ public class SwitchOsSimulator {
         if (stateChanged && onStateChange != null) onStateChange.run();
     }
 
+    // W1.20.1 AUTHORITATIVE FDB LEARNING
+    public boolean learnDynamicSourceMac(
+            String sourceMac,
+            String ingressPortName
+    ) {
+        if (sourceMac == null || ingressPortName == null) {
+            return false;
+        }
+
+        String normalized = normalizeDynamicMac(sourceMac);
+
+        if (normalized.isEmpty() || isGroupMac(normalized)) {
+            return false;
+        }
+
+        PortConfig ingressPort = portConfigs.get(ingressPortName);
+
+        if (ingressPort == null
+                || !ingressPort.up
+                || "BLK".equals(ingressPort.stpState)
+                || "LIS".equals(ingressPort.stpState)) {
+            return false;
+        }
+
+        String previous = macTable.put(normalized, ingressPortName);
+        macTableAge.put(normalized, System.currentTimeMillis());
+
+        if (!ingressPortName.equals(previous) && onStateChange != null) {
+            onStateChange.run();
+        }
+
+        return true;
+    }
+
+    private static String normalizeDynamicMac(String mac) {
+        if (mac == null) {
+            return "";
+        }
+
+        String hex = mac.replace(":", "")
+                .replace("-", "")
+                .replace(".", "")
+                .trim()
+                .toUpperCase();
+
+        if (!hex.matches("[0-9A-F]{12}")) {
+            return "";
+        }
+
+        return hex.substring(0, 2) + ":"
+                + hex.substring(2, 4) + ":"
+                + hex.substring(4, 6) + ":"
+                + hex.substring(6, 8) + ":"
+                + hex.substring(8, 10) + ":"
+                + hex.substring(10, 12);
+    }
+
+    private static boolean isGroupMac(String normalized) {
+        if (normalized == null || normalized.length() < 2) {
+            return true;
+        }
+
+        try {
+            int firstOctet = Integer.parseInt(normalized.substring(0, 2), 16);
+            return (firstOctet & 0x01) != 0;
+        } catch (NumberFormatException ignored) {
+            return true;
+        }
+    }
+
     public List<String> processAndForwardPacket(OSINetworkPacket packet, String ingressPortName) {
         List<String> egressPorts = new ArrayList<>();
         PortConfig ingressPort = portConfigs.get(ingressPortName);
@@ -231,11 +301,10 @@ public class SwitchOsSimulator {
         }
 
         // MAC Address Learning (only in LRN and FWD states)
-        if (packet.sourceMac != null && !packet.sourceMac.isEmpty() && !ingressPort.stpState.equals("BLK") && !ingressPort.stpState.equals("LIS")) {
-            macTable.put(packet.sourceMac, ingressPortName);
-            macTableAge.put(packet.sourceMac, System.currentTimeMillis());
-            if (onStateChange != null) onStateChange.run();
-        }
+        learnDynamicSourceMac(
+                packet.sourceMac,
+                ingressPortName
+        );
 
         // Forwarding (only in FWD state)
         if (!ingressPort.stpState.equals("FWD")) return egressPorts;
@@ -258,7 +327,13 @@ public class SwitchOsSimulator {
                 }
             }
         } else {
-            String knownEgressPort = macTable.get(targetMac);
+            String lookupMac =
+                    normalizeDynamicMac(targetMac);
+
+            String knownEgressPort =
+                    lookupMac.isEmpty()
+                            ? null
+                            : macTable.get(lookupMac);
             if (knownEgressPort != null) {
                 PortConfig egressPort = portConfigs.get(knownEgressPort);
                 if (egressPort != null && egressPort.up && egressPort.stpState.equals("FWD") && egressPort.accessVlan.equals(vlan) && !knownEgressPort.equals(ingressPortName)) {
