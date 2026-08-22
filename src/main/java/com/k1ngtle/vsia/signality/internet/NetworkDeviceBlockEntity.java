@@ -5503,6 +5503,69 @@ private final WifiPhyController wifiPhy =
         return false;
     }
 
+    // W1.21 FULL V6.2 PHYSICAL ARP INGRESS GUARANTEE
+    protected boolean receiveRoutedEthernetArpIngress(
+            String interfaceName,
+            OSINetworkPacket packet
+    ) {
+        if (packet == null
+                || !"ARP".equalsIgnoreCase(
+                packet.applicationProtocol
+        )) {
+            return false;
+        }
+
+        if (interfaceName != null
+                && !interfaceName.isBlank()) {
+            packet.payload.putString(
+                    "router_ingress_interface",
+                    interfaceName
+            );
+        }
+
+        traceRoutedEthernet(
+                "ARP DIRECT ingress="
+                        + (
+                        interfaceName == null
+                                || interfaceName.isBlank()
+                                ? "unknown"
+                                : interfaceName
+                )
+                        + " "
+                        + packet.sourceIp
+                        + "->"
+                        + packet.targetIp
+                        + " l2src="
+                        + packet.sourceMac
+                        + " l2dst="
+                        + packet.targetMac
+        );
+
+        boolean handled =
+                wifiLiveRouterEnabled
+                        && handleWifiRouterArp(
+                        packet
+                );
+
+        traceRoutedEthernet(
+                "ARP DIRECT result="
+                        + (
+                        handled
+                                ? "HANDLED"
+                                : "NOT_HANDLED"
+                )
+                        + " ingress="
+                        + (
+                        interfaceName == null
+                                || interfaceName.isBlank()
+                                ? "unknown"
+                                : interfaceName
+                )
+        );
+
+        return handled;
+    }
+
     protected void receiveRoutedEthernetIngress(
             String interfaceName,
             OSINetworkPacket packet

@@ -55,6 +55,19 @@ public final class RtAc68uRouterBlockEntity
     private static final String W121_LAN0 = "lan0";
     private static final String W121_LAN1 = "lan1";
 
+    // W1.21 FULL V6.2 PHYSICAL DELIVERY COUNTERS
+    private long w121PhysicalTxAttempts;
+    private long w121PhysicalTxFrames;
+    private long w121PhysicalRxFrames;
+    private long w121PhysicalPeerDispatches;
+    private long w121PhysicalArpTx;
+    private long w121PhysicalArpRx;
+    private long w121PhysicalArpHandled;
+    private long w121PhysicalIcmpTx;
+    private long w121PhysicalIcmpRx;
+    private long w121PhysicalUnknownPeerDrops;
+    private long w121PhysicalMissingPeerDrops;
+
     public RtAc68uRouterBlockEntity(
             BlockPos pos,
             BlockState state
@@ -473,10 +486,20 @@ public final class RtAc68uRouterBlockEntity
 
         String interfaceName = w121InterfaceForPeer(ingressPeer);
         if (interfaceName.isBlank()) {
+            w121PhysicalUnknownPeerDrops++;
             traceRoutedEthernet(
                     "RX DROP unknown-peer=" + ingressPeer.toShortString()
             );
+            setChanged();
             return;
+        }
+
+        w121PhysicalRxFrames++;
+
+        if ("ARP".equalsIgnoreCase(packet.applicationProtocol)) {
+            w121PhysicalArpRx++;
+        } else if ("ICMP".equalsIgnoreCase(packet.applicationProtocol)) {
+            w121PhysicalIcmpRx++;
         }
 
         packet.payload.putString("router_ingress_interface", interfaceName);
@@ -488,7 +511,25 @@ public final class RtAc68uRouterBlockEntity
                         + " " + packet.sourceIp + "->" + packet.targetIp
         );
 
+        // W1.21 FULL V6.2 PHYSICAL ARP DELIVERY GUARANTEE
+        if ("ARP".equalsIgnoreCase(packet.applicationProtocol)
+                && receiveRoutedEthernetArpIngress(
+                interfaceName,
+                packet
+        )) {
+            w121PhysicalArpHandled++;
+            traceRoutedEthernet(
+                    "RX ARP HANDLED dev="
+                            + interfaceName
+                            + " peer="
+                            + ingressPeer.toShortString()
+            );
+            setChanged();
+            return;
+        }
+
         receiveRoutedEthernetIngress(interfaceName, packet);
+        setChanged();
     }
 
     @Override
@@ -500,6 +541,8 @@ public final class RtAc68uRouterBlockEntity
             return false;
         }
 
+        w121PhysicalTxAttempts++;
+
         BlockPos peerPos = w121EthernetPeers.get(interfaceName);
         if (peerPos == null) {
             traceRoutedEthernet(
@@ -510,11 +553,13 @@ public final class RtAc68uRouterBlockEntity
 
         BlockEntity peer = level.getBlockEntity(peerPos);
         if (peer == null) {
+            w121PhysicalMissingPeerDrops++;
             traceRoutedEthernet(
                     "TX DROP dev=" + interfaceName + " peer="
                             + peerPos.toShortString()
                             + " reason=missing-block-entity"
             );
+            setChanged();
             return true;
         }
 
@@ -524,6 +569,14 @@ public final class RtAc68uRouterBlockEntity
                 );
 
         frame.payload.putString("router_egress_interface", interfaceName);
+
+        w121PhysicalTxFrames++;
+
+        if ("ARP".equalsIgnoreCase(frame.applicationProtocol)) {
+            w121PhysicalArpTx++;
+        } else if ("ICMP".equalsIgnoreCase(frame.applicationProtocol)) {
+            w121PhysicalIcmpTx++;
+        }
 
         traceRoutedEthernet(
                 "TX dev=" + interfaceName
@@ -539,7 +592,17 @@ public final class RtAc68uRouterBlockEntity
         }
 
         if (peer instanceof RtAc68uRouterBlockEntity peerRouter) {
+            w121PhysicalPeerDispatches++;
+            traceRoutedEthernet(
+                    "PEER DISPATCH dev="
+                            + interfaceName
+                            + " peer="
+                            + peerPos.toShortString()
+                            + " protocol="
+                            + frame.applicationProtocol
+            );
             peerRouter.w121ReceiveRoutedEthernetPacket(frame, worldPosition);
+            setChanged();
             return true;
         }
 
@@ -600,6 +663,45 @@ public final class RtAc68uRouterBlockEntity
         List<String> out = new ArrayList<>();
         out.add(w121EthernetLine(W121_LAN0, "GigabitEthernet0/0/0", routerOs.lan0Ip, routerOs.lan0Mask));
         out.add(w121EthernetLine(W121_LAN1, "GigabitEthernet0/0/1", routerOs.lan1Ip, routerOs.lan1Mask));
+        out.addAll(w121PhysicalCounterLines());
+        return List.copyOf(out);
+    }
+
+    // W1.21 FULL V6.2 PHYSICAL COUNTER SNAPSHOT
+    public List<String> w121PhysicalCounterLines() {
+        List<String> out = new ArrayList<>();
+
+        out.add(
+                "PHY txAttempts="
+                        + w121PhysicalTxAttempts
+                        + " txFrames="
+                        + w121PhysicalTxFrames
+                        + " rxFrames="
+                        + w121PhysicalRxFrames
+                        + " peerDispatches="
+                        + w121PhysicalPeerDispatches
+        );
+
+        out.add(
+                "PHY arpTx="
+                        + w121PhysicalArpTx
+                        + " arpRx="
+                        + w121PhysicalArpRx
+                        + " arpHandled="
+                        + w121PhysicalArpHandled
+                        + " icmpTx="
+                        + w121PhysicalIcmpTx
+                        + " icmpRx="
+                        + w121PhysicalIcmpRx
+        );
+
+        out.add(
+                "PHY unknownPeerDrops="
+                        + w121PhysicalUnknownPeerDrops
+                        + " missingPeerDrops="
+                        + w121PhysicalMissingPeerDrops
+        );
+
         return List.copyOf(out);
     }
 

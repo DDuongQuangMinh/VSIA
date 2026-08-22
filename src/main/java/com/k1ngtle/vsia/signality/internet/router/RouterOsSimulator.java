@@ -197,7 +197,23 @@ public final class RouterOsSimulator {
                 else if (second.equals("AMBIGUOUS")) { if (echo) cliLines.add("% Ambiguous command:  \"" + tokens[1] + "\""); }
                 else if (second.equals("version")) runShowVersion(echo);
                 else if (second.equals("running-config")) runShowRun(echo);
-                else if (second.equals("ethernet")) runLiveDiagnostic(echo, "Routed Ethernet", liveEthernetDiagnostics);
+                // W1.21 FULL V6.2 SHOW ETHERNET COUNTERS
+                else if (second.equals("ethernet")) {
+                    if (tokens.length > 2
+                            && "counters".startsWith(tokens[2])) {
+                        runLiveDiagnostic(
+                                echo,
+                                "Routed Ethernet / Counters",
+                                liveEthernetDiagnostics
+                        );
+                    } else {
+                        runLiveDiagnostic(
+                                echo,
+                                "Routed Ethernet",
+                                liveEthernetDiagnostics
+                        );
+                    }
+                }
                 else if (second.equals("arp")) runLiveDiagnostic(echo, "ARP / Pending", liveArpDiagnostics);
                 else if (second.equals("interfaces")) runLiveDiagnostic(echo, "Routed Ethernet", liveEthernetDiagnostics);
                 else if (second.equals("ip")) {
