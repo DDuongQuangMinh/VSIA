@@ -68,6 +68,10 @@ public final class RtAc68uRouterBlockEntity
     private long w121PhysicalUnknownPeerDrops;
     private long w121PhysicalMissingPeerDrops;
 
+    // W1.21 FULL V6.3 AUTHORITATIVE DIAGNOSTIC SNAPSHOTS
+    private List<String> w121SyncedEthernetDiagnostics = List.of();
+    private List<String> w121SyncedArpDiagnostics = List.of();
+
     public RtAc68uRouterBlockEntity(
             BlockPos pos,
             BlockState state
@@ -84,8 +88,9 @@ public final class RtAc68uRouterBlockEntity
         );
 
         // W1.21 FULL V5.1 CLI DIAGNOSTIC BINDING
-        routerOs.setLiveEthernetDiagnostics(this::w121EthernetDiagnosticLines);
-        routerOs.setLiveArpDiagnostics(this::wifiRouterArpStateLines);
+        // W1.21 FULL V6.3 CLIENT CLI READS SERVER-SYNCED SNAPSHOTS
+        routerOs.setLiveEthernetDiagnostics(this::w121CliEthernetDiagnosticLines);
+        routerOs.setLiveArpDiagnostics(this::w121CliArpDiagnosticLines);
 
     }
 
@@ -249,6 +254,22 @@ public final class RtAc68uRouterBlockEntity
             ethernetPeers.put(entry.getKey(), peer);
         }
         tag.put("W121EthernetPeers", ethernetPeers);
+
+        if (level == null || !level.isClientSide) {
+            w121SyncedEthernetDiagnostics =
+                    List.copyOf(w121EthernetDiagnosticLines());
+            w121SyncedArpDiagnostics =
+                    List.copyOf(wifiRouterArpStateLines());
+        }
+
+        tag.putString(
+                "W121SyncedEthernetDiagnostics",
+                String.join("\n", w121SyncedEthernetDiagnostics)
+        );
+        tag.putString(
+                "W121SyncedArpDiagnostics",
+                String.join("\n", w121SyncedArpDiagnostics)
+        );
     }
 
     @Override
@@ -280,6 +301,20 @@ public final class RtAc68uRouterBlockEntity
         } else {
             routerManagementLoaded =
                     tag.getBoolean("W1204RouterManagementLoaded");
+        }
+
+        if (tag.contains("W121SyncedEthernetDiagnostics")) {
+            w121SyncedEthernetDiagnostics =
+                    w121DecodeDiagnosticLines(
+                            tag.getString("W121SyncedEthernetDiagnostics")
+                    );
+        }
+
+        if (tag.contains("W121SyncedArpDiagnostics")) {
+            w121SyncedArpDiagnostics =
+                    w121DecodeDiagnosticLines(
+                            tag.getString("W121SyncedArpDiagnostics")
+                    );
         }
     }
 
@@ -490,7 +525,7 @@ public final class RtAc68uRouterBlockEntity
             traceRoutedEthernet(
                     "RX DROP unknown-peer=" + ingressPeer.toShortString()
             );
-            setChanged();
+            w121SyncDiagnosticsToClients();
             return;
         }
 
@@ -524,12 +559,12 @@ public final class RtAc68uRouterBlockEntity
                             + " peer="
                             + ingressPeer.toShortString()
             );
-            setChanged();
+            w121SyncDiagnosticsToClients();
             return;
         }
 
         receiveRoutedEthernetIngress(interfaceName, packet);
-        setChanged();
+        w121SyncDiagnosticsToClients();
     }
 
     @Override
@@ -578,6 +613,8 @@ public final class RtAc68uRouterBlockEntity
             w121PhysicalIcmpTx++;
         }
 
+        w121SyncDiagnosticsToClients();
+
         traceRoutedEthernet(
                 "TX dev=" + interfaceName
                         + " peer=" + peerPos.toShortString()
@@ -601,8 +638,8 @@ public final class RtAc68uRouterBlockEntity
                             + " protocol="
                             + frame.applicationProtocol
             );
+            w121SyncDiagnosticsToClients();
             peerRouter.w121ReceiveRoutedEthernetPacket(frame, worldPosition);
-            setChanged();
             return true;
         }
 
@@ -656,6 +693,64 @@ public final class RtAc68uRouterBlockEntity
                 }
             }
         }
+    }
+
+    // W1.21 FULL V6.3 AUTHORITATIVE CLI DIAGNOSTICS
+    private List<String> w121CliEthernetDiagnosticLines() {
+        if (level != null
+                && level.isClientSide
+                && !w121SyncedEthernetDiagnostics.isEmpty()) {
+            return w121SyncedEthernetDiagnostics;
+        }
+
+        return w121EthernetDiagnosticLines();
+    }
+
+    private List<String> w121CliArpDiagnosticLines() {
+        if (level != null
+                && level.isClientSide
+                && !w121SyncedArpDiagnostics.isEmpty()) {
+            return w121SyncedArpDiagnostics;
+        }
+
+        return wifiRouterArpStateLines();
+    }
+
+    private static List<String> w121DecodeDiagnosticLines(
+            String packed
+    ) {
+        if (packed == null || packed.isEmpty()) {
+            return List.of();
+        }
+
+        String[] lines = packed.split("\n", -1);
+        List<String> out = new ArrayList<>(lines.length);
+
+        for (String line : lines) {
+            out.add(line);
+        }
+
+        return List.copyOf(out);
+    }
+
+    public void w121SyncDiagnosticsToClients() {
+        if (level == null || level.isClientSide) {
+            return;
+        }
+
+        w121SyncedEthernetDiagnostics =
+                List.copyOf(w121EthernetDiagnosticLines());
+        w121SyncedArpDiagnostics =
+                List.copyOf(wifiRouterArpStateLines());
+
+        setChanged();
+
+        level.sendBlockUpdated(
+                getBlockPos(),
+                getBlockState(),
+                getBlockState(),
+                3
+        );
     }
 
     // W1.21 FULL V5.1 PHYSICAL BINDING SNAPSHOT

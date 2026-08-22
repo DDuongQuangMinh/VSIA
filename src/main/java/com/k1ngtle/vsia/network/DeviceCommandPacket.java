@@ -62,7 +62,9 @@ public class DeviceCommandPacket {
                         router.routerOs.executeCliCore(cmd, false);
                     }
                     router.applyRouterOsToLiveNetwork();
-                    router.setChanged();
+
+                    // W1.21 FULL V6.3 AUTHORITATIVE ROUTER CLI SYNC
+                    router.w121SyncDiagnosticsToClients();
                 }
             }
         });
