@@ -878,42 +878,26 @@ public final class WifiMacController {
 
             if (mode == WifiMode.ACCESS_POINT
                     && toDistributionSystem) {
-                String originalSource =
-                        formatMac(
-                                frame.address2()
-                        );
-
-                String destination =
-                        formatMac(
-                                frame.address3()
-                        );
-
-                boolean localDestination =
-                        macEquals(
-                                destination,
-                                ownMac
-                        );
-
-                boolean broadcastDestination =
-                        macEquals(
-                                destination,
-                                BROADCAST
-                        );
-
-                if (!localDestination) {
-                    relayInfrastructureData(
-                            ownMac,
-                            originalSource,
-                            destination,
-                            receivedData,
-                            sender
-                    );
-                }
-
-                if (!localDestination
-                        && !broadcastDestination) {
-                    return null;
-                }
+                /*
+                 * W1.20.6.1 EXTERNAL AP DISTRIBUTION BRIDGE
+                 *
+                 * Do not consume or internally relay STA -> DS DATA here.
+                 * NetworkDeviceBlockEntity owns the W1.19 AP bridge and must
+                 * receive the decoded payload together with the original
+                 * 802.11 frame so that W1.20.2 can preserve Address2/Address3
+                 * and W1.19 can make the authoritative forwarding decision.
+                 *
+                 * The previous implementation relayed non-local unicast frames
+                 * inside WifiMacController and then returned null. That meant
+                 * processWifiMacEnvelope(...) never called
+                 * w119HandleWirelessData(...), so generated ARP/ICMP replies
+                 * were visible at the station but never incremented AP
+                 * wirelessRx/dsTx.
+                 */
+                receivedData.putBoolean(
+                        "w12061_external_ap_bridge",
+                        true
+                );
             }
 
             return receivedData;
