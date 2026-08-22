@@ -857,10 +857,25 @@ public final class WifiIpApplicationEngine {
             long nowMicros,
             Consumer<OSINetworkPacket> transmitter
     ) {
+        // W1.20.8 UNIFIED ICMP ECHO SCHEMA
         String type =
                 packet.payload.getString(
                         "type"
                 );
+
+        if ((type == null || type.isBlank())
+                && packet.payload.getBoolean(
+                "w117_echo_request"
+        )) {
+            type = "ECHO_REQUEST";
+        }
+
+        if ((type == null || type.isBlank())
+                && packet.payload.getBoolean(
+                "w117_echo_reply"
+        )) {
+            type = "ECHO_REPLY";
+        }
 
         if ("ECHO_REQUEST".equals(
                 type
@@ -870,15 +885,33 @@ public final class WifiIpApplicationEngine {
                             "data"
                     );
 
+            int identifier =
+                    packet.payload.contains(
+                            "identifier"
+                    )
+                            ? packet.payload.getInt(
+                            "identifier"
+                    )
+                            : (
+                            packet.sessionId == null
+                                    ? 0
+                                    : packet.sessionId.hashCode()
+                    ) & 0xFFFF;
+
+            int sequence =
+                    packet.payload.contains(
+                            "sequence"
+                    )
+                            ? packet.payload.getInt(
+                            "sequence"
+                    )
+                            : 1;
+
             IcmpEchoMessage reply =
                     new IcmpEchoMessage(
                             true,
-                            packet.payload.getInt(
-                                    "identifier"
-                            ),
-                            packet.payload.getInt(
-                                    "sequence"
-                            ),
+                            identifier,
+                            sequence,
                             data
                     );
 
@@ -905,9 +938,7 @@ public final class WifiIpApplicationEngine {
             fillIpv4Metadata(
                     response,
                     reply.encode().length,
-                    packet.payload.getInt(
-                            "sequence"
-                    )
+                    sequence
             );
 
             response.payload.putString(
@@ -915,18 +946,24 @@ public final class WifiIpApplicationEngine {
                     "ECHO_REPLY"
             );
 
+            response.payload.putBoolean(
+                    "w117_echo_request",
+                    false
+            );
+
+            response.payload.putBoolean(
+                    "w117_echo_reply",
+                    true
+            );
+
             response.payload.putInt(
                     "identifier",
-                    packet.payload.getInt(
-                            "identifier"
-                    )
+                    identifier
             );
 
             response.payload.putInt(
                     "sequence",
-                    packet.payload.getInt(
-                            "sequence"
-                    )
+                    sequence
             );
 
             response.payload.putByteArray(

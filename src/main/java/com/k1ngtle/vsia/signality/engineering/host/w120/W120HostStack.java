@@ -26,7 +26,16 @@ public final class W120HostStack {
         OSINetworkPacket p=new OSINetworkPacket();
         p.sourceIp=ipv4;p.targetIp=target;p.sourceMac=mac;p.ttl=64;p.ipProtocol=1;p.ipPacketLength=84;
         p.applicationProtocol="ICMP";p.sessionId="W1.20-PING-"+Long.toUnsignedString(now);
-        p.payload.putBoolean("w117_echo_request",true);p.payload.putBoolean("w120_real_host",true);
+        // W1.20.8 canonical ICMP request metadata + W117 compatibility
+        int identifier=(int)(now&0xFFFFL), sequence=(int)((now>>>16)&0xFFFFL);
+        p.payload.putString("type","ECHO_REQUEST");
+        p.payload.putInt("identifier",identifier);
+        p.payload.putInt("sequence",sequence);
+        p.payload.putByteArray("data",new byte[32]);
+        p.payload.putLong("w1_request_id",now);
+        p.payload.putBoolean("w117_echo_request",true);
+        p.payload.putBoolean("w117_echo_reply",false);
+        p.payload.putBoolean("w120_real_host",true);
         echoReq++;
         List<OSINetworkPacket> out=endpoint.sendIpv4(p,now); account(out);
         lastEvent=out.isEmpty()?"PING_PENDING_ARP target="+target:
@@ -42,8 +51,21 @@ public final class W120HostStack {
         boolean forIp=ipv4.equals(p.targetIp);
         if(!arp&&!forMac&&!group&&!forIp)return List.of();
         ethRx++;if(arp)arpRx++;else if(forIp)ipRx++;
-        if(p.payload!=null&&p.payload.getBoolean("w117_echo_reply")){echoReply++;lastEvent="ICMP_ECHO_REPLY "+p.sourceIp;}
-        else lastEvent=arp?"ARP_RX "+p.sourceIp+" "+p.sourceMac:"IPV4_RX "+p.sourceIp+" -> "+p.targetIp;
+        boolean icmpReply =
+                p.payload != null
+                        && (
+                        p.payload.getBoolean("w117_echo_reply")
+                                || "ECHO_REPLY".equals(
+                                p.payload.getString("type")
+                        )
+                );
+
+        if (icmpReply) {
+            echoReply++;
+            lastEvent="ICMP_ECHO_REPLY "+p.sourceIp;
+        } else {
+            lastEvent=arp?"ARP_RX "+p.sourceIp+" "+p.sourceMac:"IPV4_RX "+p.sourceIp+" -> "+p.targetIp;
+        }
         List<OSINetworkPacket> out=endpoint.receive(p,now);account(out);return out;
     }
 
