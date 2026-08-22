@@ -1528,6 +1528,12 @@ private final WifiPhyController wifiPhy =
         return true;
     }
 
+    // W1.21 FULL ROUTER ROUTE MANAGEMENT
+    public void clearWifiLiveRouterStaticRoutes() {
+        wifiLiveRouter.clearStaticRoutes();
+        setChanged();
+    }
+
     public boolean addWifiLiveRouterRoute(
             String network,
             int prefixLength,

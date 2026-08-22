@@ -140,6 +140,33 @@ public final class RtAc68uRouterBlockEntity
         setWifiLiveRouterEnabled(
                 routerOs.forwardingEnabled
         );
+
+        // W1.21 FULL LIVE ROUTING SYNCHRONIZATION
+        clearWifiLiveRouterStaticRoutes();
+
+        for (RouterOsSimulator.RouteEntry route
+                : routerOs.staticRoutes) {
+
+            int prefix =
+                    RouterOsSimulator.maskToPrefix(
+                            route.mask
+                    );
+
+            String egress =
+                    resolveW121RouteEgress(
+                            route.nextHop
+                    );
+
+            if (!egress.isBlank()) {
+                addWifiLiveRouterRoute(
+                        route.network,
+                        prefix,
+                        route.nextHop,
+                        egress,
+                        1
+                );
+            }
+        }
     }
 
 
@@ -217,6 +244,67 @@ public final class RtAc68uRouterBlockEntity
                 playerInventory,
                 this
         );
+    }
+
+
+    private String resolveW121RouteEgress(
+            String nextHop
+    ) {
+        if (nextHop == null
+                || nextHop.isBlank()
+                || "0.0.0.0".equals(nextHop)) {
+            return "";
+        }
+
+        if (w121SameSubnet(
+                nextHop,
+                routerOs.lan0Ip,
+                routerOs.lan0Mask
+        )) {
+            return "lan0";
+        }
+
+        if (w121SameSubnet(
+                nextHop,
+                routerOs.lan1Ip,
+                routerOs.lan1Mask
+        )) {
+            return "lan1";
+        }
+
+        return "";
+    }
+
+    private static boolean w121SameSubnet(
+            String a,
+            String b,
+            String mask
+    ) {
+        try {
+            String[] aa = a.split("\\.");
+            String[] bb = b.split("\\.");
+            String[] mm = mask.split("\\.");
+
+            if (aa.length != 4
+                    || bb.length != 4
+                    || mm.length != 4) {
+                return false;
+            }
+
+            for (int i = 0; i < 4; i++) {
+                int av = Integer.parseInt(aa[i]) & 0xFF;
+                int bv = Integer.parseInt(bb[i]) & 0xFF;
+                int mv = Integer.parseInt(mm[i]) & 0xFF;
+
+                if ((av & mv) != (bv & mv)) {
+                    return false;
+                }
+            }
+
+            return true;
+        } catch (RuntimeException ex) {
+            return false;
+        }
     }
 
 }
