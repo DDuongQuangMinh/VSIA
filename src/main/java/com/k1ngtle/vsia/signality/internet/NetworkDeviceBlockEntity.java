@@ -5473,6 +5473,41 @@ private final WifiPhyController wifiPhy =
         );
     }
 
+    protected boolean transmitRoutedEthernetEgress(
+            String interfaceName,
+            OSINetworkPacket packet
+    ) {
+        return false;
+    }
+
+    protected void receiveRoutedEthernetIngress(
+            String interfaceName,
+            OSINetworkPacket packet
+    ) {
+        if (packet == null) {
+            return;
+        }
+
+        if (interfaceName != null
+                && !interfaceName.isBlank()) {
+            packet.payload.putString(
+                    "router_ingress_interface",
+                    interfaceName
+            );
+        }
+
+        processLayer2(packet);
+    }
+
+    protected void traceRoutedEthernet(
+            String message
+    ) {
+        traceWifiRouter(
+                "ETH "
+                        + (message == null ? "" : message)
+        );
+    }
+
     protected void transmitPacket(
             OSINetworkPacket packet
     ) {
@@ -5498,6 +5533,25 @@ private final WifiPhyController wifiPhy =
                 packet
         )) {
             return;
+        }
+
+        // W1.21 FULL V5 PHYSICAL ROUTED ETHERNET HOOK
+        if (packet != null
+                && packet.payload.contains(
+                "router_egress_interface"
+        )) {
+            String routedInterface =
+                    packet.payload.getString(
+                            "router_egress_interface"
+                    );
+
+            if (!routedInterface.isBlank()
+                    && transmitRoutedEthernetEgress(
+                    routedInterface,
+                    packet
+            )) {
+                return;
+            }
         }
 
         if (shouldUseWifiRawIpv4FragmentCarrier(
@@ -7553,7 +7607,8 @@ private final WifiPhyController wifiPhy =
                         + attempt
         );
 
-        transmitPacket(
+        // W1.21 FULL V5 INTERFACE-SCOPED ROUTER ARP
+        OSINetworkPacket arpRequest =
                 wifiIpApplication.createArpRequest(
                         macAddress,
                         egress.ipv4Address(),
@@ -7563,7 +7618,23 @@ private final WifiPhyController wifiPhy =
                                 serverLevel
                         )
                                 : 0L
-                )
+                );
+
+        arpRequest.payload.putBoolean(
+                "router_egress_bypass",
+                true
+        );
+        arpRequest.payload.putString(
+                "router_egress_interface",
+                interfaceName
+        );
+        arpRequest.payload.putString(
+                "router_next_hop_ip",
+                nextHopIp
+        );
+
+        transmitPacket(
+                arpRequest
         );
     }
 
@@ -7689,6 +7760,31 @@ private final WifiPhyController wifiPhy =
     ) {
         if (packet == null) {
             return null;
+        }
+
+        // W1.21 FULL V5 PHYSICAL INGRESS PRECEDENCE
+        String physicalIngress =
+                packet.payload.getString(
+                        "router_ingress_interface"
+                );
+
+        if (!physicalIngress.isBlank()) {
+            RouterInterface hinted =
+                    wifiLiveRouter.interfaceByName(
+                            physicalIngress
+                    );
+
+            if (hinted != null) {
+                traceWifiRouter(
+                        "INGRESS PHYSICAL dev="
+                                + physicalIngress
+                                + " src-ip="
+                                + packet.sourceIp
+                                + " src-mac="
+                                + packet.sourceMac
+                );
+                return hinted;
+            }
         }
 
         RouterInterface bySourceNetwork =

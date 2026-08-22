@@ -1,6 +1,7 @@
 package com.k1ngtle.vsia.signality.internet.server;
 
 import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
+import com.k1ngtle.vsia.signality.internet.router.RtAc68uRouterBlockEntity;
 import com.k1ngtle.vsia.signality.engineering.wifi.bridge.w119.W119WorldDistributionSystem;
 
 import net.minecraft.ChatFormatting;
@@ -278,6 +279,12 @@ public class NetworkCableItem extends Item {
         if (blockEntity == null
                 || peerPos == null) {
             return false;
+        }
+
+        // W1.21 FULL V5 ROUTER CABLE DISCONNECT
+        if (blockEntity
+                instanceof RtAc68uRouterBlockEntity router) {
+            return router.w121DisconnectEthernetPeer(peerPos);
         }
 
         if (blockEntity
@@ -883,6 +890,74 @@ public class NetworkCableItem extends Item {
 
                     isValidConnection =
                             true;
+                }
+
+            // W1.21 FULL V5 ROUTER PHYSICAL PORT ADMISSION
+            } else if (targetEntity instanceof RtAc68uRouterBlockEntity targetRouter
+                    && storedEntity instanceof RtAc68uRouterBlockEntity storedRouter) {
+
+                String storedInterface =
+                        storedRouter.w121CompatibleInterfaceWith(targetRouter);
+                String targetInterface =
+                        targetRouter.w121CompatibleInterfaceWith(storedRouter);
+
+                if (!storedInterface.isBlank()
+                        && !targetInterface.isBlank()
+                        && storedRouter.w121BindEthernetPeer(storedInterface, pos)
+                        && targetRouter.w121BindEthernetPeer(targetInterface, storedPos)) {
+                    isValidConnection = true;
+
+                    player.displayClientMessage(
+                            Component.literal(
+                                    "Routed Ethernet link: "
+                                            + storedInterface
+                                            + " <-> "
+                                            + targetInterface
+                            ).withStyle(ChatFormatting.GREEN),
+                            true
+                    );
+                }
+
+            } else if (targetEntity instanceof NetworkSwitchBlockEntity targetSwitch
+                    && storedEntity instanceof RtAc68uRouterBlockEntity storedRouter) {
+
+                String routedInterface =
+                        storedRouter.w121BindEthernetPeerAuto(pos);
+
+                if (!routedInterface.isBlank()
+                        && ensureSwitchConnection(level, targetSwitch, storedPos)) {
+                    netSwitch = targetSwitch;
+                    isValidConnection = true;
+
+                    player.displayClientMessage(
+                            Component.literal(
+                                    "Router " + routedInterface
+                                            + " bound to switch "
+                                            + pos.toShortString()
+                            ).withStyle(ChatFormatting.GREEN),
+                            true
+                    );
+                }
+
+            } else if (storedEntity instanceof NetworkSwitchBlockEntity storedSwitch
+                    && targetEntity instanceof RtAc68uRouterBlockEntity targetRouter) {
+
+                String routedInterface =
+                        targetRouter.w121BindEthernetPeerAuto(storedPos);
+
+                if (!routedInterface.isBlank()
+                        && ensureSwitchConnection(level, storedSwitch, pos)) {
+                    netSwitch = storedSwitch;
+                    isValidConnection = true;
+
+                    player.displayClientMessage(
+                            Component.literal(
+                                    "Router " + routedInterface
+                                            + " bound to switch "
+                                            + storedPos.toShortString()
+                            ).withStyle(ChatFormatting.GREEN),
+                            true
+                    );
                 }
 
             // W1.19.4 AP/SWITCH PHYSICAL LINK

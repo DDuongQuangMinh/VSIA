@@ -3,6 +3,7 @@ package com.k1ngtle.vsia.signality.internet.server;
 import com.k1ngtle.vsia.signality.SignalityBlocks;
 import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
+import com.k1ngtle.vsia.signality.internet.router.RtAc68uRouterBlockEntity;
 import com.k1ngtle.vsia.signality.engineering.firewall.w117.W117HostEndpoint;
 import com.k1ngtle.vsia.world.inventory.NetworkSwitchMenu;
 import net.minecraft.core.BlockPos;
@@ -197,6 +198,12 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
                     sw.receiveWiredPacket(forwardedPacket, this.worldPosition);
                 } else if (be instanceof FirewallBlockEntity fw) {
                     fw.receiveWiredPacket(forwardedPacket, this.worldPosition);
+                // W1.21 FULL V5 SWITCH TO ROUTED ROUTER INGRESS
+                } else if (be instanceof RtAc68uRouterBlockEntity router) {
+                    router.w121ReceiveRoutedEthernetPacket(
+                            forwardedPacket,
+                            this.worldPosition
+                    );
                 } else if (be instanceof NetworkDeviceBlockEntity networkDevice) {
                     networkDevice.w119ReceiveWiredPacket(
                             forwardedPacket,
