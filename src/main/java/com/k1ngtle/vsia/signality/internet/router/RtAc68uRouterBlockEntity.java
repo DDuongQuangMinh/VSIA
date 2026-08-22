@@ -28,6 +28,9 @@ import com.k1ngtle.vsia.signality.internet.server.FirewallBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.router.RouterEngineeringSnapshot;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class RtAc68uRouterBlockEntity
         extends NetworkDeviceBlockEntity
@@ -66,6 +69,10 @@ public final class RtAc68uRouterBlockEntity
         routerOs.setLivePingTransmitter(
                 this::sendRouterCliRealPing
         );
+
+        // W1.21 FULL V5.1 CLI DIAGNOSTIC BINDING
+        routerOs.setLiveEthernetDiagnostics(this::w121EthernetDiagnosticLines);
+        routerOs.setLiveArpDiagnostics(this::wifiRouterArpStateLines);
 
     }
 
@@ -586,6 +593,60 @@ public final class RtAc68uRouterBlockEntity
                 }
             }
         }
+    }
+
+    // W1.21 FULL V5.1 PHYSICAL BINDING SNAPSHOT
+    public List<String> w121EthernetDiagnosticLines() {
+        List<String> out = new ArrayList<>();
+        out.add(w121EthernetLine(W121_LAN0, "GigabitEthernet0/0/0", routerOs.lan0Ip, routerOs.lan0Mask));
+        out.add(w121EthernetLine(W121_LAN1, "GigabitEthernet0/0/1", routerOs.lan1Ip, routerOs.lan1Mask));
+        return List.copyOf(out);
+    }
+
+    private String w121EthernetLine(String logical, String display, String ip, String mask) {
+        BlockPos peerPos = w121EthernetPeers.get(logical);
+        String peer = peerPos == null ? "none" : peerPos.toShortString();
+        String link = "DOWN";
+        String type = "none";
+
+        if (peerPos != null && level != null) {
+            BlockEntity be = level.getBlockEntity(peerPos);
+            if (be != null) {
+                type = be.getClass().getSimpleName();
+                link = "UP";
+                if (be instanceof RtAc68uRouterBlockEntity peerRouter) {
+                    String remote = peerRouter.w121InterfaceForPeer(worldPosition);
+                    if (remote.isBlank()) {
+                        link = "ONE_WAY";
+                    } else {
+                        type = type + "/" + remote;
+                    }
+                }
+            }
+        }
+
+        return display + " / " + logical
+                + " ip=" + ip + "/" + RouterOsSimulator.maskToPrefix(mask)
+                + " peer=" + peer
+                + " link=" + link
+                + " type=" + type;
+    }
+
+    @Override
+    public RouterEngineeringSnapshot wifiRouterEngineeringSnapshot() {
+        RouterEngineeringSnapshot base = super.wifiRouterEngineeringSnapshot();
+        List<String> diagnostics = new ArrayList<>();
+        diagnostics.add("W1.21 V5.1 ROUTED ETHERNET");
+        diagnostics.addAll(w121EthernetDiagnosticLines());
+        diagnostics.addAll(wifiRouterArpStateLines());
+        diagnostics.addAll(base.diagnostics());
+        return new RouterEngineeringSnapshot(
+                base.enabled(),
+                base.interfaces(),
+                base.routes(),
+                base.neighborCount(),
+                List.copyOf(diagnostics)
+        );
     }
 
 }

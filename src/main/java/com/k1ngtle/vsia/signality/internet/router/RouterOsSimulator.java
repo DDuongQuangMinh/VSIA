@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 public final class RouterOsSimulator {
     public enum CliMode {
@@ -70,6 +71,18 @@ public final class RouterOsSimulator {
             Function<String, Boolean> transmitter
     ) {
         this.livePingTransmitter = transmitter;
+    }
+
+    // W1.21 FULL V5.1 LIVE DIAGNOSTICS
+    private transient Supplier<List<String>> liveEthernetDiagnostics;
+    private transient Supplier<List<String>> liveArpDiagnostics;
+
+    public void setLiveEthernetDiagnostics(Supplier<List<String>> supplier) {
+        this.liveEthernetDiagnostics = supplier;
+    }
+
+    public void setLiveArpDiagnostics(Supplier<List<String>> supplier) {
+        this.liveArpDiagnostics = supplier;
     }
 
 
@@ -184,6 +197,9 @@ public final class RouterOsSimulator {
                 else if (second.equals("AMBIGUOUS")) { if (echo) cliLines.add("% Ambiguous command:  \"" + tokens[1] + "\""); }
                 else if (second.equals("version")) runShowVersion(echo);
                 else if (second.equals("running-config")) runShowRun(echo);
+                else if (second.equals("ethernet")) runLiveDiagnostic(echo, "Routed Ethernet", liveEthernetDiagnostics);
+                else if (second.equals("arp")) runLiveDiagnostic(echo, "ARP / Pending", liveArpDiagnostics);
+                else if (second.equals("interfaces")) runLiveDiagnostic(echo, "Routed Ethernet", liveEthernetDiagnostics);
                 else if (second.equals("ip")) {
                     if (tokens.length > 2 && "interface".startsWith(tokens[2])) runShowIpIntBrief(echo);
                     else if (tokens.length > 2 && "route".startsWith(tokens[2])) runShowRoute(echo);
@@ -352,9 +368,9 @@ public final class RouterOsSimulator {
         List<String> allContexts = new ArrayList<>();
 
         if (mode == CliMode.EXEC) {
-            allContexts.addAll(List.of("enable", "ping", "show version", "show running-config", "show ip interface brief", "show ip route", "exit", "logout", "help"));
+            allContexts.addAll(List.of("enable", "ping", "show version", "show running-config", "show ip interface brief", "show ip route", "show ethernet", "show arp", "show interfaces", "exit", "logout", "help"));
         } else if (mode == CliMode.PRIVILEGED) {
-            allContexts.addAll(List.of("configure terminal", "disable", "exit", "write memory", "copy running-config startup-config", "show version", "show running-config", "show ip interface brief", "show ip route", "ping", "help"));
+            allContexts.addAll(List.of("configure terminal", "disable", "exit", "write memory", "copy running-config startup-config", "show version", "show running-config", "show ip interface brief", "show ip route", "show ethernet", "show arp", "show interfaces", "ping", "help"));
         } else if (mode == CliMode.GLOBAL_CONFIG) {
             allContexts.addAll(List.of("interface GigabitEthernet0/0/0", "interface GigabitEthernet0/0/1", "interface Dot11Radio0", "hostname", "ip routing", "no ip routing", "ip default-gateway", "no ip default-gateway", "ip route", "no ip route", "exit", "end", "do", "help"));
         } else if (mode == CliMode.INTERFACE_CONFIG) {
@@ -502,6 +518,26 @@ public final class RouterOsSimulator {
         } catch (RuntimeException ex) {
             return ip;
         }
+    }
+
+    private void runLiveDiagnostic(
+            boolean echo,
+            String title,
+            Supplier<List<String>> supplier
+    ) {
+        if (!echo) return;
+        cliLines.add(title);
+        cliLines.add("------------------------------");
+        if (supplier == null) {
+            cliLines.add("% Live diagnostics unavailable.");
+            return;
+        }
+        List<String> lines = supplier.get();
+        if (lines == null || lines.isEmpty()) {
+            cliLines.add("No data.");
+            return;
+        }
+        cliLines.addAll(lines);
     }
 
     private void runShowVersion(boolean echo) {

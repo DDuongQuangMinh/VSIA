@@ -2123,6 +2123,29 @@ private final WifiPhyController wifiPhy =
         return java.util.List.copyOf(wifiRouterDiagnostics);
     }
 
+    // W1.21 FULL V5.1 ROUTER ARP STATE
+    protected java.util.List<String> wifiRouterArpStateLines() {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        out.add("ARP neighbors=" + wifiLiveRouter.neighbors().size());
+
+        int total = 0;
+        for (java.util.Map.Entry<String, java.util.List<OSINetworkPacket>> entry
+                : wifiRouterPendingByNextHop.entrySet()) {
+            int count = entry.getValue() == null ? 0 : entry.getValue().size();
+            total += count;
+            out.add("PENDING next-hop=" + entry.getKey() + " packets=" + count);
+        }
+
+        if (total == 0) {
+            out.add("PENDING none");
+        } else {
+            out.add(1, "PENDING total=" + total);
+        }
+
+        return java.util.List.copyOf(out);
+    }
+
+
     public void clearWifiLiveRouterDiagnostics() {
         wifiRouterDiagnostics.clear();
     }
