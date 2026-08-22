@@ -5534,6 +5534,68 @@ private final WifiPhyController wifiPhy =
     protected void transmitPacket(
             OSINetworkPacket packet
     ) {
+
+        /*
+         * W1.21 FULL V6.1 ROUTED ETHERNET EGRESS PRECEDENCE
+         *
+         * RouterEngine has already selected the egress interface for packets
+         * carrying router_egress_bypass + router_egress_interface. Such a
+         * packet must not be handed back to the generic Wi-Fi/end-host routing
+         * path before the physical routed-Ethernet carrier gets ownership.
+         *
+         * This is especially important for router-generated ARP REQUEST/REPLY
+         * traffic on lan0/lan1. The ARP frame is an L2 control frame whose
+         * egress interface is already frozen by RouterEngine.
+         */
+        if (packet != null
+                && packet.payload.getBoolean(
+                "router_egress_bypass"
+        )
+                && packet.payload.contains(
+                "router_egress_interface"
+        )) {
+
+            String routedInterface =
+                    packet.payload.getString(
+                            "router_egress_interface"
+                    );
+
+            if (!routedInterface.isBlank()) {
+                traceRoutedEthernet(
+                        "BYPASS-FIRST dev="
+                                + routedInterface
+                                + " protocol="
+                                + packet.applicationProtocol
+                                + " "
+                                + packet.sourceIp
+                                + "->"
+                                + packet.targetIp
+                                + " l2dst="
+                                + packet.targetMac
+                );
+
+                if (transmitRoutedEthernetEgress(
+                        routedInterface,
+                        packet
+                )) {
+                    traceRoutedEthernet(
+                            "BYPASS-FIRST SENT dev="
+                                    + routedInterface
+                                    + " protocol="
+                                    + packet.applicationProtocol
+                    );
+                    return;
+                }
+
+                traceRoutedEthernet(
+                        "BYPASS-FIRST FALLBACK dev="
+                                + routedInterface
+                                + " protocol="
+                                + packet.applicationProtocol
+                );
+            }
+        }
+
         if (packet != null
                 && !"TCP".equalsIgnoreCase(
                 packet.applicationProtocol
