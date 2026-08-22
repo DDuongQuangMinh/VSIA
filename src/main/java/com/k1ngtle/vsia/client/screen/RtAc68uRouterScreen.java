@@ -247,6 +247,80 @@ public final class RtAc68uRouterScreen extends AbstractContainerScreen<RtAc68uRo
                     os.cliInput = "";
                     os.cliCursorPos = 0;
                     return true;
+                // W1.21 FULL V6 CLI PASTE
+                } else if (pKeyCode == GLFW.GLFW_KEY_V) {
+                    if (this.minecraft == null) {
+                        return true;
+                    }
+
+                    String clipboard =
+                            this.minecraft.keyboardHandler.getClipboard();
+
+                    if (clipboard == null
+                            || clipboard.isEmpty()) {
+                        return true;
+                    }
+
+                    String normalized =
+                            clipboard.replace("\r\n", "\n")
+                                    .replace('\r', '\n');
+
+                    if (!normalized.contains("\n")) {
+                        StringBuilder printableBuilder =
+                                new StringBuilder();
+
+                        for (int i = 0; i < normalized.length(); i++) {
+                            char ch = normalized.charAt(i);
+                            if (ch >= 32 && ch <= 126) {
+                                printableBuilder.append(ch);
+                            }
+                        }
+
+                        String printable =
+                                printableBuilder.toString();
+
+                        os.cliInput =
+                                os.cliInput.substring(0, os.cliCursorPos)
+                                        + printable
+                                        + os.cliInput.substring(os.cliCursorPos);
+                        os.cliCursorPos +=
+                                printable.length();
+
+                        return true;
+                    }
+
+                    List<String> pastedCommands =
+                            new ArrayList<>();
+
+                    for (String rawLine : normalized.split("\n")) {
+                        String command =
+                                rawLine.trim();
+
+                        if (command.isEmpty()) {
+                            continue;
+                        }
+
+                        os.executeCliCore(
+                                command,
+                                true
+                        );
+
+                        pastedCommands.add(
+                                command
+                        );
+                    }
+
+                    if (!pastedCommands.isEmpty()) {
+                        syncCommand(
+                                pastedCommands.toArray(
+                                        new String[0]
+                                )
+                        );
+                    }
+
+                    os.cliInput = "";
+                    os.cliCursorPos = 0;
+                    return true;
                 }
             }
 

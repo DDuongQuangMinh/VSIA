@@ -7328,10 +7328,18 @@ private final WifiPhyController wifiPhy =
             return false;
         }
 
+        // W1.21 FULL V6 PHYSICAL-INGRESS ARP LEARNING
         RouterInterface senderInterface =
-                wifiLiveRouter.interfaceForSourceNetwork(
-                        senderIp
+                resolveWifiRouterIngress(
+                        packet
                 );
+
+        if (senderInterface == null) {
+            senderInterface =
+                    wifiLiveRouter.interfaceForSourceNetwork(
+                            senderIp
+                    );
+        }
 
         if (senderInterface != null
                 && !senderMac.isBlank()) {
@@ -7373,6 +7381,10 @@ private final WifiPhyController wifiPhy =
             );
         }
 
+        // W1.21 FULL V6 ROUTER ARP RESPONSE EGRESS
+        final String responseInterface =
+                local.name();
+
         wifiIpApplication.handleIncoming(
                 macAddress,
                 local.ipv4Address(),
@@ -7382,10 +7394,89 @@ private final WifiPhyController wifiPhy =
                         serverLevel
                 )
                         : 0L,
-                this::transmitGeneratedWifiResponse
+                response ->
+                        transmitWifiRouterGeneratedResponse(
+                                responseInterface,
+                                response
+                        )
         );
 
         return true;
+    }
+
+    // W1.21 FULL V6 ROUTER GENERATED RESPONSE EGRESS
+    private void transmitWifiRouterGeneratedResponse(
+            String interfaceName,
+            OSINetworkPacket packet
+    ) {
+        if (packet == null
+                || interfaceName == null
+                || interfaceName.isBlank()) {
+            return;
+        }
+
+        RouterInterface egress =
+                wifiLiveRouter.interfaceByName(
+                        interfaceName
+                );
+
+        if (egress == null
+                || !egress.enabled()) {
+            traceWifiRouter(
+                    "GENERATED RESPONSE DROP dev="
+                            + interfaceName
+                            + " reason=egress-unavailable"
+            );
+            return;
+        }
+
+        packet.sourceMac =
+                macAddress;
+
+        if (packet.sourceIp == null
+                || packet.sourceIp.isBlank()
+                || "0.0.0.0".equals(packet.sourceIp)) {
+            packet.sourceIp =
+                    egress.ipv4Address();
+        }
+
+        packet.payload.putBoolean(
+                "router_egress_bypass",
+                true
+        );
+
+        packet.payload.putString(
+                "router_egress_interface",
+                interfaceName
+        );
+
+        if (Ipv4Prefix.isUsableUnicast(
+                packet.targetIp
+        )) {
+            packet.payload.putString(
+                    "router_next_hop_ip",
+                    packet.targetIp
+            );
+        }
+
+        traceWifiRouter(
+                "GENERATED RESPONSE TX protocol="
+                        + packet.applicationProtocol
+                        + " src="
+                        + packet.sourceIp
+                        + " dst="
+                        + packet.targetIp
+                        + " dev="
+                        + interfaceName
+                        + " l2dst="
+                        + packet.targetMac
+        );
+
+        transmitPacket(
+                packet
+        );
+
+        setChanged();
     }
 
     private void forwardWifiRouterPacket(
