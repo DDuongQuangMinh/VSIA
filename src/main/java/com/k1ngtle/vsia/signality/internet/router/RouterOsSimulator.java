@@ -564,33 +564,49 @@ public final class RouterOsSimulator {
     }
 
     private void runPing(String target, boolean echo) {
-        if (!echo) return;
+        // W1.21 FULL V6.4 SERVER-AUTHORITATIVE ACTIVE CLI EXECUTION
+        //
+        // `echo` controls CLI presentation only. It must never suppress the
+        // network side effect. DeviceCommandPacket deliberately executes
+        // authoritative router commands on the server with echo=false.
+        //
+        // Client: echo=true  -> render Packet-Tracer-style text.
+        // Server: echo=false -> execute the real network action silently.
 
-        // W1.21 FULL V3 REAL ROUTER PING
-        cliLines.add("Type escape sequence to abort.");
-        cliLines.add(
-                "Sending live ICMP Echo probe to " + target + ", timeout is 2 seconds:"
-        );
+        if (echo) {
+            cliLines.add("Type escape sequence to abort.");
+            cliLines.add(
+                    "Sending live ICMP Echo probe to " + target + ", timeout is 2 seconds:"
+            );
+        }
 
         if (livePingTransmitter == null) {
-            cliLines.add("% Live router ping transport is unavailable.");
-            cliLines.add("Success rate is 0 percent (0/1)");
+            if (echo) {
+                cliLines.add("% Live router ping transport is unavailable.");
+                cliLines.add("Success rate is 0 percent (0/1)");
+            }
             return;
         }
 
         boolean accepted;
         try {
-            accepted = Boolean.TRUE.equals(livePingTransmitter.apply(target));
+            accepted = Boolean.TRUE.equals(
+                    livePingTransmitter.apply(target)
+            );
         } catch (RuntimeException ex) {
             accepted = false;
         }
 
+        if (!echo) {
+            return;
+        }
+
+        cliLines.add(".");
+
         if (accepted) {
-            cliLines.add(".");
             cliLines.add("Live ICMP probe injected into the real network stack.");
             cliLines.add("Reply processing is asynchronous; inspect live diagnostics.");
         } else {
-            cliLines.add(".");
             cliLines.add("% Live ICMP probe could not be injected.");
             cliLines.add("Success rate is 0 percent (0/1)");
         }
