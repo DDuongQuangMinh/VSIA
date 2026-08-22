@@ -1876,6 +1876,12 @@ private final WifiPhyController wifiPhy =
 
         return true;
     }
+    // W1.21 FULL V3 ROUTER CLI REAL PING
+    public boolean sendRouterCliRealPing(String targetIp) {
+        if (targetIp == null || targetIp.isBlank()) return false;
+        return sendWifiTtlProbe(targetIp, 64);
+    }
+
     public boolean sendWifiTtlProbe(
             String targetIp,
             int ttl

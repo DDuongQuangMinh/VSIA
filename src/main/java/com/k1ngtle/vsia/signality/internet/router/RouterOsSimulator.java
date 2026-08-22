@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 public final class RouterOsSimulator {
     public enum CliMode {
@@ -61,6 +62,16 @@ public final class RouterOsSimulator {
     public int bootStep = 0;
 
     public transient Runnable guiCallback;
+
+    // W1.21 FULL V3 REAL PING CALLBACK
+    private transient Function<String, Boolean> livePingTransmitter;
+
+    public void setLivePingTransmitter(
+            Function<String, Boolean> transmitter
+    ) {
+        this.livePingTransmitter = transmitter;
+    }
+
 
     public RouterOsSimulator(Runnable guiCallback) {
         this.guiCallback = guiCallback;
@@ -450,18 +461,46 @@ public final class RouterOsSimulator {
 
     private void runShowRoute(boolean echo) {
         if (!echo) return;
+
+        // W1.21 FULL V3 NORMALIZED ROUTE DISPLAY
         cliLines.add("Codes: C - connected, S - static");
         cliLines.add("");
 
-        if (!lan0Ip.equals("0.0.0.0") && !lan0Ip.equals("unassigned")) cliLines.add("C    " + lan0Ip + " is directly connected, GigabitEthernet0/0/0");
-        if (!lan1Ip.equals("0.0.0.0") && !lan1Ip.equals("unassigned")) cliLines.add("C    " + lan1Ip + " is directly connected, GigabitEthernet0/0/1");
-        if (wlanAdminUp && !wlanIp.equals("0.0.0.0") && !wlanIp.equals("unassigned")) cliLines.add("C    " + wlanIp + " is directly connected, Dot11Radio0");
+        appendConnectedRoute(lan0Ip, lan0Mask, "GigabitEthernet0/0/0");
+        appendConnectedRoute(lan1Ip, lan1Mask, "GigabitEthernet0/0/1");
+        if (wlanAdminUp) appendConnectedRoute(wlanIp, wlanMask, "Dot11Radio0");
 
         for (RouteEntry route : staticRoutes) {
-            cliLines.add("S    " + route.network + " via " + route.nextHop);
+            cliLines.add("S    " + normalizeNetwork(route.network, route.mask)
+                    + "/" + maskToPrefix(route.mask) + " via " + route.nextHop);
         }
+
         if (!wlanGateway.isBlank() && !wlanGateway.equals("unassigned")) {
             cliLines.add("S*   0.0.0.0/0 via " + wlanGateway);
+        }
+    }
+
+    private void appendConnectedRoute(String ip, String mask, String iface) {
+        if (ip == null || ip.isBlank() || ip.equals("0.0.0.0") || ip.equals("unassigned")) return;
+        cliLines.add("C    " + normalizeNetwork(ip, mask) + "/" + maskToPrefix(mask)
+                + " is directly connected, " + iface);
+    }
+
+    private static String normalizeNetwork(String ip, String mask) {
+        try {
+            String[] a = ip.split("\\.");
+            String[] m = mask.split("\\.");
+            if (a.length != 4 || m.length != 4) return ip;
+            StringBuilder out = new StringBuilder();
+            for (int i = 0; i < 4; i++) {
+                int octet = Integer.parseInt(a[i]) & 0xFF;
+                int maskOctet = Integer.parseInt(m[i]) & 0xFF;
+                if (i > 0) out.append('.');
+                out.append(octet & maskOctet);
+            }
+            return out.toString();
+        } catch (RuntimeException ex) {
+            return ip;
         }
     }
 
@@ -474,10 +513,35 @@ public final class RouterOsSimulator {
 
     private void runPing(String target, boolean echo) {
         if (!echo) return;
+
+        // W1.21 FULL V3 REAL ROUTER PING
         cliLines.add("Type escape sequence to abort.");
-        cliLines.add("Sending 5, 100-byte ICMP Echos to " + target + ", timeout is 2 seconds:");
-        cliLines.add("!!!!!");
-        cliLines.add("Success rate is 100 percent (5/5), round-trip min/avg/max = 1/2/4 ms");
+        cliLines.add(
+                "Sending live ICMP Echo probe to " + target + ", timeout is 2 seconds:"
+        );
+
+        if (livePingTransmitter == null) {
+            cliLines.add("% Live router ping transport is unavailable.");
+            cliLines.add("Success rate is 0 percent (0/1)");
+            return;
+        }
+
+        boolean accepted;
+        try {
+            accepted = Boolean.TRUE.equals(livePingTransmitter.apply(target));
+        } catch (RuntimeException ex) {
+            accepted = false;
+        }
+
+        if (accepted) {
+            cliLines.add(".");
+            cliLines.add("Live ICMP probe injected into the real network stack.");
+            cliLines.add("Reply processing is asynchronous; inspect live diagnostics.");
+        } else {
+            cliLines.add(".");
+            cliLines.add("% Live ICMP probe could not be injected.");
+            cliLines.add("Success rate is 0 percent (0/1)");
+        }
     }
 
     public CompoundTag save() {

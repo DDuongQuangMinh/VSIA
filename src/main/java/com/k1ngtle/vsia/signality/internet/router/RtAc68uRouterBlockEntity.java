@@ -47,6 +47,12 @@ public final class RtAc68uRouterBlockEntity
                 pos,
                 state
         );
+
+        // W1.21 FULL V3 CLI PING BINDING
+        routerOs.setLivePingTransmitter(
+                this::sendRouterCliRealPing
+        );
+
     }
 
     @Override
