@@ -4101,6 +4101,49 @@ private final WifiPhyController wifiPhy =
                         "FF:FF:FF:FF:FF:FF"
                 );
 
+        /*
+         * W1.20.7 LOCAL WIFI ENDPOINT PRECEDENCE
+         *
+         * A device operating as an associated Wi-Fi station is both:
+         * 1. a possible routed-network device, and
+         * 2. an end host with its own Wi-Fi/application IPv4 address.
+         *
+         * Frames explicitly addressed to that station endpoint must be
+         * delivered locally before RouterEngine is allowed to consider them
+         * transit traffic.
+         *
+         * Without this ordering, a packet for the station's own address
+         * (for example 192.168.1.100) can enter handleWifiRouterLayer2(...)
+         * first. The router then treats its own station IP as an on-link
+         * transit destination and starts ARP resolution for itself.
+         */
+        boolean localStationIpv4 =
+                isWifiProfile()
+                        && wifiMac.mode()
+                        == WifiMode.STATION
+                        && (addressed || broadcast)
+                        && (
+                        packet.targetIp.equals(
+                                ipAddress
+                        )
+                                || packet.targetIp.equals(
+                                "255.255.255.255"
+                        )
+                );
+
+        if (localStationIpv4) {
+            packet.payload.putBoolean(
+                    "w1207_local_endpoint_precedence",
+                    true
+            );
+
+            processLayer3(
+                    packet
+            );
+
+            return;
+        }
+
         if (wifiLiveRouterEnabled
                 && handleWifiRouterLayer2(
                 packet,
