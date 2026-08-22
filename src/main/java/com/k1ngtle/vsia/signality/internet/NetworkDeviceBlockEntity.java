@@ -1876,10 +1876,186 @@ private final WifiPhyController wifiPhy =
 
         return true;
     }
-    // W1.21 FULL V3 ROUTER CLI REAL PING
-    public boolean sendRouterCliRealPing(String targetIp) {
-        if (targetIp == null || targetIp.isBlank()) return false;
-        return sendWifiTtlProbe(targetIp, 64);
+    // W1.21 FULL V4 ROUTER LOCAL-ORIGIN ICMP
+    public boolean sendRouterCliRealPing(
+            String targetIp
+    ) {
+        if (!wifiLiveRouterEnabled
+                || targetIp == null
+                || targetIp.isBlank()
+                || !Ipv4Prefix.isUsableUnicast(targetIp)) {
+            traceWifiRouter(
+                    "PING REJECT target=" + targetIp
+                            + " reason=invalid-or-router-disabled"
+            );
+            return false;
+        }
+
+        RouterPacket planningPacket =
+                new RouterPacket(
+                        "0.0.0.0",
+                        targetIp,
+                        65,
+                        1,
+                        new byte[0]
+                );
+
+        RouterForwardDecision decision =
+                wifiLiveRouter.evaluate(
+                        "",
+                        planningPacket
+                );
+
+        traceWifiRouter(
+                "PING ROUTE target=" + targetIp
+                        + " action=" + decision.action().name()
+                        + " egress="
+                        + (decision.egressInterface().isBlank()
+                        ? "none"
+                        : decision.egressInterface())
+                        + " next-hop="
+                        + (decision.nextHopIp().isBlank()
+                        ? "none"
+                        : decision.nextHopIp())
+        );
+
+        if (decision.action()
+                == RouterForwardAction.LOCAL_DELIVERY) {
+            traceWifiRouter(
+                    "PING LOCAL target=" + targetIp
+            );
+            onRouterLocalIcmpReply(targetIp);
+            return true;
+        }
+
+        if (decision.action()
+                != RouterForwardAction.FORWARD
+                && decision.action()
+                != RouterForwardAction.ARP_REQUIRED) {
+            traceWifiRouter(
+                    "PING DROP target=" + targetIp
+                            + " action=" + decision.action().name()
+                            + " detail=" + decision.detail()
+            );
+            return false;
+        }
+
+        RouterInterface egress =
+                wifiLiveRouter.interfaceByName(
+                        decision.egressInterface()
+                );
+
+        if (egress == null || !egress.enabled()) {
+            traceWifiRouter(
+                    "PING DROP target=" + targetIp
+                            + " reason=egress-unavailable"
+            );
+            return false;
+        }
+
+        long nowMicros =
+                level instanceof ServerLevel serverLevel
+                        ? NetworkTimebase.nowMicros(serverLevel)
+                        : 0L;
+
+        OSINetworkPacket packet =
+                wifiIpApplication.createIcmpEcho(
+                        macAddress,
+                        egress.ipv4Address(),
+                        decision.nextHopMac().isBlank()
+                                ? "FF:FF:FF:FF:FF:FF"
+                                : decision.nextHopMac(),
+                        targetIp,
+                        32,
+                        nowMicros
+                );
+
+        packet.ttl = 64;
+        packet.payload.putBoolean(
+                "w121_router_local_origin",
+                true
+        );
+        packet.payload.putString(
+                "router_egress_interface",
+                decision.egressInterface()
+        );
+        packet.payload.putString(
+                "router_next_hop_ip",
+                decision.nextHopIp()
+        );
+
+        if (decision.action()
+                == RouterForwardAction.FORWARD) {
+            packet.targetMac =
+                    decision.nextHopMac();
+
+            packet.payload.putBoolean(
+                    "router_egress_bypass",
+                    true
+            );
+
+            traceWifiRouter(
+                    "PING TX target=" + targetIp
+                            + " src=" + egress.ipv4Address()
+                            + " dev=" + decision.egressInterface()
+                            + " next-hop=" + decision.nextHopIp()
+                            + " mac=" + decision.nextHopMac()
+                            + " ttl=64"
+            );
+
+            transmitPacket(packet);
+            setChanged();
+            return true;
+        }
+
+        packet.payload.putString(
+                "router_pending_egress_interface",
+                decision.egressInterface()
+        );
+        packet.payload.putString(
+                "router_pending_next_hop_ip",
+                decision.nextHopIp()
+        );
+        packet.payload.putInt(
+                "router_pending_outgoing_ttl",
+                64
+        );
+
+        if (!queueWifiRouterPacket(
+                decision.egressInterface(),
+                decision.nextHopIp(),
+                packet
+        )) {
+            traceWifiRouter(
+                    "PING DROP target=" + targetIp
+                            + " reason=router-pending-queue-full"
+            );
+            return false;
+        }
+
+        traceWifiRouter(
+                "PING ARP_PENDING target=" + targetIp
+                        + " src=" + egress.ipv4Address()
+                        + " dev=" + decision.egressInterface()
+                        + " next-hop=" + decision.nextHopIp()
+        );
+
+        sendWifiRouterArpRequest(
+                decision.egressInterface(),
+                decision.nextHopIp()
+        );
+
+        if (level instanceof ServerLevel serverLevel) {
+            WifiRouterArpRetryManager.schedule(
+                    serverLevel,
+                    worldPosition,
+                    decision.egressInterface(),
+                    decision.nextHopIp()
+            );
+        }
+
+        setChanged();
+        return true;
     }
 
     public boolean sendWifiTtlProbe(
@@ -6572,11 +6748,17 @@ private final WifiPhyController wifiPhy =
                 );
 
         if (local != null) {
+            // W1.21 FULL V4 ROUTER LOCAL INTERFACE DELIVERY
             if (packet.targetIp.equals(
                     ipAddress
             )) {
                 return false;
             }
+
+            packet.payload.putBoolean(
+                    "w121_router_local_delivery",
+                    true
+            );
 
             wifiIpApplication.setStatus(
                     "Router local delivery "
@@ -6585,6 +6767,58 @@ private final WifiPhyController wifiPhy =
                             + local.name()
             );
 
+            boolean echoReply =
+                    "ICMP".equalsIgnoreCase(
+                            packet.applicationProtocol
+                    )
+                            && packet.isResponse
+                            && (
+                            "ECHO_REPLY".equalsIgnoreCase(
+                                    packet.payload.getString("type")
+                            )
+                                    || packet.payload.getBoolean(
+                                    "w117_echo_reply"
+                            )
+                    );
+
+            if (echoReply) {
+                traceWifiRouter(
+                        "PING REPLY src=" + packet.sourceIp
+                                + " dst=" + packet.targetIp
+                                + " dev=" + local.name()
+                );
+
+                onRouterLocalIcmpReply(
+                        packet.sourceIp
+                );
+            }
+
+            boolean handled =
+                    wifiIpApplication.handleIncoming(
+                            macAddress,
+                            local.ipv4Address(),
+                            packet,
+                            level instanceof ServerLevel serverLevel
+                                    ? NetworkTimebase.nowMicros(
+                                    serverLevel
+                            )
+                                    : 0L,
+                            response ->
+                                    transmitRouterLocalResponse(
+                                            local.name(),
+                                            response
+                                    )
+                    );
+
+            traceWifiRouter(
+                    "LOCAL DELIVER protocol="
+                            + packet.applicationProtocol
+                            + " dst=" + packet.targetIp
+                            + " dev=" + local.name()
+                            + " handled=" + handled
+            );
+
+            setChanged();
             return true;
         }
 
@@ -7646,6 +7880,62 @@ private final WifiPhyController wifiPhy =
         transmitPacket(
                 error
         );
+    }
+
+    // W1.21 FULL V4 ROUTER LOCAL RESPONSE EGRESS
+    private void transmitRouterLocalResponse(
+            String interfaceName,
+            OSINetworkPacket packet
+    ) {
+        if (packet == null) {
+            return;
+        }
+
+        RouterInterface egress =
+                wifiLiveRouter.interfaceByName(
+                        interfaceName
+                );
+
+        if (egress == null || !egress.enabled()) {
+            traceWifiRouter(
+                    "LOCAL RESPONSE DROP dev="
+                            + interfaceName
+                            + " unavailable"
+            );
+            return;
+        }
+
+        packet.sourceMac = macAddress;
+        packet.sourceIp = egress.ipv4Address();
+        packet.payload.putBoolean(
+                "router_egress_bypass",
+                true
+        );
+        packet.payload.putString(
+                "router_egress_interface",
+                interfaceName
+        );
+        packet.payload.putBoolean(
+                "w121_router_local_response",
+                true
+        );
+
+        traceWifiRouter(
+                "LOCAL RESPONSE TX protocol="
+                        + packet.applicationProtocol
+                        + " src=" + packet.sourceIp
+                        + " dst=" + packet.targetIp
+                        + " dev=" + interfaceName
+                        + " mac=" + packet.targetMac
+        );
+
+        transmitPacket(packet);
+        setChanged();
+    }
+
+    protected void onRouterLocalIcmpReply(
+            String sourceIp
+    ) {
     }
 
     private boolean prepareWifiIpv4NextHop(

@@ -591,5 +591,18 @@ public final class RouterOsSimulator {
                 staticRoutes.add(new RouteEntry(r.getString("Network"), r.contains("Mask") ? r.getString("Mask") : "255.255.255.0", r.getString("NextHop")));
             }
         }
+    }    // W1.21 FULL V4 REAL PING REPLY REPORT
+    public void noteLivePingReply(
+            String sourceIp
+    ) {
+        cliLines.add(
+                "! Reply from "
+                        + sourceIp
+        );
+        cliLines.add(
+                "Success rate is 100 percent (1/1)"
+        );
     }
+
+
 }

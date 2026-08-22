@@ -313,4 +313,17 @@ public final class RtAc68uRouterBlockEntity
         }
     }
 
+    // W1.21 FULL V4 ROUTER PING REPLY HOOK
+    @Override
+    protected void onRouterLocalIcmpReply(
+            String sourceIp
+    ) {
+        routerOs.noteLivePingReply(
+                sourceIp == null
+                        ? ""
+                        : sourceIp
+        );
+        setChanged();
+    }
+
 }
