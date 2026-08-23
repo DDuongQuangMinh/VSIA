@@ -347,7 +347,34 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
         if (!connectedDevices.contains(
                 accessPointPos
         )) {
-            return false;
+            BlockEntity candidate =
+                    level.getBlockEntity(
+                            accessPointPos
+                    );
+
+            boolean reciprocalW121Link =
+                    candidate instanceof RtAc68uRouterBlockEntity router
+                            && !router
+                            .w121InterfaceForPeer(
+                                    worldPosition
+                            )
+                            .isBlank();
+
+            if (!reciprocalW121Link) {
+                return false;
+            }
+
+            boolean registered =
+                    connectDevice(
+                            accessPointPos
+                    );
+
+            if (!registered
+                    && !connectedDevices.contains(
+                    accessPointPos
+            )) {
+                return false;
+            }
         }
 
         if (!w119PortOperational(

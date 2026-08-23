@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.signality.engineering.wifi.bridge.w119;
 
 import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
+import com.k1ngtle.vsia.signality.internet.router.RtAc68uRouterBlockEntity;
 import com.k1ngtle.vsia.signality.internet.server.NetworkSwitchBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -149,9 +150,11 @@ public final class W119WorldDistributionSystem {
 
             if (candidate
                     instanceof NetworkSwitchBlockEntity networkSwitch
-                    && networkSwitch
-                    .getConnectedDevices()
-                    .contains(apPos)) {
+                    && isPhysicallyLinked(
+                    level,
+                    apPos,
+                    networkSwitch
+            )) {
                 return networkSwitch;
             }
 
@@ -206,9 +209,11 @@ public final class W119WorldDistributionSystem {
                         continue;
                     }
 
-                    if (networkSwitch
-                            .getConnectedDevices()
-                            .contains(apPos)) {
+                    if (isPhysicallyLinked(
+                            level,
+                            apPos,
+                            networkSwitch
+                    )) {
                         return networkSwitch;
                     }
                 }
@@ -216,6 +221,37 @@ public final class W119WorldDistributionSystem {
         }
 
         return null;
+    }
+
+    private static boolean isPhysicallyLinked(
+            Level level,
+            BlockPos apPos,
+            NetworkSwitchBlockEntity networkSwitch
+    ) {
+        if (level == null
+                || apPos == null
+                || networkSwitch == null) {
+            return false;
+        }
+
+        if (networkSwitch
+                .getConnectedDevices()
+                .contains(apPos)) {
+            return true;
+        }
+
+        BlockEntity accessPoint =
+                level.getBlockEntity(apPos);
+
+        if (!(accessPoint instanceof RtAc68uRouterBlockEntity router)) {
+            return false;
+        }
+
+        return !router
+                .w121InterfaceForPeer(
+                        networkSwitch.getBlockPos()
+                )
+                .isBlank();
     }
 
     private static AttachmentKey key(
