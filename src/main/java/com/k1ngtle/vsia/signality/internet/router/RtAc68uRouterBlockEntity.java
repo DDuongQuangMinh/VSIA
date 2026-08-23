@@ -51,6 +51,9 @@ public final class RtAc68uRouterBlockEntity
     private final Map<String, BlockPos> w121EthernetPeers =
             new LinkedHashMap<>();
 
+    private final Map<String, String> wifiApDhcpLeases =
+            new LinkedHashMap<>();
+
     private static final String W121_LAN0 = "lan0";
     private static final String W121_LAN1 = "lan1";
 
@@ -226,6 +229,381 @@ public final class RtAc68uRouterBlockEntity
                         1
                 );
             }
+        }
+    }
+
+    @Override
+    protected void handleDhcpRequest(
+            OSINetworkPacket packet
+    ) {
+        if (packet == null
+                || packet.isResponse
+                || !"DHCP".equalsIgnoreCase(
+                packet.applicationProtocol
+        )
+                || wifiMode()
+                != com.k1ngtle.vsia.signality.engineering.wifi.WifiMode.ACCESS_POINT) {
+            return;
+        }
+
+        String clientKey =
+                wifiDhcpClientKey(
+                        packet.sourceMac
+                );
+
+        if (clientKey.isBlank()) {
+            return;
+        }
+
+        boolean associated =
+                wifiAssociatedStations()
+                        .stream()
+                        .map(
+                                RtAc68uRouterBlockEntity::wifiDhcpClientKey
+                        )
+                        .anyMatch(
+                                clientKey::equals
+                        );
+
+        if (!associated) {
+            return;
+        }
+
+        String action =
+                packet.payload.getString(
+                        "type"
+                );
+
+        if ("RELEASE".equalsIgnoreCase(
+                action
+        )) {
+            wifiApDhcpLeases.remove(
+                    clientKey
+            );
+            return;
+        }
+
+        if (!"DISCOVER".equalsIgnoreCase(
+                action
+        )
+                && !"REQUEST".equalsIgnoreCase(
+                action
+        )) {
+            return;
+        }
+
+        String serverIp =
+                wifiIpAddress();
+
+        if (!isUsableWifiDhcpServerIp(
+                serverIp
+        )) {
+            return;
+        }
+
+        if ("REQUEST".equalsIgnoreCase(
+                action
+        )) {
+            String requestedServer =
+                    packet.payload.getString(
+                            "server_identifier"
+                    );
+
+            if (!requestedServer.isBlank()
+                    && !serverIp.equals(
+                    requestedServer
+            )) {
+                return;
+            }
+        }
+
+        String leaseIp =
+                allocateWifiApDhcpLease(
+                        clientKey,
+                        serverIp
+                );
+
+        OSINetworkPacket reply =
+                new OSINetworkPacket();
+
+        reply.sourceMac =
+                wifiMacAddress();
+
+        reply.targetMac =
+                packet.sourceMac;
+
+        reply.sourceIp =
+                serverIp;
+
+        reply.targetIp =
+                "255.255.255.255";
+
+        reply.sourcePort =
+                67;
+
+        reply.targetPort =
+                68;
+
+        reply.ipProtocol =
+                17;
+
+        reply.applicationProtocol =
+                "DHCP";
+
+        reply.isResponse =
+                true;
+
+        reply.sessionId =
+                packet.sessionId;
+
+        reply.payload.putInt(
+                "xid",
+                packet.payload.getInt(
+                        "xid"
+                )
+        );
+
+        if (leaseIp.isBlank()) {
+            reply.payload.putString(
+                    "type",
+                    "NAK"
+            );
+
+            transmitPacket(
+                    reply
+            );
+
+            return;
+        }
+
+        if ("DISCOVER".equalsIgnoreCase(
+                action
+        )) {
+            reply.payload.putString(
+                    "type",
+                    "OFFER"
+            );
+        } else {
+            String requestedIp =
+                    packet.payload.getString(
+                            "requested_ip"
+                    );
+
+            if (!requestedIp.isBlank()
+                    && !requestedIp.equals(
+                    leaseIp
+            )) {
+                reply.payload.putString(
+                        "type",
+                        "NAK"
+                );
+
+                transmitPacket(
+                        reply
+                );
+
+                return;
+            }
+
+            reply.payload.putString(
+                    "type",
+                    "ACK"
+            );
+        }
+
+        reply.payload.putString(
+                "assigned_ip",
+                leaseIp
+        );
+
+        reply.payload.putString(
+                "server_identifier",
+                serverIp
+        );
+
+        reply.payload.putString(
+                "subnet_mask",
+                wifiDhcpSubnetMask()
+        );
+
+        reply.payload.putString(
+                "router_ip",
+                serverIp
+        );
+
+        reply.payload.putString(
+                "dns_server",
+                serverIp
+        );
+
+        reply.payload.putInt(
+                "lease_seconds",
+                3600
+        );
+
+        transmitPacket(
+                reply
+        );
+    }
+
+    private String allocateWifiApDhcpLease(
+            String clientKey,
+            String serverIp
+    ) {
+        String existing =
+                wifiApDhcpLeases.get(
+                        clientKey
+                );
+
+        if (existing != null
+                && !existing.isBlank()) {
+            return existing;
+        }
+
+        String[] octets =
+                serverIp.split(
+                        "\\."
+                );
+
+        if (octets.length != 4) {
+            return "";
+        }
+
+        String prefix =
+                octets[0]
+                        + "."
+                        + octets[1]
+                        + "."
+                        + octets[2]
+                        + ".";
+
+        int seed =
+                clientKey.hashCode();
+
+        int start =
+                100
+                        + Math.floorMod(
+                        seed,
+                        100
+                );
+
+        for (int offset = 0;
+             offset < 100;
+             offset++) {
+            int suffix =
+                    100
+                            + Math.floorMod(
+                            start
+                                    - 100
+                                    + offset,
+                            100
+                    );
+
+            String candidate =
+                    prefix
+                            + suffix;
+
+            if (candidate.equals(
+                    serverIp
+            )) {
+                continue;
+            }
+
+            if (!wifiApDhcpLeases.containsValue(
+                    candidate
+            )) {
+                wifiApDhcpLeases.put(
+                        clientKey,
+                        candidate
+                );
+
+                return candidate;
+            }
+        }
+
+        return "";
+    }
+
+    private static String wifiDhcpClientKey(
+            String mac
+    ) {
+        if (mac == null) {
+            return "";
+        }
+
+        String value =
+                mac.replace(
+                        ":",
+                        ""
+                )
+                        .replace(
+                                "-",
+                                ""
+                        )
+                        .trim()
+                        .toUpperCase(
+                                java.util.Locale.ROOT
+                        );
+
+        return value.matches(
+                "[0-9A-F]{12}"
+        )
+                ? value
+                : "";
+    }
+
+    private String wifiDhcpSubnetMask() {
+        String mask =
+                routerOs.wlanMask;
+
+        if (mask == null
+                || mask.isBlank()) {
+            return "255.255.255.0";
+        }
+
+        return mask;
+    }
+
+    private static boolean isUsableWifiDhcpServerIp(
+            String ip
+    ) {
+        if (ip == null
+                || ip.isBlank()
+                || "0.0.0.0".equals(
+                ip
+        )
+                || "255.255.255.255".equals(
+                ip
+        )) {
+            return false;
+        }
+
+        String[] octets =
+                ip.split(
+                        "\\."
+                );
+
+        if (octets.length != 4) {
+            return false;
+        }
+
+        try {
+            for (String octet
+                    : octets) {
+                int value =
+                        Integer.parseInt(
+                                octet
+                        );
+
+                if (value < 0
+                        || value > 255) {
+                    return false;
+                }
+            }
+
+            return true;
+        } catch (NumberFormatException ignored) {
+            return false;
         }
     }
 

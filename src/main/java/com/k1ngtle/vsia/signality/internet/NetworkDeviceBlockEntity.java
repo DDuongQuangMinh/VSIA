@@ -5565,6 +5565,26 @@ private final WifiPhyController wifiPhy =
     }
 
     public void requestDynamicIp() {
+        if (isWifiProfile()
+                && wifiMac.mode() == WifiMode.STATION
+                && !wifiMac.isAssociated()) {
+            wifiIpApplication.setStatus(
+                    "DHCP blocked: Wi-Fi station is not associated"
+            );
+            return;
+        }
+
+        ipAddress =
+                "0.0.0.0";
+
+        wifiDefaultGatewayIp =
+                "";
+
+        defaultGatewayMac =
+                "";
+
+        wifiPendingIpv4ByNextHop.clear();
+
         wifiDhcpTransactionId =
                 (
                         int
