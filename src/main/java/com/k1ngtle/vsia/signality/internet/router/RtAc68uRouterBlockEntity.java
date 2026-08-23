@@ -152,10 +152,19 @@ public final class RtAc68uRouterBlockEntity
 
     private void onRouterOsChanged() {
         routerManagementLoaded = true;
+
+        // W1.21 FULL V6.5 AUTHORITATIVE IP STATE SNAPSHOT
+        // This copies Dot11Radio0 RouterOS state into the live Wi-Fi endpoint via
+        // applyRouterOsToLiveNetwork() -> configureWifiStaticIpv4().
         applyRouterOsToLiveNetwork();
         setChanged();
 
         if (level != null && !level.isClientSide) {
+            w121SyncedEthernetDiagnostics =
+                    List.copyOf(w121EthernetDiagnosticLines());
+            w121SyncedArpDiagnostics =
+                    List.copyOf(wifiRouterArpStateLines());
+
             level.sendBlockUpdated(
                     getBlockPos(),
                     getBlockState(),
@@ -756,6 +765,13 @@ public final class RtAc68uRouterBlockEntity
     // W1.21 FULL V5.1 PHYSICAL BINDING SNAPSHOT
     public List<String> w121EthernetDiagnosticLines() {
         List<String> out = new ArrayList<>();
+
+        // W1.21 FULL V6.5 ALIGNED ETHERNET DIAGNOSTICS
+        out.add(String.format(
+                java.util.Locale.ROOT,
+                "%-24s %-6s %-18s %-14s %-9s %s",
+                "Interface", "Port", "IP/Prefix", "Peer", "Link", "Peer-Type"
+        ));
         out.add(w121EthernetLine(W121_LAN0, "GigabitEthernet0/0/0", routerOs.lan0Ip, routerOs.lan0Mask));
         out.add(w121EthernetLine(W121_LAN1, "GigabitEthernet0/0/1", routerOs.lan1Ip, routerOs.lan1Mask));
         out.addAll(w121PhysicalCounterLines());
@@ -822,11 +838,16 @@ public final class RtAc68uRouterBlockEntity
             }
         }
 
-        return display + " / " + logical
-                + " ip=" + ip + "/" + RouterOsSimulator.maskToPrefix(mask)
-                + " peer=" + peer
-                + " link=" + link
-                + " type=" + type;
+        return String.format(
+                java.util.Locale.ROOT,
+                "%-24s %-6s %-18s %-14s %-9s %s",
+                display,
+                logical,
+                ip + "/" + RouterOsSimulator.maskToPrefix(mask),
+                peer,
+                link,
+                type
+        );
     }
 
     @Override

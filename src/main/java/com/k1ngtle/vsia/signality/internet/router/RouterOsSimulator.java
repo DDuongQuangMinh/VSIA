@@ -217,6 +217,7 @@ public final class RouterOsSimulator {
                 else if (second.equals("arp")) runLiveDiagnostic(echo, "ARP / Pending", liveArpDiagnostics);
                 else if (second.equals("interfaces")) runLiveDiagnostic(echo, "Routed Ethernet", liveEthernetDiagnostics);
                 else if (second.equals("ip")) {
+                    // W1.21 FULL V6.5 SAFE SHOW IP
                     if (tokens.length == 2) {
                         runShowIpIntBrief(echo);
                     }
@@ -290,9 +291,22 @@ public final class RouterOsSimulator {
             else if (first.equals("ip") && tokens.length >= 3 && "address".startsWith(tokens[1])) {
                 String ip = tokens[2];
                 String mask = tokens.length > 3 ? tokens[3] : "255.255.255.0";
-                if (cliTarget.equals("GigabitEthernet0/0/0")) { lan0Ip = ip; lan0Mask = mask; }
-                else if (cliTarget.equals("GigabitEthernet0/0/1")) { lan1Ip = ip; lan1Mask = mask; }
-                else if (cliTarget.equals("Dot11Radio0")) { wlanIp = ip; wlanMask = mask; }
+
+                // W1.21 FULL V6.5 CLI IP SYNC + ALIGNED SHOW TABLES
+                if (!isValidIpv4Address(ip)) {
+                    if (echo) cliLines.add("% Invalid IPv4 address: " + ip);
+                } else if (!isValidSubnetMask(mask)) {
+                    if (echo) cliLines.add("% Invalid subnet mask: " + mask);
+                } else if (cliTarget.equals("GigabitEthernet0/0/0")) {
+                    lan0Ip = ip;
+                    lan0Mask = mask;
+                } else if (cliTarget.equals("GigabitEthernet0/0/1")) {
+                    lan1Ip = ip;
+                    lan1Mask = mask;
+                } else if (cliTarget.equals("Dot11Radio0")) {
+                    wlanIp = ip;
+                    wlanMask = mask;
+                }
             }
             else if (first.equals("no") && tokens.length > 2 && "ip".startsWith(tokens[1]) && "address".startsWith(tokens[2])) {
                 if (cliTarget.equals("GigabitEthernet0/0/0")) { lan0Ip = "0.0.0.0"; lan0Mask = "0.0.0.0"; }
@@ -524,10 +538,34 @@ public final class RouterOsSimulator {
 
     private void runShowIpIntBrief(boolean echo) {
         if (!echo) return;
-        cliLines.add("Interface              IP-Address      OK? Method Status                Protocol");
-        cliLines.add(String.format("%-22s %-15s YES manual %-21s %s", "GigabitEthernet0/0/0", lan0Ip, "up", "up"));
-        cliLines.add(String.format("%-22s %-15s YES manual %-21s %s", "GigabitEthernet0/0/1", lan1Ip, "up", "up"));
-        cliLines.add(String.format("%-22s %-15s YES manual %-21s %s", "Dot11Radio0", wlanIp, wlanAdminUp ? "up" : "administratively down", wlanAdminUp ? "up" : "down"));
+
+        // W1.21 FULL V6.5 ALIGNED SHOW IP TABLE
+        cliLines.add(formatShowIpRow("Interface", "IP-Address", "OK?", "Method", "Status", "Protocol"));
+        cliLines.add(formatShowIpRow("GigabitEthernet0/0/0", lan0Ip, "YES", "manual", "up", "up"));
+        cliLines.add(formatShowIpRow("GigabitEthernet0/0/1", lan1Ip, "YES", "manual", "up", "up"));
+        cliLines.add(formatShowIpRow(
+                "Dot11Radio0",
+                wlanIp,
+                "YES",
+                "manual",
+                wlanAdminUp ? "up" : "administratively down",
+                wlanAdminUp ? "up" : "down"
+        ));
+    }
+
+    private static String formatShowIpRow(
+            String iface,
+            String ip,
+            String ok,
+            String method,
+            String status,
+            String protocol
+    ) {
+        return String.format(
+                java.util.Locale.ROOT,
+                "%-24s %-15s %-4s %-8s %-22s %-8s",
+                iface, ip, ok, method, status, protocol
+        );
     }
 
     private void runShowRoute(boolean echo) {
@@ -555,6 +593,38 @@ public final class RouterOsSimulator {
         if (ip == null || ip.isBlank() || ip.equals("0.0.0.0") || ip.equals("unassigned")) return;
         cliLines.add("C    " + normalizeNetwork(ip, mask) + "/" + maskToPrefix(mask)
                 + " is directly connected, " + iface);
+    }
+
+    private static boolean isValidIpv4Address(String value) {
+        if (value == null || value.isBlank()) return false;
+        String[] parts = value.split("\\.", -1);
+        if (parts.length != 4) return false;
+        try {
+            for (String part : parts) {
+                if (part.isEmpty()) return false;
+                int octet = Integer.parseInt(part);
+                if (octet < 0 || octet > 255) return false;
+            }
+            return true;
+        } catch (NumberFormatException ex) {
+            return false;
+        }
+    }
+
+    private static boolean isValidSubnetMask(String mask) {
+        if (!isValidIpv4Address(mask)) return false;
+        String[] parts = mask.split("\\.");
+        int bits = 0;
+        for (String part : parts) {
+            bits = (bits << 8) | (Integer.parseInt(part) & 0xFF);
+        }
+        boolean sawZero = false;
+        for (int bit = 31; bit >= 0; bit--) {
+            boolean one = ((bits >>> bit) & 1) != 0;
+            if (!one) sawZero = true;
+            else if (sawZero) return false;
+        }
+        return true;
     }
 
     private static String normalizeNetwork(String ip, String mask) {
