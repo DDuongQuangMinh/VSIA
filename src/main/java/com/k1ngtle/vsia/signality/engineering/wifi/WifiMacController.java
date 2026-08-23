@@ -274,6 +274,108 @@ public final class WifiMacController {
         return pendingTransmissions.size();
     }
 
+    public List<String> pendingTransmissionDiagnostics() {
+        if (pendingTransmissions.isEmpty()) {
+            return List.of(
+                    "PENDING none"
+            );
+        }
+
+        long nowMicros =
+                WifiMacTimingScheduler.nowMicros();
+
+        List<String> out =
+                new ArrayList<>();
+
+        for (PendingTransmission pending
+                : pendingTransmissions.values()) {
+            if (out.size() >= 6) {
+                break;
+            }
+
+            out.add(
+                    "seq="
+                            + pending.sequence()
+                            + " "
+                            + pendingFrameLabel(
+                                    pending
+                            )
+                            + " AC="
+                            + pending.category()
+                            + " stage="
+                            + pending.stage()
+                            + " try="
+                            + pending.attempt()
+                            + " bo="
+                            + pending.backoffSlots()
+                            + " dueUs="
+                            + Math.max(
+                                    0L,
+                                    pending.nextActionMicros()
+                                            - nowMicros
+                            )
+            );
+        }
+
+        if (pendingTransmissions.size()
+                > out.size()) {
+            out.add(
+                    "... +"
+                            + (
+                            pendingTransmissions.size()
+                                    - out.size()
+                    )
+            );
+        }
+
+        return List.copyOf(
+                out
+        );
+    }
+
+    private String pendingFrameLabel(
+            PendingTransmission pending
+    ) {
+        int fc =
+                pending.frameControl()
+                        & 0x00FC;
+
+        if (fc == (FC_DATA & 0x00FC)) {
+            if ("EAPOL_KEY".equals(
+                    pending.body()
+                            .getString(
+                                    "wifi_control"
+                            )
+            )) {
+                return "EAPOL_M"
+                        + pending.body()
+                        .getInt(
+                                "message"
+                        );
+            }
+
+            return "DATA";
+        }
+
+        if (fc == (FC_AUTH & 0x00FC)) {
+            return "AUTH";
+        }
+
+        if (fc == (FC_ASSOC_REQ & 0x00FC)) {
+            return "ASSOC_REQ";
+        }
+
+        if (fc == (FC_ASSOC_RESP & 0x00FC)) {
+            return "ASSOC_RESP";
+        }
+
+        return String.format(
+                Locale.ROOT,
+                "FC_%02X",
+                fc
+        );
+    }
+
     public boolean accessPointSecurityHandshakeInProgress() {
         return mode == WifiMode.ACCESS_POINT
                 && !pendingAnonceByStation.isEmpty();

@@ -2,6 +2,9 @@ package com.k1ngtle.vsia.signality.engineering.channel;
 
 import com.k1ngtle.vsia.signality.core.signal.SignalBus;
 import com.k1ngtle.vsia.signality.engineering.math.RfMath;
+import com.k1ngtle.vsia.signality.engineering.reality.NetworkTimebase;
+import com.k1ngtle.vsia.signality.engineering.reality.RfMicroTiming;
+import com.k1ngtle.vsia.signality.engineering.reality.RfMicroTimingRegistry;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
 
@@ -149,6 +152,152 @@ public final class RfDiscreteEventScheduler {
                 receiverBandwidthHz,
                 busyThresholdDbm,
                 receiverAntenna
+        );
+    }
+
+    public static RfMediumState senseAtMicros(
+            ServerLevel level,
+            long referenceMicros,
+            Vec3 receiverPosition,
+            double receiverCenterFrequencyHz,
+            double receiverBandwidthHz,
+            double busyThresholdDbm,
+            RfAntennaState receiverAntenna
+    ) {
+        String dimensionId =
+                level.dimension()
+                        .location()
+                        .toString();
+
+        long tick =
+                NetworkTimebase.tickForMicros(
+                        referenceMicros
+                );
+
+        List<ActiveRfTransmission> candidates =
+                new ArrayList<>();
+
+        Set<UUID> seen =
+                new HashSet<>();
+
+        long firstTick =
+                Math.max(
+                        0L,
+                        tick - 1L
+                );
+
+        long lastTick =
+                tick + 1L;
+
+        for (long candidateTick = firstTick;
+             candidateTick <= lastTick;
+             candidateTick++) {
+            for (ActiveRfTransmission transmission
+                    : RfTransmissionRegistry.activeInDimension(
+                    dimensionId,
+                    candidateTick
+            )) {
+                if (seen.add(
+                        transmission.transmissionId()
+                )) {
+                    candidates.add(
+                            transmission
+                    );
+                }
+            }
+        }
+
+        synchronized (RfDiscreteEventScheduler.class) {
+            for (ScheduledRfTransmission scheduled
+                    : PENDING.values()) {
+                ActiveRfTransmission transmission =
+                        scheduled.metadata();
+
+                if (!transmission.dimensionId()
+                        .equals(
+                                dimensionId
+                        )) {
+                    continue;
+                }
+
+                if (seen.add(
+                        transmission.transmissionId()
+                )) {
+                    candidates.add(
+                            transmission
+                    );
+                }
+            }
+        }
+
+        double energyWatts =
+                0.0;
+
+        int overlapping =
+                0;
+
+        for (ActiveRfTransmission transmission
+                : candidates) {
+            RfMicroTiming timing =
+                    RfMicroTimingRegistry.get(
+                            transmission.transmissionId()
+                    );
+
+            boolean activeAtReference =
+                    timing != null
+                            ? referenceMicros
+                            >= timing.startMicros()
+                            && referenceMicros
+                            <= timing.endMicros()
+                            : intervalContainsOrTouches(
+                                    transmission,
+                                    tick
+                            );
+
+            if (!activeAtReference) {
+                continue;
+            }
+
+            double overlap =
+                    SpectralOverlap.fractionOfReceiverBandwidth(
+                            receiverCenterFrequencyHz,
+                            receiverBandwidthHz,
+                            transmission.centerFrequencyHz(),
+                            transmission.bandwidthHz()
+                    );
+
+            if (overlap <= 0.0) {
+                continue;
+            }
+
+            double receivedWatts =
+                    estimateReceivedPowerWatts(
+                            level,
+                            transmission,
+                            receiverPosition,
+                            receiverAntenna
+                    );
+
+            energyWatts +=
+                    receivedWatts
+                            * overlap;
+
+            overlapping++;
+        }
+
+        double energyDbm =
+                energyWatts <= 0.0
+                        ? Double.NEGATIVE_INFINITY
+                        : RfMath.wattsToDbm(
+                                energyWatts
+                        );
+
+        return new RfMediumState(
+                energyWatts,
+                energyDbm,
+                overlapping,
+                energyDbm
+                        >= busyThresholdDbm
         );
     }
 

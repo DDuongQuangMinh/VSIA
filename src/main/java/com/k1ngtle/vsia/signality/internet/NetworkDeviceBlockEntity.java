@@ -40,15 +40,7 @@ import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmHost;
 import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmRunResult;
 import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmScheduler;
 import com.k1ngtle.vsia.signality.engineering.phy.PhyResult;
-import com.k1ngtle.vsia.signality.engineering.wifi.WifiAccessCategory;
-import com.k1ngtle.vsia.signality.engineering.wifi.WifiMacController;
-import com.k1ngtle.vsia.signality.engineering.wifi.WifiMacFrame;
-import com.k1ngtle.vsia.signality.engineering.wifi.WifiMcs;
-import com.k1ngtle.vsia.signality.engineering.wifi.WifiMcsTable;
-import com.k1ngtle.vsia.signality.engineering.wifi.WifiMode;
-import com.k1ngtle.vsia.signality.engineering.wifi.WifiNetworkRecord;
-import com.k1ngtle.vsia.signality.engineering.wifi.WifiSecurityState;
-import com.k1ngtle.vsia.signality.engineering.wifi.WifiStationState;
+import com.k1ngtle.vsia.signality.engineering.wifi.*;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiChannelWidth;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiGuardInterval;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyConfiguration;
@@ -679,6 +671,26 @@ private final WifiPhyController wifiPhy =
                 );
     }
 
+    private boolean isWifiRfMediumBusyAtMacTime(
+            double busyThresholdDbm
+    ) {
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return false;
+        }
+
+        return RfDiscreteEventScheduler
+                .senseAtMicros(
+                        serverLevel,
+                        WifiMacTimingScheduler.nowMicros(),
+                        positionWorld(),
+                        activeFrequencyHz,
+                        tuningBandwidthHz(),
+                        busyThresholdDbm,
+                        worldRfAntennaState()
+                )
+                .busy();
+    }
+
     public RfMediumState senseRfMedium(
             double busyThresholdDbm
     ) {
@@ -1246,6 +1258,10 @@ private final WifiPhyController wifiPhy =
 
     public int wifiPendingDataTransmissions() {
         return wifiMac.pendingDataTransmissions();
+    }
+
+    public java.util.List<String> wifiPendingMacDiagnostics() {
+        return wifiMac.pendingTransmissionDiagnostics();
     }
 
     public String wifiIpAddress() {
@@ -9114,7 +9130,7 @@ private final WifiPhyController wifiPhy =
 
             @Override
             public boolean mediumBusy() {
-                return isRfMediumBusy(
+                return isWifiRfMediumBusyAtMacTime(
                         RfChannelSettings
                                 .WIFI_ENERGY_DETECT_THRESHOLD_DBM
                 );
