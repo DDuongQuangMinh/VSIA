@@ -217,9 +217,18 @@ public final class RouterOsSimulator {
                 else if (second.equals("arp")) runLiveDiagnostic(echo, "ARP / Pending", liveArpDiagnostics);
                 else if (second.equals("interfaces")) runLiveDiagnostic(echo, "Routed Ethernet", liveEthernetDiagnostics);
                 else if (second.equals("ip")) {
-                    if (tokens.length > 2 && "interface".startsWith(tokens[2])) runShowIpIntBrief(echo);
-                    else if (tokens.length > 2 && "route".startsWith(tokens[2])) runShowRoute(echo);
-                    else if (echo) appendInvalidMarker(input, tokens[2]);
+                    if (tokens.length == 2) {
+                        runShowIpIntBrief(echo);
+                    }
+                    else if ("interface".startsWith(tokens[2])) {
+                        runShowIpIntBrief(echo);
+                    }
+                    else if ("route".startsWith(tokens[2])) {
+                        runShowRoute(echo);
+                    }
+                    else if (echo) {
+                        appendInvalidMarker(input, tokens[2]);
+                    }
                 }
                 else if (echo) appendInvalidMarker(input, tokens[1]);
             }
@@ -384,9 +393,39 @@ public final class RouterOsSimulator {
         List<String> allContexts = new ArrayList<>();
 
         if (mode == CliMode.EXEC) {
-            allContexts.addAll(List.of("enable", "ping", "show version", "show running-config", "show ip interface brief", "show ip route", "show ethernet", "show arp", "show interfaces", "exit", "logout", "help"));
+            allContexts.addAll(List.of(
+                    "enable",
+                    "ping",
+                    "show version",
+                    "show running-config",
+                    "show ip",
+                    "show ip interface brief",
+                    "show ip route",
+                    "show ethernet",
+                    "show arp",
+                    "show interfaces",
+                    "exit",
+                    "logout",
+                    "help"
+            ));
         } else if (mode == CliMode.PRIVILEGED) {
-            allContexts.addAll(List.of("configure terminal", "disable", "exit", "write memory", "copy running-config startup-config", "show version", "show running-config", "show ip interface brief", "show ip route", "show ethernet", "show arp", "show interfaces", "ping", "help"));
+            allContexts.addAll(List.of(
+                    "configure terminal",
+                    "disable",
+                    "exit",
+                    "write memory",
+                    "copy running-config startup-config",
+                    "show version",
+                    "show running-config",
+                    "show ip",
+                    "show ip interface brief",
+                    "show ip route",
+                    "show ethernet",
+                    "show arp",
+                    "show interfaces",
+                    "ping",
+                    "help"
+            ));
         } else if (mode == CliMode.GLOBAL_CONFIG) {
             allContexts.addAll(List.of("interface GigabitEthernet0/0/0", "interface GigabitEthernet0/0/1", "interface Dot11Radio0", "hostname", "ip routing", "no ip routing", "ip default-gateway", "no ip default-gateway", "ip route", "no ip route", "exit", "end", "do", "help"));
         } else if (mode == CliMode.INTERFACE_CONFIG) {
