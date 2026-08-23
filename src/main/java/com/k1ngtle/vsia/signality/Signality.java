@@ -27,6 +27,7 @@ import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent.Phase;
 import net.minecraftforge.event.TickEvent.ServerTickEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -146,9 +147,20 @@ public final class Signality {
    }
 
    @SubscribeEvent
+   public void onServerStopping(
+           ServerStoppingEvent event
+   ) {
+      shutdownRuntimeSchedulers();
+   }
+
+   @SubscribeEvent
    public void onServerStopped(
            ServerStoppedEvent event
    ) {
+      shutdownRuntimeSchedulers();
+   }
+
+   private void shutdownRuntimeSchedulers() {
       RadarScanScheduler.stop();
       ProtocolVmScheduler.clear();
       RfDiscreteEventScheduler.clear();

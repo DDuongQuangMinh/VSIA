@@ -48,14 +48,12 @@ public final class RtAc68uRouterBlockEntity
 
     private boolean routerManagementLoaded = false;
 
-    // W1.21 FULL V5 ROUTED ETHERNET BINDINGS
     private final Map<String, BlockPos> w121EthernetPeers =
             new LinkedHashMap<>();
 
     private static final String W121_LAN0 = "lan0";
     private static final String W121_LAN1 = "lan1";
 
-    // W1.21 FULL V6.2 PHYSICAL DELIVERY COUNTERS
     private long w121PhysicalTxAttempts;
     private long w121PhysicalTxFrames;
     private long w121PhysicalRxFrames;
@@ -68,7 +66,6 @@ public final class RtAc68uRouterBlockEntity
     private long w121PhysicalUnknownPeerDrops;
     private long w121PhysicalMissingPeerDrops;
 
-    // W1.21 FULL V6.3 AUTHORITATIVE DIAGNOSTIC SNAPSHOTS
     private List<String> w121SyncedEthernetDiagnostics = List.of();
     private List<String> w121SyncedArpDiagnostics = List.of();
 
@@ -82,16 +79,17 @@ public final class RtAc68uRouterBlockEntity
                 state
         );
 
-        // W1.21 FULL V3 CLI PING BINDING
         routerOs.setLivePingTransmitter(
                 this::sendRouterCliRealPing
         );
 
-        // W1.21 FULL V5.1 CLI DIAGNOSTIC BINDING
-        // W1.21 FULL V6.3 CLIENT CLI READS SERVER-SYNCED SNAPSHOTS
-        routerOs.setLiveEthernetDiagnostics(this::w121CliEthernetDiagnosticLines);
-        routerOs.setLiveArpDiagnostics(this::w121CliArpDiagnosticLines);
+        routerOs.setLiveEthernetDiagnostics(
+                this::w121CliEthernetDiagnosticLines
+        );
 
+        routerOs.setLiveArpDiagnostics(
+                this::w121CliArpDiagnosticLines
+        );
     }
 
     @Override
@@ -134,7 +132,6 @@ public final class RtAc68uRouterBlockEntity
         setWifiLiveRouterEnabled(true);
     }
 
-
     private void syncRouterOsWithDefaults() {
         if (routerManagementLoaded) {
             return;
@@ -153,17 +150,19 @@ public final class RtAc68uRouterBlockEntity
     private void onRouterOsChanged() {
         routerManagementLoaded = true;
 
-        // W1.21 FULL V6.5 AUTHORITATIVE IP STATE SNAPSHOT
-        // This copies Dot11Radio0 RouterOS state into the live Wi-Fi endpoint via
-        // applyRouterOsToLiveNetwork() -> configureWifiStaticIpv4().
         applyRouterOsToLiveNetwork();
         setChanged();
 
         if (level != null && !level.isClientSide) {
             w121SyncedEthernetDiagnostics =
-                    List.copyOf(w121EthernetDiagnosticLines());
+                    List.copyOf(
+                            w121EthernetDiagnosticLines()
+                    );
+
             w121SyncedArpDiagnostics =
-                    List.copyOf(wifiRouterArpStateLines());
+                    List.copyOf(
+                            wifiRouterArpStateLines()
+                    );
 
             level.sendBlockUpdated(
                     getBlockPos(),
@@ -178,26 +177,31 @@ public final class RtAc68uRouterBlockEntity
         configureWifiStaticIpv4(
                 routerOs.wlanIp,
                 routerOs.wlanMask,
-                routerOs.wlanGateway == null ? "" : routerOs.wlanGateway
+                routerOs.wlanGateway == null
+                        ? ""
+                        : routerOs.wlanGateway
         );
 
         configureWifiLiveRouterInterface(
                 "lan0",
                 routerOs.lan0Ip,
-                RouterOsSimulator.maskToPrefix(routerOs.lan0Mask)
+                RouterOsSimulator.maskToPrefix(
+                        routerOs.lan0Mask
+                )
         );
 
         configureWifiLiveRouterInterface(
                 "lan1",
                 routerOs.lan1Ip,
-                RouterOsSimulator.maskToPrefix(routerOs.lan1Mask)
+                RouterOsSimulator.maskToPrefix(
+                        routerOs.lan1Mask
+                )
         );
 
         setWifiLiveRouterEnabled(
                 routerOs.forwardingEnabled
         );
 
-        // W1.21 FULL LIVE ROUTING SYNCHRONIZATION
         clearWifiLiveRouterStaticRoutes();
 
         for (RouterOsSimulator.RouteEntry route
@@ -225,7 +229,6 @@ public final class RtAc68uRouterBlockEntity
         }
     }
 
-
     @Override
     public void registerControllers(
             AnimatableManager.ControllerRegistrar controllers
@@ -236,7 +239,9 @@ public final class RtAc68uRouterBlockEntity
                         "router_power",
                         0,
                         state -> {
-                            state.setAnimation(POWER_UP);
+                            state.setAnimation(
+                                    POWER_UP
+                            );
                             return PlayState.CONTINUE;
                         }
                 )
@@ -249,48 +254,89 @@ public final class RtAc68uRouterBlockEntity
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag) {
+    protected void saveAdditional(
+            CompoundTag tag
+    ) {
         super.saveAdditional(tag);
-        tag.put("W1204RouterOs", routerOs.save());
-        tag.putBoolean("W1204RouterManagementLoaded", routerManagementLoaded);
 
-        CompoundTag ethernetPeers = new CompoundTag();
-        for (Map.Entry<String, BlockPos> entry : w121EthernetPeers.entrySet()) {
-            CompoundTag peer = new CompoundTag();
-            peer.putInt("X", entry.getValue().getX());
-            peer.putInt("Y", entry.getValue().getY());
-            peer.putInt("Z", entry.getValue().getZ());
-            ethernetPeers.put(entry.getKey(), peer);
-        }
-        tag.put("W121EthernetPeers", ethernetPeers);
-
-        if (level == null || !level.isClientSide) {
-            w121SyncedEthernetDiagnostics =
-                    List.copyOf(w121EthernetDiagnosticLines());
-            w121SyncedArpDiagnostics =
-                    List.copyOf(wifiRouterArpStateLines());
-        }
-
-        tag.putString(
-                "W121SyncedEthernetDiagnostics",
-                String.join("\n", w121SyncedEthernetDiagnostics)
+        tag.put(
+                "W1204RouterOs",
+                routerOs.save()
         );
-        tag.putString(
-                "W121SyncedArpDiagnostics",
-                String.join("\n", w121SyncedArpDiagnostics)
+
+        tag.putBoolean(
+                "W1204RouterManagementLoaded",
+                routerManagementLoaded
+        );
+
+        CompoundTag ethernetPeers =
+                new CompoundTag();
+
+        for (Map.Entry<String, BlockPos> entry
+                : w121EthernetPeers.entrySet()) {
+
+            CompoundTag peer =
+                    new CompoundTag();
+
+            peer.putInt(
+                    "X",
+                    entry.getValue().getX()
+            );
+
+            peer.putInt(
+                    "Y",
+                    entry.getValue().getY()
+            );
+
+            peer.putInt(
+                    "Z",
+                    entry.getValue().getZ()
+            );
+
+            ethernetPeers.put(
+                    entry.getKey(),
+                    peer
+            );
+        }
+
+        tag.put(
+                "W121EthernetPeers",
+                ethernetPeers
         );
     }
 
     @Override
-    public void load(CompoundTag tag) {
+    public void load(
+            CompoundTag tag
+    ) {
         super.load(tag);
 
         w121EthernetPeers.clear();
-        if (tag.contains("W121EthernetPeers")) {
-            CompoundTag ethernetPeers = tag.getCompound("W121EthernetPeers");
-            for (String interfaceName : new String[]{W121_LAN0, W121_LAN1}) {
-                if (!ethernetPeers.contains(interfaceName)) continue;
-                CompoundTag peer = ethernetPeers.getCompound(interfaceName);
+
+        if (tag.contains(
+                "W121EthernetPeers"
+        )) {
+            CompoundTag ethernetPeers =
+                    tag.getCompound(
+                            "W121EthernetPeers"
+                    );
+
+            for (String interfaceName
+                    : new String[]{
+                    W121_LAN0,
+                    W121_LAN1
+            }) {
+                if (!ethernetPeers.contains(
+                        interfaceName
+                )) {
+                    continue;
+                }
+
+                CompoundTag peer =
+                        ethernetPeers.getCompound(
+                                interfaceName
+                        );
+
                 w121EthernetPeers.put(
                         interfaceName,
                         new BlockPos(
@@ -302,47 +348,95 @@ public final class RtAc68uRouterBlockEntity
             }
         }
 
-        if (tag.contains("W1204RouterOs")) {
+        if (tag.contains(
+                "W1204RouterOs"
+        )) {
             routerOs.load(
-                    tag.getCompound("W1204RouterOs")
+                    tag.getCompound(
+                            "W1204RouterOs"
+                    )
             );
+
             routerManagementLoaded = true;
         } else {
             routerManagementLoaded =
-                    tag.getBoolean("W1204RouterManagementLoaded");
-        }
-
-        if (tag.contains("W121SyncedEthernetDiagnostics")) {
-            w121SyncedEthernetDiagnostics =
-                    w121DecodeDiagnosticLines(
-                            tag.getString("W121SyncedEthernetDiagnostics")
+                    tag.getBoolean(
+                            "W1204RouterManagementLoaded"
                     );
         }
 
-        if (tag.contains("W121SyncedArpDiagnostics")) {
+        if (tag.contains(
+                "W121SyncedEthernetDiagnostics"
+        )) {
+            w121SyncedEthernetDiagnostics =
+                    w121DecodeDiagnosticLines(
+                            tag.getString(
+                                    "W121SyncedEthernetDiagnostics"
+                            )
+                    );
+        }
+
+        if (tag.contains(
+                "W121SyncedArpDiagnostics"
+        )) {
             w121SyncedArpDiagnostics =
                     w121DecodeDiagnosticLines(
-                            tag.getString("W121SyncedArpDiagnostics")
+                            tag.getString(
+                                    "W121SyncedArpDiagnostics"
+                            )
                     );
         }
     }
 
     @Override
     public CompoundTag getUpdateTag() {
-        CompoundTag tag = new CompoundTag();
-        saveAdditional(tag);
+        CompoundTag tag =
+                new CompoundTag();
+
+        super.saveAdditional(tag);
+
+        tag.put(
+                "W1204RouterOs",
+                routerOs.save()
+        );
+
+        tag.putBoolean(
+                "W1204RouterManagementLoaded",
+                routerManagementLoaded
+        );
+
+        tag.putString(
+                "W121SyncedEthernetDiagnostics",
+                String.join(
+                        "\n",
+                        w121SyncedEthernetDiagnostics
+                )
+        );
+
+        tag.putString(
+                "W121SyncedArpDiagnostics",
+                String.join(
+                        "\n",
+                        w121SyncedArpDiagnostics
+                )
+        );
+
         return tag;
     }
 
     @Nullable
     @Override
     public ClientboundBlockEntityDataPacket getUpdatePacket() {
-        return ClientboundBlockEntityDataPacket.create(this);
+        return ClientboundBlockEntityDataPacket.create(
+                this
+        );
     }
 
     @Override
     public Component getDisplayName() {
-        return Component.literal(routerOs.displayName);
+        return Component.literal(
+                routerOs.displayName
+        );
     }
 
     @Nullable
@@ -359,13 +453,14 @@ public final class RtAc68uRouterBlockEntity
         );
     }
 
-
     private String resolveW121RouteEgress(
             String nextHop
     ) {
         if (nextHop == null
                 || nextHop.isBlank()
-                || "0.0.0.0".equals(nextHop)) {
+                || "0.0.0.0".equals(
+                nextHop
+        )) {
             return "";
         }
 
@@ -394,9 +489,14 @@ public final class RtAc68uRouterBlockEntity
             String mask
     ) {
         try {
-            String[] aa = a.split("\\.");
-            String[] bb = b.split("\\.");
-            String[] mm = mask.split("\\.");
+            String[] aa =
+                    a.split("\\.");
+
+            String[] bb =
+                    b.split("\\.");
+
+            String[] mm =
+                    mask.split("\\.");
 
             if (aa.length != 4
                     || bb.length != 4
@@ -404,12 +504,27 @@ public final class RtAc68uRouterBlockEntity
                 return false;
             }
 
-            for (int i = 0; i < 4; i++) {
-                int av = Integer.parseInt(aa[i]) & 0xFF;
-                int bv = Integer.parseInt(bb[i]) & 0xFF;
-                int mv = Integer.parseInt(mm[i]) & 0xFF;
+            for (int i = 0;
+                 i < 4;
+                 i++) {
 
-                if ((av & mv) != (bv & mv)) {
+                int av =
+                        Integer.parseInt(
+                                aa[i]
+                        ) & 0xFF;
+
+                int bv =
+                        Integer.parseInt(
+                                bb[i]
+                        ) & 0xFF;
+
+                int mv =
+                        Integer.parseInt(
+                                mm[i]
+                        ) & 0xFF;
+
+                if ((av & mv)
+                        != (bv & mv)) {
                     return false;
                 }
             }
@@ -420,7 +535,6 @@ public final class RtAc68uRouterBlockEntity
         }
     }
 
-    // W1.21 FULL V4 ROUTER PING REPLY HOOK
     @Override
     protected void onRouterLocalIcmpReply(
             String sourceIp
@@ -430,89 +544,204 @@ public final class RtAc68uRouterBlockEntity
                         ? ""
                         : sourceIp
         );
+
         setChanged();
     }
 
-
-    public BlockPos w121EthernetPeer(String interfaceName) {
-        return w121EthernetPeers.get(interfaceName);
+    public BlockPos w121EthernetPeer(
+            String interfaceName
+    ) {
+        return w121EthernetPeers.get(
+                interfaceName
+        );
     }
 
-    public String w121InterfaceForPeer(BlockPos peerPos) {
-        if (peerPos == null) return "";
-        for (Map.Entry<String, BlockPos> entry : w121EthernetPeers.entrySet()) {
-            if (peerPos.equals(entry.getValue())) return entry.getKey();
+    public String w121InterfaceForPeer(
+            BlockPos peerPos
+    ) {
+        if (peerPos == null) {
+            return "";
         }
+
+        for (Map.Entry<String, BlockPos> entry
+                : w121EthernetPeers.entrySet()) {
+
+            if (peerPos.equals(
+                    entry.getValue()
+            )) {
+                return entry.getKey();
+            }
+        }
+
         return "";
     }
 
-    public String w121BindEthernetPeerAuto(BlockPos peerPos) {
-        if (peerPos == null || peerPos.equals(worldPosition)) return "";
+    public String w121BindEthernetPeerAuto(
+            BlockPos peerPos
+    ) {
+        if (peerPos == null
+                || peerPos.equals(
+                worldPosition
+        )) {
+            return "";
+        }
 
-        String existing = w121InterfaceForPeer(peerPos);
-        if (!existing.isBlank()) return existing;
+        String existing =
+                w121InterfaceForPeer(
+                        peerPos
+                );
 
-        if (!w121EthernetPeers.containsKey(W121_LAN0)
-                && w121BindEthernetPeer(W121_LAN0, peerPos)) {
+        if (!existing.isBlank()) {
+            return existing;
+        }
+
+        if (!w121EthernetPeers.containsKey(
+                W121_LAN0
+        )
+                && w121BindEthernetPeer(
+                W121_LAN0,
+                peerPos
+        )) {
             return W121_LAN0;
         }
 
-        if (!w121EthernetPeers.containsKey(W121_LAN1)
-                && w121BindEthernetPeer(W121_LAN1, peerPos)) {
+        if (!w121EthernetPeers.containsKey(
+                W121_LAN1
+        )
+                && w121BindEthernetPeer(
+                W121_LAN1,
+                peerPos
+        )) {
             return W121_LAN1;
         }
 
         return "";
     }
 
-    public boolean w121BindEthernetPeer(String interfaceName, BlockPos peerPos) {
-        if ((!W121_LAN0.equals(interfaceName) && !W121_LAN1.equals(interfaceName))
-                || peerPos == null || peerPos.equals(worldPosition)) {
+    public boolean w121BindEthernetPeer(
+            String interfaceName,
+            BlockPos peerPos
+    ) {
+        if ((!W121_LAN0.equals(
+                interfaceName
+        )
+                && !W121_LAN1.equals(
+                interfaceName
+        ))
+                || peerPos == null
+                || peerPos.equals(
+                worldPosition
+        )) {
             return false;
         }
 
-        String previous = w121InterfaceForPeer(peerPos);
-        if (!previous.isBlank() && !previous.equals(interfaceName)) {
-            w121EthernetPeers.remove(previous);
+        String previous =
+                w121InterfaceForPeer(
+                        peerPos
+                );
+
+        if (!previous.isBlank()
+                && !previous.equals(
+                interfaceName
+        )) {
+            w121EthernetPeers.remove(
+                    previous
+            );
         }
 
-        BlockPos occupied = w121EthernetPeers.get(interfaceName);
-        if (occupied != null && !occupied.equals(peerPos)) {
+        BlockPos occupied =
+                w121EthernetPeers.get(
+                        interfaceName
+                );
+
+        if (occupied != null
+                && !occupied.equals(
+                peerPos
+        )) {
             return false;
         }
 
-        w121EthernetPeers.put(interfaceName, peerPos.immutable());
-        traceRoutedEthernet(
-                "BIND dev=" + interfaceName + " peer=" + peerPos.toShortString()
+        w121EthernetPeers.put(
+                interfaceName,
+                peerPos.immutable()
         );
+
+        traceRoutedEthernet(
+                "BIND dev="
+                        + interfaceName
+                        + " peer="
+                        + peerPos.toShortString()
+        );
+
         setChanged();
+
         return true;
     }
 
-    public boolean w121DisconnectEthernetPeer(BlockPos peerPos) {
-        String interfaceName = w121InterfaceForPeer(peerPos);
-        if (interfaceName.isBlank()) return false;
+    public boolean w121DisconnectEthernetPeer(
+            BlockPos peerPos
+    ) {
+        String interfaceName =
+                w121InterfaceForPeer(
+                        peerPos
+                );
 
-        w121EthernetPeers.remove(interfaceName);
-        traceRoutedEthernet(
-                "UNBIND dev=" + interfaceName + " peer=" + peerPos.toShortString()
+        if (interfaceName.isBlank()) {
+            return false;
+        }
+
+        w121EthernetPeers.remove(
+                interfaceName
         );
+
+        traceRoutedEthernet(
+                "UNBIND dev="
+                        + interfaceName
+                        + " peer="
+                        + peerPos.toShortString()
+        );
+
         setChanged();
+
         return true;
     }
 
-    public String w121CompatibleInterfaceWith(RtAc68uRouterBlockEntity peer) {
-        if (peer == null) return "";
+    public String w121CompatibleInterfaceWith(
+            RtAc68uRouterBlockEntity peer
+    ) {
+        if (peer == null) {
+            return "";
+        }
 
-        if (!w121EthernetPeers.containsKey(W121_LAN0)
-                && (w121SameSubnet(routerOs.lan0Ip, peer.routerOs.lan0Ip, routerOs.lan0Mask)
-                || w121SameSubnet(routerOs.lan0Ip, peer.routerOs.lan1Ip, routerOs.lan0Mask))) {
+        if (!w121EthernetPeers.containsKey(
+                W121_LAN0
+        )
+                && (w121SameSubnet(
+                routerOs.lan0Ip,
+                peer.routerOs.lan0Ip,
+                routerOs.lan0Mask
+        )
+                || w121SameSubnet(
+                routerOs.lan0Ip,
+                peer.routerOs.lan1Ip,
+                routerOs.lan0Mask
+        ))) {
             return W121_LAN0;
         }
 
-        if (!w121EthernetPeers.containsKey(W121_LAN1)
-                && (w121SameSubnet(routerOs.lan1Ip, peer.routerOs.lan0Ip, routerOs.lan1Mask)
-                || w121SameSubnet(routerOs.lan1Ip, peer.routerOs.lan1Ip, routerOs.lan1Mask))) {
+        if (!w121EthernetPeers.containsKey(
+                W121_LAN1
+        )
+                && (w121SameSubnet(
+                routerOs.lan1Ip,
+                peer.routerOs.lan0Ip,
+                routerOs.lan1Mask
+        )
+                || w121SameSubnet(
+                routerOs.lan1Ip,
+                peer.routerOs.lan1Ip,
+                routerOs.lan1Mask
+        ))) {
             return W121_LAN1;
         }
 
@@ -523,56 +752,86 @@ public final class RtAc68uRouterBlockEntity
             OSINetworkPacket packet,
             BlockPos ingressPeer
     ) {
-        if (level == null || level.isClientSide
-                || packet == null || ingressPeer == null) {
+        if (level == null
+                || level.isClientSide
+                || packet == null
+                || ingressPeer == null) {
             return;
         }
 
-        String interfaceName = w121InterfaceForPeer(ingressPeer);
+        String interfaceName =
+                w121InterfaceForPeer(
+                        ingressPeer
+                );
+
         if (interfaceName.isBlank()) {
             w121PhysicalUnknownPeerDrops++;
+
             traceRoutedEthernet(
-                    "RX DROP unknown-peer=" + ingressPeer.toShortString()
+                    "RX DROP unknown-peer="
+                            + ingressPeer.toShortString()
             );
+
             w121SyncDiagnosticsToClients();
             return;
         }
 
         w121PhysicalRxFrames++;
 
-        if ("ARP".equalsIgnoreCase(packet.applicationProtocol)) {
+        if ("ARP".equalsIgnoreCase(
+                packet.applicationProtocol
+        )) {
             w121PhysicalArpRx++;
-        } else if ("ICMP".equalsIgnoreCase(packet.applicationProtocol)) {
+        } else if ("ICMP".equalsIgnoreCase(
+                packet.applicationProtocol
+        )) {
             w121PhysicalIcmpRx++;
         }
 
-        packet.payload.putString("router_ingress_interface", interfaceName);
-
-        traceRoutedEthernet(
-                "RX dev=" + interfaceName
-                        + " peer=" + ingressPeer.toShortString()
-                        + " protocol=" + packet.applicationProtocol
-                        + " " + packet.sourceIp + "->" + packet.targetIp
+        packet.payload.putString(
+                "router_ingress_interface",
+                interfaceName
         );
 
-        // W1.21 FULL V6.2 PHYSICAL ARP DELIVERY GUARANTEE
-        if ("ARP".equalsIgnoreCase(packet.applicationProtocol)
+        traceRoutedEthernet(
+                "RX dev="
+                        + interfaceName
+                        + " peer="
+                        + ingressPeer.toShortString()
+                        + " protocol="
+                        + packet.applicationProtocol
+                        + " "
+                        + packet.sourceIp
+                        + "->"
+                        + packet.targetIp
+        );
+
+        if ("ARP".equalsIgnoreCase(
+                packet.applicationProtocol
+        )
                 && receiveRoutedEthernetArpIngress(
                 interfaceName,
                 packet
         )) {
+
             w121PhysicalArpHandled++;
+
             traceRoutedEthernet(
                     "RX ARP HANDLED dev="
                             + interfaceName
                             + " peer="
                             + ingressPeer.toShortString()
             );
+
             w121SyncDiagnosticsToClients();
             return;
         }
 
-        receiveRoutedEthernetIngress(interfaceName, packet);
+        receiveRoutedEthernetIngress(
+                interfaceName,
+                packet
+        );
+
         w121SyncDiagnosticsToClients();
     }
 
@@ -581,64 +840,102 @@ public final class RtAc68uRouterBlockEntity
             String interfaceName,
             OSINetworkPacket packet
     ) {
-        if (level == null || level.isClientSide || packet == null) {
+        if (level == null
+                || level.isClientSide
+                || packet == null) {
             return false;
         }
 
         w121PhysicalTxAttempts++;
 
-        BlockPos peerPos = w121EthernetPeers.get(interfaceName);
+        BlockPos peerPos =
+                w121EthernetPeers.get(
+                        interfaceName
+                );
+
         if (peerPos == null) {
             traceRoutedEthernet(
-                    "TX DROP dev=" + interfaceName + " reason=no-physical-peer"
+                    "TX DROP dev="
+                            + interfaceName
+                            + " reason=no-physical-peer"
             );
+
             return false;
         }
 
-        BlockEntity peer = level.getBlockEntity(peerPos);
+        BlockEntity peer =
+                level.getBlockEntity(
+                        peerPos
+                );
+
         if (peer == null) {
             w121PhysicalMissingPeerDrops++;
+
             traceRoutedEthernet(
-                    "TX DROP dev=" + interfaceName + " peer="
+                    "TX DROP dev="
+                            + interfaceName
+                            + " peer="
                             + peerPos.toShortString()
                             + " reason=missing-block-entity"
             );
-            setChanged();
+
+            w121SyncDiagnosticsToClients();
+
             return true;
         }
 
         OSINetworkPacket frame =
                 OSINetworkPacket.deserializeNBT(
-                        packet.serializeNBT().copy()
+                        packet.serializeNBT()
+                                .copy()
                 );
 
-        frame.payload.putString("router_egress_interface", interfaceName);
+        frame.payload.putString(
+                "router_egress_interface",
+                interfaceName
+        );
 
         w121PhysicalTxFrames++;
 
-        if ("ARP".equalsIgnoreCase(frame.applicationProtocol)) {
+        if ("ARP".equalsIgnoreCase(
+                frame.applicationProtocol
+        )) {
             w121PhysicalArpTx++;
-        } else if ("ICMP".equalsIgnoreCase(frame.applicationProtocol)) {
+        } else if ("ICMP".equalsIgnoreCase(
+                frame.applicationProtocol
+        )) {
             w121PhysicalIcmpTx++;
         }
 
         w121SyncDiagnosticsToClients();
 
         traceRoutedEthernet(
-                "TX dev=" + interfaceName
-                        + " peer=" + peerPos.toShortString()
-                        + " protocol=" + frame.applicationProtocol
-                        + " " + frame.sourceIp + "->" + frame.targetIp
-                        + " l2dst=" + frame.targetMac
+                "TX dev="
+                        + interfaceName
+                        + " peer="
+                        + peerPos.toShortString()
+                        + " protocol="
+                        + frame.applicationProtocol
+                        + " "
+                        + frame.sourceIp
+                        + "->"
+                        + frame.targetIp
+                        + " l2dst="
+                        + frame.targetMac
         );
 
         if (peer instanceof NetworkSwitchBlockEntity networkSwitch) {
-            networkSwitch.receiveWiredPacket(frame, worldPosition);
+            networkSwitch.receiveWiredPacket(
+                    frame,
+                    worldPosition
+            );
+
             return true;
         }
 
         if (peer instanceof RtAc68uRouterBlockEntity peerRouter) {
             w121PhysicalPeerDispatches++;
+
             traceRoutedEthernet(
                     "PEER DISPATCH dev="
                             + interfaceName
@@ -647,56 +944,111 @@ public final class RtAc68uRouterBlockEntity
                             + " protocol="
                             + frame.applicationProtocol
             );
+
             w121SyncDiagnosticsToClients();
-            peerRouter.w121ReceiveRoutedEthernetPacket(frame, worldPosition);
+
+            peerRouter.w121ReceiveRoutedEthernetPacket(
+                    frame,
+                    worldPosition
+            );
+
             return true;
         }
 
         if (peer instanceof ServerRackBlockEntity rack) {
-            rack.receiveWiredPacket(frame);
+            rack.receiveWiredPacket(
+                    frame
+            );
+
             return true;
         }
 
         if (peer instanceof FirewallBlockEntity firewall) {
-            firewall.receiveWiredPacket(frame, worldPosition);
+            firewall.receiveWiredPacket(
+                    frame,
+                    worldPosition
+            );
+
             return true;
         }
 
         traceRoutedEthernet(
-                "TX DROP dev=" + interfaceName
-                        + " peer-type=" + peer.getClass().getSimpleName()
+                "TX DROP dev="
+                        + interfaceName
+                        + " peer-type="
+                        + peer.getClass()
+                        .getSimpleName()
         );
+
         return true;
     }
 
     private void w121RecoverNearbySwitchBindings() {
-        if (level == null || level.isClientSide) return;
+        if (level == null
+                || level.isClientSide) {
+            return;
+        }
 
-        for (int dx = -6; dx <= 6; dx++) {
-            for (int dy = -3; dy <= 3; dy++) {
-                for (int dz = -6; dz <= 6; dz++) {
-                    if (dx == 0 && dy == 0 && dz == 0) continue;
+        for (int dx = -6;
+             dx <= 6;
+             dx++) {
 
-                    BlockPos candidate = worldPosition.offset(dx, dy, dz);
-                    BlockEntity blockEntity = level.getBlockEntity(candidate);
+            for (int dy = -3;
+                 dy <= 3;
+                 dy++) {
 
-                    if (!(blockEntity instanceof NetworkSwitchBlockEntity networkSwitch)) {
+                for (int dz = -6;
+                     dz <= 6;
+                     dz++) {
+
+                    if (dx == 0
+                            && dy == 0
+                            && dz == 0) {
                         continue;
                     }
 
-                    if (!networkSwitch.getConnectedDevices().contains(worldPosition)) {
+                    BlockPos candidate =
+                            worldPosition.offset(
+                                    dx,
+                                    dy,
+                                    dz
+                            );
+
+                    BlockEntity blockEntity =
+                            level.getBlockEntity(
+                                    candidate
+                            );
+
+                    if (!(blockEntity
+                            instanceof NetworkSwitchBlockEntity networkSwitch)) {
                         continue;
                     }
 
-                    if (!w121InterfaceForPeer(candidate).isBlank()) {
+                    if (!networkSwitch
+                            .getConnectedDevices()
+                            .contains(
+                                    worldPosition
+                            )) {
                         continue;
                     }
 
-                    String bound = w121BindEthernetPeerAuto(candidate);
+                    if (!w121InterfaceForPeer(
+                            candidate
+                    ).isBlank()) {
+                        continue;
+                    }
+
+                    String bound =
+                            w121BindEthernetPeerAuto(
+                                    candidate
+                            );
+
                     if (!bound.isBlank()) {
                         traceRoutedEthernet(
-                                "RECOVER SWITCH dev=" + bound
-                                        + " peer=" + candidate.toShortString()
+                                "RECOVER SWITCH dev="
+                                        + bound
+                                        + " peer="
+                                        + candidate.toShortString()
                         );
                     }
                 }
@@ -704,7 +1056,6 @@ public final class RtAc68uRouterBlockEntity
         }
     }
 
-    // W1.21 FULL V6.3 AUTHORITATIVE CLI DIAGNOSTICS
     private List<String> w121CliEthernetDiagnosticLines() {
         if (level != null
                 && level.isClientSide
@@ -728,31 +1079,48 @@ public final class RtAc68uRouterBlockEntity
     private static List<String> w121DecodeDiagnosticLines(
             String packed
     ) {
-        if (packed == null || packed.isEmpty()) {
+        if (packed == null
+                || packed.isEmpty()) {
             return List.of();
         }
 
-        String[] lines = packed.split("\n", -1);
-        List<String> out = new ArrayList<>(lines.length);
+        String[] lines =
+                packed.split(
+                        "\n",
+                        -1
+                );
+
+        List<String> out =
+                new ArrayList<>(
+                        lines.length
+                );
 
         for (String line : lines) {
-            out.add(line);
+            out.add(
+                    line
+            );
         }
 
-        return List.copyOf(out);
+        return List.copyOf(
+                out
+        );
     }
 
     public void w121SyncDiagnosticsToClients() {
-        if (level == null || level.isClientSide) {
+        if (level == null
+                || level.isClientSide) {
             return;
         }
 
         w121SyncedEthernetDiagnostics =
-                List.copyOf(w121EthernetDiagnosticLines());
-        w121SyncedArpDiagnostics =
-                List.copyOf(wifiRouterArpStateLines());
+                List.copyOf(
+                        w121EthernetDiagnosticLines()
+                );
 
-        setChanged();
+        w121SyncedArpDiagnostics =
+                List.copyOf(
+                        wifiRouterArpStateLines()
+                );
 
         level.sendBlockUpdated(
                 getBlockPos(),
@@ -762,25 +1130,53 @@ public final class RtAc68uRouterBlockEntity
         );
     }
 
-    // W1.21 FULL V5.1 PHYSICAL BINDING SNAPSHOT
     public List<String> w121EthernetDiagnosticLines() {
-        List<String> out = new ArrayList<>();
+        List<String> out =
+                new ArrayList<>();
 
-        // W1.21 FULL V6.5 ALIGNED ETHERNET DIAGNOSTICS
-        out.add(String.format(
-                java.util.Locale.ROOT,
-                "%-24s %-6s %-18s %-14s %-9s %s",
-                "Interface", "Port", "IP/Prefix", "Peer", "Link", "Peer-Type"
-        ));
-        out.add(w121EthernetLine(W121_LAN0, "GigabitEthernet0/0/0", routerOs.lan0Ip, routerOs.lan0Mask));
-        out.add(w121EthernetLine(W121_LAN1, "GigabitEthernet0/0/1", routerOs.lan1Ip, routerOs.lan1Mask));
-        out.addAll(w121PhysicalCounterLines());
-        return List.copyOf(out);
+        out.add(
+                String.format(
+                        java.util.Locale.ROOT,
+                        "%-24s %-6s %-18s %-14s %-9s %s",
+                        "Interface",
+                        "Port",
+                        "IP/Prefix",
+                        "Peer",
+                        "Link",
+                        "Peer-Type"
+                )
+        );
+
+        out.add(
+                w121EthernetLine(
+                        W121_LAN0,
+                        "GigabitEthernet0/0/0",
+                        routerOs.lan0Ip,
+                        routerOs.lan0Mask
+                )
+        );
+
+        out.add(
+                w121EthernetLine(
+                        W121_LAN1,
+                        "GigabitEthernet0/0/1",
+                        routerOs.lan1Ip,
+                        routerOs.lan1Mask
+                )
+        );
+
+        out.addAll(
+                w121PhysicalCounterLines()
+        );
+
+        return List.copyOf(
+                out
+        );
     }
 
-    // W1.21 FULL V6.2 PHYSICAL COUNTER SNAPSHOT
     public List<String> w121PhysicalCounterLines() {
-        List<String> out = new ArrayList<>();
+        List<String> out =
+                new ArrayList<>();
 
         out.add(
                 "PHY txAttempts="
@@ -813,26 +1209,63 @@ public final class RtAc68uRouterBlockEntity
                         + w121PhysicalMissingPeerDrops
         );
 
-        return List.copyOf(out);
+        return List.copyOf(
+                out
+        );
     }
 
-    private String w121EthernetLine(String logical, String display, String ip, String mask) {
-        BlockPos peerPos = w121EthernetPeers.get(logical);
-        String peer = peerPos == null ? "none" : peerPos.toShortString();
-        String link = "DOWN";
-        String type = "none";
+    private String w121EthernetLine(
+            String logical,
+            String display,
+            String ip,
+            String mask
+    ) {
+        BlockPos peerPos =
+                w121EthernetPeers.get(
+                        logical
+                );
 
-        if (peerPos != null && level != null) {
-            BlockEntity be = level.getBlockEntity(peerPos);
+        String peer =
+                peerPos == null
+                        ? "none"
+                        : peerPos.toShortString();
+
+        String link =
+                "DOWN";
+
+        String type =
+                "none";
+
+        if (peerPos != null
+                && level != null) {
+
+            BlockEntity be =
+                    level.getBlockEntity(
+                            peerPos
+                    );
+
             if (be != null) {
-                type = be.getClass().getSimpleName();
-                link = "UP";
+                type =
+                        be.getClass()
+                                .getSimpleName();
+
+                link =
+                        "UP";
+
                 if (be instanceof RtAc68uRouterBlockEntity peerRouter) {
-                    String remote = peerRouter.w121InterfaceForPeer(worldPosition);
+                    String remote =
+                            peerRouter.w121InterfaceForPeer(
+                                    worldPosition
+                            );
+
                     if (remote.isBlank()) {
-                        link = "ONE_WAY";
+                        link =
+                                "ONE_WAY";
                     } else {
-                        type = type + "/" + remote;
+                        type =
+                                type
+                                        + "/"
+                                        + remote;
                     }
                 }
             }
@@ -843,7 +1276,11 @@ public final class RtAc68uRouterBlockEntity
                 "%-24s %-6s %-18s %-14s %-9s %s",
                 display,
                 logical,
-                ip + "/" + RouterOsSimulator.maskToPrefix(mask),
+                ip
+                        + "/"
+                        + RouterOsSimulator.maskToPrefix(
+                        mask
+                ),
                 peer,
                 link,
                 type
@@ -852,19 +1289,36 @@ public final class RtAc68uRouterBlockEntity
 
     @Override
     public RouterEngineeringSnapshot wifiRouterEngineeringSnapshot() {
-        RouterEngineeringSnapshot base = super.wifiRouterEngineeringSnapshot();
-        List<String> diagnostics = new ArrayList<>();
-        diagnostics.add("W1.21 V5.1 ROUTED ETHERNET");
-        diagnostics.addAll(w121EthernetDiagnosticLines());
-        diagnostics.addAll(wifiRouterArpStateLines());
-        diagnostics.addAll(base.diagnostics());
+        RouterEngineeringSnapshot base =
+                super.wifiRouterEngineeringSnapshot();
+
+        List<String> diagnostics =
+                new ArrayList<>();
+
+        diagnostics.add(
+                "W1.21 V5.1 ROUTED ETHERNET"
+        );
+
+        diagnostics.addAll(
+                w121EthernetDiagnosticLines()
+        );
+
+        diagnostics.addAll(
+                wifiRouterArpStateLines()
+        );
+
+        diagnostics.addAll(
+                base.diagnostics()
+        );
+
         return new RouterEngineeringSnapshot(
                 base.enabled(),
                 base.interfaces(),
                 base.routes(),
                 base.neighborCount(),
-                List.copyOf(diagnostics)
+                List.copyOf(
+                        diagnostics
+                )
         );
     }
-
 }
