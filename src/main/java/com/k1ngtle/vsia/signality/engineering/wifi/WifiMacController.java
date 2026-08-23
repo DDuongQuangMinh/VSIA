@@ -519,15 +519,16 @@ public final class WifiMacController {
         selectedSecurity =
                 network.security();
 
+        // W1.21.1 AUTH-ASSOC ORDER FIX
+        // WPA/EAPOL starts only after the AP accepts 802.11 association.
         securityState =
-                isOpenSecurity(
-                        selectedSecurity
-                )
-                        ? WifiSecurityState.OPEN
-                        : WifiSecurityState.WAITING_MESSAGE_1;
+                WifiSecurityState.OPEN;
 
         stationState =
                 WifiStationState.AUTHENTICATING;
+
+        lastSecurityDiagnostic =
+                "AUTH_TX_WAITING_RESPONSE";
 
         CompoundTag body =
                 new CompoundTag();
@@ -1659,6 +1660,9 @@ public final class WifiMacController {
             stationState =
                     WifiStationState.ASSOCIATING;
 
+            lastSecurityDiagnostic =
+                    "AUTH_OK_ASSOC_REQ_TX";
+
             CompoundTag association =
                     new CompoundTag();
 
@@ -1780,12 +1784,18 @@ public final class WifiMacController {
 
             securityState =
                     WifiSecurityState.OPEN;
+
+            lastSecurityDiagnostic =
+                    "ASSOC_OK_OPEN";
         } else {
             stationState =
                     WifiStationState.FOUR_WAY_HANDSHAKE;
 
             securityState =
                     WifiSecurityState.WAITING_MESSAGE_1;
+
+            lastSecurityDiagnostic =
+                    "ASSOC_OK_WAIT_EAPOL_M1";
         }
     }
 

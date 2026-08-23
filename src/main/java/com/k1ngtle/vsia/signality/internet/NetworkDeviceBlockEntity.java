@@ -3966,6 +3966,18 @@ private final WifiPhyController wifiPhy =
             return;
         }
 
+        // W1.21.1 WIFI TRANSIENT DIRTY-CHUNK FIX
+        // Beacons/probes/control traffic update transient telemetry but should
+        // not dirty the containing chunk every beacon interval.
+        WifiStationState persistentStationStateBefore =
+                wifiMac.stationState();
+
+        WifiSecurityState persistentSecurityStateBefore =
+                wifiMac.securityState();
+
+        String persistentIpAddressBefore =
+                ipAddress;
+
         long previousResponseReference =
                 activeWifiResponseReferenceMicros;
 
@@ -4023,7 +4035,16 @@ private final WifiPhyController wifiPhy =
                     session.ipAddress();
         }
 
-        setChanged();
+        if (persistentStationStateBefore
+                != wifiMac.stationState()
+                || persistentSecurityStateBefore
+                != wifiMac.securityState()
+                || !java.util.Objects.equals(
+                        persistentIpAddressBefore,
+                        ipAddress
+                )) {
+            setChanged();
+        }
     }
 
     private W119ApBridgeEngine w119Bridge() {
