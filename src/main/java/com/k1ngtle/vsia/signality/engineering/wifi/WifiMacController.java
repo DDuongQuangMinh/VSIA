@@ -418,15 +418,28 @@ public final class WifiMacController {
         pendingAnonceByStation.clear();
     }
 
-    public void startScan(
-            String ownMac,
-            Sender sender
-    ) {
+    // W1.21 FULL V6.5 SINGLE-PLAYER WIFI
+    public void beginScan() {
         requireStation();
 
         discovered.clear();
         stationState =
                 WifiStationState.SCANNING;
+
+        lastSecurityDiagnostic =
+                "SCAN_ACTIVE";
+    }
+
+    public void sendScanProbe(
+            String ownMac,
+            Sender sender
+    ) {
+        requireStation();
+
+        if (stationState != WifiStationState.SCANNING) {
+            stationState =
+                    WifiStationState.SCANNING;
+        }
 
         CompoundTag body =
                 new CompoundTag();
@@ -444,6 +457,30 @@ public final class WifiMacController {
                         BROADCAST,
                         body
                 )
+        );
+    }
+
+    public void finishScan() {
+        requireStation();
+
+        if (stationState == WifiStationState.SCANNING) {
+            stationState =
+                    WifiStationState.DISCONNECTED;
+        }
+
+        lastSecurityDiagnostic =
+                "SCAN_COMPLETE_APS_"
+                        + discovered.size();
+    }
+
+    public void startScan(
+            String ownMac,
+            Sender sender
+    ) {
+        beginScan();
+        sendScanProbe(
+                ownMac,
+                sender
         );
     }
 
