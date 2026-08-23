@@ -4209,6 +4209,26 @@ private final WifiPhyController wifiPhy =
             );
         }
 
+        if (packet != null
+                && isWifiLayer2GroupAddress(
+                        packet.targetMac
+                )) {
+            OSINetworkPacket localCopy =
+                    OSINetworkPacket.deserializeNBT(
+                            packet.serializeNBT()
+                                    .copy()
+                    );
+
+            localCopy.payload.putBoolean(
+                    "w1213_ap_local_group_delivery",
+                    true
+            );
+
+            processLayer3(
+                    localCopy
+            );
+        }
+
         W119BridgeDecision decision =
                 w119Bridge()
                         .wirelessIngress(
@@ -4246,6 +4266,43 @@ private final WifiPhyController wifiPhy =
                  DROP -> {
             }
         }
+    }
+
+    private static boolean isWifiLayer2GroupAddress(
+            String mac
+    ) {
+        if (mac == null
+                || mac.isBlank()) {
+            return false;
+        }
+
+        String normalized =
+                mac.replace(
+                        ":",
+                        ""
+                )
+                        .replace(
+                                "-",
+                                ""
+                        )
+                        .trim();
+
+        if (!normalized.matches(
+                "(?i)[0-9a-f]{12}"
+        )) {
+            return false;
+        }
+
+        int firstOctet =
+                Integer.parseInt(
+                        normalized.substring(
+                                0,
+                                2
+                        ),
+                        16
+                );
+
+        return (firstOctet & 0x01) != 0;
     }
 
     private boolean w119ForwardToDistributionSystem(
