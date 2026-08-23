@@ -14,18 +14,23 @@ public final class WifiEngineeringWorkflowService {
             NetworkDeviceBlockEntity device,
             String status
     ) {
+        // W1.21.2 BEST AP WORKFLOW
         List<String> discovered =
                 device.discoveredWifiNetworks()
                         .stream()
-                        .map(
-                                WifiNetworkRecord::ssid
-                        )
                         .filter(
                                 value ->
                                         value != null
-                                                && !value.isBlank()
+                                                && value.ssid() != null
+                                                && !value.ssid().isBlank()
                         )
-                        .distinct()
+                        .map(
+                                value ->
+                                        value.ssid()
+                                                + " ["
+                                                + value.bssid()
+                                                + "]"
+                        )
                         .toList();
 
         return new WifiEngineeringWorkflowSnapshot(
@@ -154,29 +159,48 @@ public final class WifiEngineeringWorkflowService {
             return "Connect rejected: configure this endpoint as STATION first";
         }
 
-        String ssid =
-                WifiEngineeringWorkflowLogic
-                        .firstDiscoveredSsid(
-                                device.discoveredWifiNetworks()
-                                        .stream()
-                                        .map(
-                                                WifiNetworkRecord::ssid
-                                        )
-                                        .toList()
-                        );
+        WifiNetworkRecord selected =
+                device.bestDiscoveredWifiNetwork();
 
-        if (ssid.isBlank()) {
-            return "No discovered AP. Press Scan, wait for PROBE_RESP, then Connect";
+        if (selected == null
+                || selected.ssid() == null
+                || selected.ssid().isBlank()
+                || selected.bssid() == null
+                || selected.bssid().isBlank()) {
+            return "No fresh discovered AP. Press Scan, wait for PROBE_RESP, then Connect";
         }
 
-        return device.connectWifi(
-                ssid
+        double selectedSnrDb =
+                device.discoveredWifiNetworkSnrDb(
+                        selected.bssid()
+                );
+
+        String quality =
+                Double.isFinite(
+                        selectedSnrDb
+                )
+                        ? String.format(
+                        java.util.Locale.ROOT,
+                        "%.1f dB",
+                        selectedSnrDb
+                )
+                        : "SNR n/a";
+
+        return device.connectWifiBssid(
+                selected.ssid(),
+                selected.bssid()
         )
                 ? "Authentication started with "
-                + ssid
+                + selected.ssid()
+                + " BSSID "
+                + selected.bssid()
+                + " | "
+                + quality
                 + "; watch AUTH / ASSOC in View: PACKETS"
                 : "Connection request to "
-                + ssid
+                + selected.ssid()
+                + " BSSID "
+                + selected.bssid()
                 + " was rejected";
     }
 }

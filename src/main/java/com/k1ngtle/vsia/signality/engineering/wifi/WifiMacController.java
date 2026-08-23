@@ -9,14 +9,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 
 public final class WifiMacController {
     public static final int FC_ASSOC_REQ = 0x0000;
@@ -88,6 +81,14 @@ public final class WifiMacController {
 
     private final Map<String, WifiNetworkRecord> discovered =
             new LinkedHashMap<>();
+
+    // W1.21.2 DETERMINISTIC BSSID + AP AGING
+    // Scan results are transient BSS observations, not permanent configuration.
+    private static final long DISCOVERED_NETWORK_MAX_AGE_NANOS =
+            5_000_000_000L;
+
+    private final Map<String, Double> discoveredSnrDb =
+            new HashMap<>();
 
     private final Set<String> authenticated =
             new LinkedHashSet<>();
@@ -161,9 +162,72 @@ public final class WifiMacController {
     }
 
     public Collection<WifiNetworkRecord> discoveredNetworks() {
-        return Collections.unmodifiableCollection(
+        pruneStaleDiscoveredNetworks();
+
+        return List.copyOf(
                 discovered.values()
         );
+    }
+
+    public WifiNetworkRecord bestDiscoveredNetwork() {
+        pruneStaleDiscoveredNetworks();
+
+        return discovered.values()
+                .stream()
+                .sorted(
+                        this::compareDiscoveredNetworks
+                )
+                .findFirst()
+                .orElse(
+                        null
+                );
+    }
+
+    public WifiNetworkRecord bestDiscoveredNetworkForSsid(
+            String ssid
+    ) {
+        pruneStaleDiscoveredNetworks();
+
+        if (ssid == null
+                || ssid.isBlank()) {
+            return null;
+        }
+
+        return discovered.values()
+                .stream()
+                .filter(
+                        value ->
+                                ssid.equals(
+                                        value.ssid()
+                                )
+                )
+                .sorted(
+                        this::compareDiscoveredNetworks
+                )
+                .findFirst()
+                .orElse(
+                        null
+                );
+    }
+
+    public double discoveredNetworkSnrDb(
+            String bssid
+    ) {
+        if (bssid == null
+                || bssid.isBlank()) {
+            return Double.NEGATIVE_INFINITY;
+        }
+
+        try {
+            return discoveredSnrDb.getOrDefault(
+                    normalizeMac(
+                            bssid
+                    ),
+                    Double.NEGATIVE_INFINITY
+            );
+        } catch (IllegalArgumentException ignored) {
+            return Double.NEGATIVE_INFINITY;
+        }
     }
 
     public void rememberKnownNetwork(
@@ -423,6 +487,8 @@ public final class WifiMacController {
         requireStation();
 
         discovered.clear();
+        discoveredSnrDb.clear();
+
         stationState =
                 WifiStationState.SCANNING;
 
@@ -492,19 +558,9 @@ public final class WifiMacController {
         requireStation();
 
         WifiNetworkRecord network =
-                discovered.values()
-                        .stream()
-                        .filter(
-                                value ->
-                                        value.ssid()
-                                                .equals(
-                                                        ssid
-                                                )
-                        )
-                        .findFirst()
-                        .orElse(
-                                null
-                        );
+                bestDiscoveredNetworkForSsid(
+                        ssid
+                );
 
         if (network == null) {
             return false;
@@ -529,6 +585,105 @@ public final class WifiMacController {
 
         lastSecurityDiagnostic =
                 "AUTH_TX_WAITING_RESPONSE";
+
+        CompoundTag body =
+                new CompoundTag();
+
+        body.putInt(
+                "algorithm",
+                0
+        );
+
+        body.putInt(
+                "transaction_sequence",
+                1
+        );
+
+        body.putInt(
+                "status_code",
+                0
+        );
+
+        sender.send(
+                newFrame(
+                        FC_AUTH,
+                        selectedBssid,
+                        ownMac,
+                        selectedBssid,
+                        body
+                )
+        );
+
+        return true;
+    }
+
+    public boolean connect(
+            String ownMac,
+            String ssid,
+            String preferredBssid,
+            Sender sender
+    ) {
+        requireStation();
+        pruneStaleDiscoveredNetworks();
+
+        if (preferredBssid == null
+                || preferredBssid.isBlank()) {
+            return connect(
+                    ownMac,
+                    ssid,
+                    sender
+            );
+        }
+
+        final String normalizedBssid;
+
+        try {
+            normalizedBssid =
+                    normalizeMac(
+                            preferredBssid
+                    );
+        } catch (IllegalArgumentException ignored) {
+            lastSecurityDiagnostic =
+                    "CONNECT_BSSID_INVALID";
+            return false;
+        }
+
+        WifiNetworkRecord network =
+                discovered.get(
+                        normalizedBssid
+                );
+
+        if (network == null
+                || ssid == null
+                || !ssid.equals(
+                        network.ssid()
+                )) {
+            lastSecurityDiagnostic =
+                    "CONNECT_BSSID_NOT_DISCOVERED";
+            return false;
+        }
+
+        selectedSsid =
+                network.ssid();
+
+        selectedBssid =
+                network.bssid();
+
+        selectedSecurity =
+                network.security();
+
+        securityState =
+                WifiSecurityState.OPEN;
+
+        stationState =
+                WifiStationState.AUTHENTICATING;
+
+        lastSecurityDiagnostic =
+                "AUTH_TX_BSSID_"
+                        + normalizedBssid.replace(
+                        ":",
+                        ""
+                );
 
         CompoundTag body =
                 new CompoundTag();
@@ -1535,11 +1690,92 @@ public final class WifiMacController {
                         System.nanoTime()
                 );
 
-        discovered.put(
+        String discoveredBssid =
                 normalizeMac(
                         record.bssid()
-                ),
+                );
+
+        discovered.put(
+                discoveredBssid,
                 record
+        );
+
+        discoveredSnrDb.put(
+                discoveredBssid,
+                Double.isFinite(
+                        lastObservedSnrDb
+                )
+                        ? lastObservedSnrDb
+                        : Double.NEGATIVE_INFINITY
+        );
+    }
+
+    private void pruneStaleDiscoveredNetworks() {
+        long now =
+                System.nanoTime();
+
+        discovered.entrySet()
+                .removeIf(
+                        entry ->
+                                entry.getValue() == null
+                                        || now
+                                        - entry.getValue()
+                                        .lastSeenNanos()
+                                        > DISCOVERED_NETWORK_MAX_AGE_NANOS
+                );
+
+        discoveredSnrDb.keySet()
+                .retainAll(
+                        discovered.keySet()
+                );
+    }
+
+    private int compareDiscoveredNetworks(
+            WifiNetworkRecord left,
+            WifiNetworkRecord right
+    ) {
+        double leftSnr =
+                discoveredSnrDb.getOrDefault(
+                        normalizeMac(
+                                left.bssid()
+                        ),
+                        Double.NEGATIVE_INFINITY
+                );
+
+        double rightSnr =
+                discoveredSnrDb.getOrDefault(
+                        normalizeMac(
+                                right.bssid()
+                        ),
+                        Double.NEGATIVE_INFINITY
+                );
+
+        int bySnr =
+                Double.compare(
+                        rightSnr,
+                        leftSnr
+                );
+
+        if (bySnr != 0) {
+            return bySnr;
+        }
+
+        int byFreshness =
+                Long.compare(
+                        right.lastSeenNanos(),
+                        left.lastSeenNanos()
+                );
+
+        if (byFreshness != 0) {
+            return byFreshness;
+        }
+
+        return normalizeMac(
+                left.bssid()
+        ).compareTo(
+                normalizeMac(
+                        right.bssid()
+                )
         );
     }
 
@@ -2973,6 +3209,7 @@ public final class WifiMacController {
                 );
 
         discovered.clear();
+        discoveredSnrDb.clear();
         authenticated.clear();
         associated.clear();
         securedStations.clear();

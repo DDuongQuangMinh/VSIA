@@ -1043,6 +1043,76 @@ private final WifiPhyController wifiPhy =
         return wifiMac.discoveredNetworks();
     }
 
+    // W1.21.2 EXACT BSSID CONNECT
+    public WifiNetworkRecord bestDiscoveredWifiNetwork() {
+        return wifiMac.bestDiscoveredNetwork();
+    }
+
+    public double discoveredWifiNetworkSnrDb(
+            String bssid
+    ) {
+        return wifiMac.discoveredNetworkSnrDb(
+                bssid
+        );
+    }
+
+    public boolean connectWifiBssid(
+            String ssid,
+            String bssid
+    ) {
+        if (!isWifiProfile()
+                || wifiMac.mode()
+                != WifiMode.STATION
+                || ssid == null
+                || ssid.isBlank()
+                || bssid == null
+                || bssid.isBlank()) {
+            return false;
+        }
+
+        WifiNetworkRecord network =
+                wifiMac.discoveredNetworks()
+                        .stream()
+                        .filter(
+                                candidate ->
+                                        ssid.equals(
+                                                candidate.ssid()
+                                        )
+                                                && bssid.equalsIgnoreCase(
+                                                candidate.bssid()
+                                        )
+                        )
+                        .findFirst()
+                        .orElse(
+                                null
+                        );
+
+        if (network == null
+                || !networkProfile()
+                .supportsFrequency(
+                        network.frequencyHz()
+                )) {
+            return false;
+        }
+
+        activeFrequencyHz =
+                network.frequencyHz();
+
+        boolean connected =
+                wifiMac.connect(
+                        macAddress,
+                        network.ssid(),
+                        network.bssid(),
+                        wifiSender()
+                );
+
+        if (connected) {
+            setChanged();
+        }
+
+        return connected;
+    }
+
     public boolean provisionWifiLabAccessPoint(
             String ssid
     ) {
