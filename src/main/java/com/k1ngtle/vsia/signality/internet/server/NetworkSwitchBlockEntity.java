@@ -200,10 +200,18 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
                     fw.receiveWiredPacket(forwardedPacket, this.worldPosition);
                 // W1.21 FULL V5 SWITCH TO ROUTED ROUTER INGRESS
                 } else if (be instanceof RtAc68uRouterBlockEntity router) {
-                    router.w121ReceiveRoutedEthernetPacket(
-                            forwardedPacket,
-                            this.worldPosition
-                    );
+                    boolean consumedByApDistribution =
+                            router.w119ReceiveWiredPacket(
+                                    forwardedPacket,
+                                    this.worldPosition
+                            );
+
+                    if (!consumedByApDistribution) {
+                        router.w121ReceiveRoutedEthernetPacket(
+                                forwardedPacket,
+                                this.worldPosition
+                        );
+                    }
                 } else if (be instanceof NetworkDeviceBlockEntity networkDevice) {
                     networkDevice.w119ReceiveWiredPacket(
                             forwardedPacket,

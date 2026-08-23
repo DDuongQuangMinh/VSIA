@@ -259,6 +259,9 @@ public final class ServerRackBlockEntity extends NetworkDeviceBlockEntity implem
                 }
             }
         }
+        if(w120EmitFrames(java.util.List.of(packet))){
+            return;
+        }
         super.transmitPacket(packet);
     }
     public void receiveWiredPacket(OSINetworkPacket packet){
