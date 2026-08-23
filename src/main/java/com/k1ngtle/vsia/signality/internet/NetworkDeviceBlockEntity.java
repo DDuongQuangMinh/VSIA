@@ -3075,6 +3075,10 @@ private final WifiPhyController wifiPhy =
             return false;
         }
 
+        if (shouldDeferWifiBeacon()) {
+            return false;
+        }
+
         wifiMac.sendBeacon(
                 macAddress,
                 networkProfile().id().toString(),
@@ -8927,6 +8931,15 @@ private final WifiPhyController wifiPhy =
             return;
         }
 
+        if (shouldDeferWifiBeacon()) {
+            nextWifiAutomaticBeaconMicros =
+                    nowMicros
+                            + NetworkTimebase
+                            .MICROS_PER_SERVER_TICK;
+
+            return;
+        }
+
         wifiMac.sendBeacon(
                 macAddress,
                 networkProfile().id().toString(),
@@ -8937,6 +8950,37 @@ private final WifiPhyController wifiPhy =
         nextWifiAutomaticBeaconMicros =
                 nowMicros
                         + WIFI_AUTO_BEACON_INTERVAL_US;
+    }
+
+    private boolean shouldDeferWifiBeacon() {
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return false;
+        }
+
+        if (wifiMac.accessPointSecurityHandshakeInProgress()) {
+            return true;
+        }
+
+        double thresholdDbm =
+                RfChannelSettings
+                        .WIFI_ENERGY_DETECT_THRESHOLD_DBM;
+
+        if (isRfMediumBusy(
+                thresholdDbm
+        )) {
+            return true;
+        }
+
+        return RfDiscreteEventScheduler
+                .senseNextDeliveryTick(
+                        serverLevel,
+                        positionWorld(),
+                        activeFrequencyHz,
+                        tuningBandwidthHz(),
+                        thresholdDbm,
+                        worldRfAntennaState()
+                )
+                .busy();
     }
 
     private void tickWifiSinglePlayerScan(

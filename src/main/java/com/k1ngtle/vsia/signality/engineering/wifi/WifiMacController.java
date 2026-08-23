@@ -274,6 +274,11 @@ public final class WifiMacController {
         return pendingTransmissions.size();
     }
 
+    public boolean accessPointSecurityHandshakeInProgress() {
+        return mode == WifiMode.ACCESS_POINT
+                && !pendingAnonceByStation.isEmpty();
+    }
+
     public WifiMacTimingProfile timingProfile() {
         return timing;
     }
@@ -1379,13 +1384,45 @@ public final class WifiMacController {
             if (isEapolKeyBody(
                     pending.body()
             )) {
-                lastSecurityDiagnostic =
-                        "EAPOL_M"
-                                + pending.body()
+                int message =
+                        pending.body()
                                 .getInt(
                                         "message"
-                                )
+                                );
+
+                lastSecurityDiagnostic =
+                        "EAPOL_M"
+                                + message
                                 + "_RETRY_LIMIT";
+
+                if (mode == WifiMode.ACCESS_POINT
+                        && (message == 1
+                        || message == 3)) {
+                    String station =
+                            normalizeMac(
+                                    pending.address1()
+                            );
+
+                    pendingAnonceByStation.remove(
+                            station
+                    );
+
+                    apPtkByStation.remove(
+                            station
+                    );
+
+                    securedStations.remove(
+                            station
+                    );
+
+                    associated.remove(
+                            station
+                    );
+
+                    authenticated.remove(
+                            station
+                    );
+                }
             }
 
             return;

@@ -39,198 +39,229 @@ import org.slf4j.Logger;
 
 public final class Signality {
 
-   public static final String MODID =
-           Vsia.MOD_ID;
+    public static final String MODID =
+            Vsia.MOD_ID;
 
-   public static final Logger LOGGER =
-           LogUtils.getLogger();
+    public static final Logger LOGGER =
+            LogUtils.getLogger();
 
-   private Signality(
-           FMLJavaModLoadingContext context
-   ) {
-      IEventBus modBus =
-              context.getModEventBus();
+    private Signality(
+            FMLJavaModLoadingContext context
+    ) {
+        IEventBus modBus =
+                context.getModEventBus();
 
-      SignalityBlocks.register(
-              modBus
-      );
+        SignalityBlocks.register(
+                modBus
+        );
 
-      modBus.addListener(
-              this::commonSetup
-      );
+        modBus.addListener(
+                this::commonSetup
+        );
 
-      ModLoadingContext
-              .get()
-              .registerConfig(
-                      Type.COMMON,
-                      SignalityConfig.SPEC,
-                      "signality-common.toml"
-              );
+        ModLoadingContext
+                .get()
+                .registerConfig(
+                        Type.COMMON,
+                        SignalityConfig.SPEC,
+                        "signality-common.toml"
+                );
 
-      MinecraftForge.EVENT_BUS.register(
-              this
-      );
-   }
+        MinecraftForge.EVENT_BUS.register(
+                this
+        );
+    }
 
-   public static void initialize(
-           FMLJavaModLoadingContext context
-   ) {
-      new Signality(
-              context
-      );
-   }
+    public static void initialize(
+            FMLJavaModLoadingContext context
+    ) {
+        new Signality(
+                context
+        );
+    }
 
-   private void commonSetup(
-           FMLCommonSetupEvent event
-   ) {
-      event.enqueueWork(() -> {
-         RadarRegistry.addTargetSource(
-                 RadarBeaconBlockEntity::beaconsIn
-         );
-
-         if (VsCompat.isLoaded()
-                 && (Boolean) SignalityConfig
-                 .ENABLE_VS_INTEGRATION
-                 .get()) {
-
+    private void commonSetup(
+            FMLCommonSetupEvent event
+    ) {
+        event.enqueueWork(() -> {
             RadarRegistry.addTargetSource(
-                    VsCompat.hook()::shipTargetsIn
+                    RadarBeaconBlockEntity::beaconsIn
             );
 
-            LOGGER.info(
-                    "Registered VS target source with RadarRegistry."
-            );
-         }
+            if (VsCompat.isLoaded()
+                    && (Boolean) SignalityConfig
+                    .ENABLE_VS_INTEGRATION
+                    .get()) {
 
-         if (DhCompat.isLoaded()
-                 && (Boolean) SignalityConfig
-                 .ENABLE_DH_OCCLUSION
-                 .get()) {
+                RadarRegistry.addTargetSource(
+                        VsCompat.hook()::shipTargetsIn
+                );
 
-            RadarRegistry.addOcclusionProvider(
-                    DhCompat.provider()
-            );
+                LOGGER.info(
+                        "Registered VS target source with RadarRegistry."
+                );
+            }
 
-            LOGGER.info(
-                    "Registered DH height-occlusion provider with RadarRegistry."
-            );
-         }
-      });
-   }
+            if (DhCompat.isLoaded()
+                    && (Boolean) SignalityConfig
+                    .ENABLE_DH_OCCLUSION
+                    .get()) {
 
-   @SubscribeEvent
-   public void onAddReloadListeners(
-           AddReloadListenerEvent event
-   ) {
-      event.addListener(
-              new NetworkProfileReloadListener()
-      );
+                RadarRegistry.addOcclusionProvider(
+                        DhCompat.provider()
+                );
 
-      event.addListener(
-              new ProtocolProgramReloadListener()
-      );
-   }
+                LOGGER.info(
+                        "Registered DH height-occlusion provider with RadarRegistry."
+                );
+            }
+        });
+    }
 
-   @SubscribeEvent
-   public void onServerStarting(
-           ServerStartingEvent event
-   ) {
-      RadarRegistry.addOcclusionProvider(
-              WorldOcclusionProvider.INSTANCE
-      );
+    @SubscribeEvent
+    public void onAddReloadListeners(
+            AddReloadListenerEvent event
+    ) {
+        event.addListener(
+                new NetworkProfileReloadListener()
+        );
 
-      RadarScanScheduler.start(
-              (Integer) SignalityConfig
-                      .WORKER_COUNT
-                      .get()
-      );
-   }
+        event.addListener(
+                new ProtocolProgramReloadListener()
+        );
+    }
 
-   @SubscribeEvent
-   public void onServerStopping(
-           ServerStoppingEvent event
-   ) {
-      shutdownRuntimeSchedulers();
-   }
+    @SubscribeEvent
+    public void onServerStarting(
+            ServerStartingEvent event
+    ) {
+        RadarRegistry.addOcclusionProvider(
+                WorldOcclusionProvider.INSTANCE
+        );
 
-   @SubscribeEvent
-   public void onServerStopped(
-           ServerStoppedEvent event
-   ) {
-      shutdownRuntimeSchedulers();
-   }
+        RadarScanScheduler.start(
+                (Integer) SignalityConfig
+                        .WORKER_COUNT
+                        .get()
+        );
+    }
 
-   private void shutdownRuntimeSchedulers() {
-      RadarScanScheduler.stop();
-      ProtocolVmScheduler.clear();
-      RfDiscreteEventScheduler.clear();
-      RfTransmissionRegistry.clear();
-      RfKinematicTracker.clear();
-      WifiMacTimingScheduler.clear();
-      TcpLiveScheduler.clear();
-   }
+    @SubscribeEvent
+    public void onServerStopping(
+            ServerStoppingEvent event
+    ) {
+        shutdownRuntimeSchedulers();
+    }
 
-   @SubscribeEvent
-   public void onRegisterCommands(
-           RegisterCommandsEvent event
-   ) {
-      SignalityCommand.register(
-              event.getDispatcher()
-      );
+    @SubscribeEvent
+    public void onServerStopped(
+            ServerStoppedEvent event
+    ) {
+        shutdownRuntimeSchedulers();
+    }
 
-      SignalityTestCommand.register(
-              event.getDispatcher()
-      );
+    private void shutdownRuntimeSchedulers() {
+        RadarScanScheduler.stop();
+        ProtocolVmScheduler.clear();
+        RfDiscreteEventScheduler.clear();
+        RfTransmissionRegistry.clear();
+        RfKinematicTracker.clear();
+        WifiMacTimingScheduler.clear();
+        TcpLiveScheduler.clear();
+    }
 
-      SignalityLabCommand.register(
-              event.getDispatcher()
-      );
-   }
+    @SubscribeEvent
+    public void onRegisterCommands(
+            RegisterCommandsEvent event
+    ) {
+        SignalityCommand.register(
+                event.getDispatcher()
+        );
 
-   @SubscribeEvent
-   public void onServerTick(
-           ServerTickEvent event
-   ) {
-      if (event.phase == Phase.END) {
-         try {
+        SignalityTestCommand.register(
+                event.getDispatcher()
+        );
+
+        SignalityLabCommand.register(
+                event.getDispatcher()
+        );
+    }
+
+    @SubscribeEvent
+    public void onServerTick(
+            ServerTickEvent event
+    ) {
+        if (event.phase != Phase.END) {
+            return;
+        }
+
+        try {
             ProtocolVmScheduler.tickAll();
-            TcpLiveScheduler.tickAll();
-         } catch (Throwable throwable) {
+        } catch (Throwable throwable) {
             LOGGER.warn(
                     "Signality protocol VM scheduler tick failed.",
                     throwable
             );
-         }
+        }
 
-         for (ServerLevel level
-                 : event
-                 .getServer()
-                 .getAllLevels()) {
-
+        for (ServerLevel level
+                : event
+                .getServer()
+                .getAllLevels()) {
             try {
-               RfDiscreteEventScheduler.tick(
-                       level
-               );
-
-               WifiMacTimingScheduler.tick(
-                       level.getGameTime()
-               );
-
-               RadarScanScheduler.onServerTick(
-                       level
-               );
-
-               DebugVisualization.onServerTick(
-                       level
-               );
+                RfDiscreteEventScheduler.tick(
+                        level
+                );
             } catch (Throwable throwable) {
-               LOGGER.warn(
-                       "RadarScanScheduler tick failed on level {}",
-                       level.dimension(),
-                       throwable
-               );
+                LOGGER.warn(
+                        "Signality RF scheduler tick failed on level {}",
+                        level.dimension(),
+                        throwable
+                );
             }
-         }
-      }
-   }
+        }
+
+        try {
+            WifiMacTimingScheduler.tick(
+                    event.getServer()
+                            .overworld()
+                            .getGameTime()
+            );
+        } catch (Throwable throwable) {
+            LOGGER.warn(
+                    "Signality Wi-Fi MAC scheduler tick failed.",
+                    throwable
+            );
+        }
+
+        try {
+            TcpLiveScheduler.tickAll();
+        } catch (Throwable throwable) {
+            LOGGER.warn(
+                    "Signality TCP/live automation scheduler tick failed.",
+                    throwable
+            );
+        }
+
+        for (ServerLevel level
+                : event
+                .getServer()
+                .getAllLevels()) {
+            try {
+                RadarScanScheduler.onServerTick(
+                        level
+                );
+
+                DebugVisualization.onServerTick(
+                        level
+                );
+            } catch (Throwable throwable) {
+                LOGGER.warn(
+                        "RadarScanScheduler tick failed on level {}",
+                        level.dimension(),
+                        throwable
+                );
+            }
+        }
+    }
 }

@@ -8,7 +8,6 @@ import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,9 +44,6 @@ public final class RfDiscreteEventScheduler {
         if (due.isEmpty()) {
             return;
         }
-
-        long tick =
-                level.getGameTime();
 
         for (ScheduledRfTransmission transmission : due) {
             RfTransmissionRegistry.register(
@@ -118,9 +114,53 @@ public final class RfDiscreteEventScheduler {
             double busyThresholdDbm,
             RfAntennaState receiverAntenna
     ) {
-        long tick =
-                level.getGameTime();
+        return senseAtTick(
+                level,
+                level.getGameTime(),
+                receiverPosition,
+                receiverCenterFrequencyHz,
+                receiverBandwidthHz,
+                busyThresholdDbm,
+                receiverAntenna
+        );
+    }
 
+    public static RfMediumState senseNextDeliveryTick(
+            ServerLevel level,
+            Vec3 receiverPosition,
+            double receiverCenterFrequencyHz,
+            double receiverBandwidthHz,
+            double busyThresholdDbm,
+            RfAntennaState receiverAntenna
+    ) {
+        long deliveryTick =
+                level.getGameTime()
+                        + Math.max(
+                        1L,
+                        RfChannelSettings
+                                .MIN_EVENT_LATENCY_TICKS
+                );
+
+        return senseAtTick(
+                level,
+                deliveryTick,
+                receiverPosition,
+                receiverCenterFrequencyHz,
+                receiverBandwidthHz,
+                busyThresholdDbm,
+                receiverAntenna
+        );
+    }
+
+    private static RfMediumState senseAtTick(
+            ServerLevel level,
+            long tick,
+            Vec3 receiverPosition,
+            double receiverCenterFrequencyHz,
+            double receiverBandwidthHz,
+            double busyThresholdDbm,
+            RfAntennaState receiverAntenna
+    ) {
         String dimensionId =
                 level.dimension()
                         .location()
