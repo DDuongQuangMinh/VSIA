@@ -139,6 +139,30 @@ public final class W119WorldDistributionSystem {
                         apPos
                 );
 
+        NetworkSwitchBlockEntity direct =
+                directlyBoundRouterSwitch(
+                        level,
+                        apPos
+                );
+
+        if (direct != null) {
+            SWITCH_CACHE.put(
+                    attachmentKey,
+                    direct.getBlockPos()
+                            .immutable()
+            );
+
+            if (!direct
+                    .getConnectedDevices()
+                    .contains(apPos)) {
+                direct.connectDevice(
+                        apPos
+                );
+            }
+
+            return direct;
+        }
+
         BlockPos cached =
                 SWITCH_CACHE.get(
                         attachmentKey
@@ -177,6 +201,53 @@ public final class W119WorldDistributionSystem {
         }
 
         return found;
+    }
+
+    private static NetworkSwitchBlockEntity directlyBoundRouterSwitch(
+            Level level,
+            BlockPos apPos
+    ) {
+        if (level == null
+                || apPos == null) {
+            return null;
+        }
+
+        BlockEntity blockEntity =
+                level.getBlockEntity(
+                        apPos
+                );
+
+        if (!(blockEntity
+                instanceof RtAc68uRouterBlockEntity router)) {
+            return null;
+        }
+
+        for (String interfaceName
+                : new String[]{
+                "lan0",
+                "lan1"
+        }) {
+            BlockPos peer =
+                    router.w121EthernetPeer(
+                            interfaceName
+                    );
+
+            if (peer == null) {
+                continue;
+            }
+
+            BlockEntity peerEntity =
+                    level.getBlockEntity(
+                            peer
+                    );
+
+            if (peerEntity
+                    instanceof NetworkSwitchBlockEntity networkSwitch) {
+                return networkSwitch;
+            }
+        }
+
+        return null;
     }
 
     private static NetworkSwitchBlockEntity findLinkedSwitch(
