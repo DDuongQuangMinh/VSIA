@@ -1155,11 +1155,6 @@ public final class WifiMacController {
                 return null;
             }
 
-            lastDeliveredSequenceBySender.put(
-                    dataSender,
-                    receivedSequence
-            );
-
             CompoundTag receivedData =
                     unprotectReceivedData(
                             frame,
@@ -1167,8 +1162,20 @@ public final class WifiMacController {
                     );
 
             if (receivedData == null) {
+                lastSecurityDiagnostic =
+                        "DATA_DECRYPT_FAILED_FROM_"
+                                + dataSender.replace(
+                                ":",
+                                ""
+                        );
+
                 return null;
             }
+
+            lastDeliveredSequenceBySender.put(
+                    dataSender,
+                    receivedSequence
+            );
 
             boolean toDistributionSystem =
                     (
