@@ -329,17 +329,17 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
         )
                 + " stp="
                 + config.stpState
+                + " portfast="
+                + config.portfast
                 + " vlan="
                 + config.accessVlan;
     }
 
-    public boolean w119AcceptAccessPointFrame(
-            OSINetworkPacket packet,
+    public boolean w119EnsureAccessPointAttachment(
             BlockPos accessPointPos
     ) {
         if (level == null
                 || level.isClientSide
-                || packet == null
                 || accessPointPos == null) {
             return false;
         }
@@ -375,6 +375,79 @@ public class NetworkSwitchBlockEntity extends BlockEntity implements GeoBlockEnt
             )) {
                 return false;
             }
+        }
+
+        String port =
+                getInterfaceNameForPos(
+                        accessPointPos
+                );
+
+        if (port == null) {
+            return false;
+        }
+
+        SwitchOsSimulator.PortConfig config =
+                osSimulators[0]
+                        .portConfigs
+                        .get(port);
+
+        if (config == null
+                || !config.up) {
+            return false;
+        }
+
+        boolean changed = false;
+
+        if (!config.portfast) {
+            config.portfast = true;
+            changed = true;
+        }
+
+        if (!"Desg".equals(
+                config.stpRole
+        )) {
+            config.stpRole = "Desg";
+            changed = true;
+        }
+
+        if (!"FWD".equals(
+                config.stpState
+        )) {
+            config.stpState = "FWD";
+            config.lastStateChange =
+                    System.currentTimeMillis();
+            changed = true;
+        }
+
+        if (changed) {
+            setChanged();
+
+            level.sendBlockUpdated(
+                    getBlockPos(),
+                    getBlockState(),
+                    getBlockState(),
+                    3
+            );
+        }
+
+        return true;
+    }
+
+    public boolean w119AcceptAccessPointFrame(
+            OSINetworkPacket packet,
+            BlockPos accessPointPos
+    ) {
+        if (level == null
+                || level.isClientSide
+                || packet == null
+                || accessPointPos == null) {
+            return false;
+        }
+
+        if (!w119EnsureAccessPointAttachment(
+                accessPointPos
+        )) {
+            return false;
         }
 
         if (!w119PortOperational(

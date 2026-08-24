@@ -146,19 +146,20 @@ public final class W119WorldDistributionSystem {
                 );
 
         if (direct != null) {
+            if (!direct.w119EnsureAccessPointAttachment(
+                    apPos
+            )) {
+                SWITCH_CACHE.remove(
+                        attachmentKey
+                );
+                return null;
+            }
+
             SWITCH_CACHE.put(
                     attachmentKey,
                     direct.getBlockPos()
                             .immutable()
             );
-
-            if (!direct
-                    .getConnectedDevices()
-                    .contains(apPos)) {
-                direct.connectDevice(
-                        apPos
-                );
-            }
 
             return direct;
         }
@@ -178,7 +179,11 @@ public final class W119WorldDistributionSystem {
                     level,
                     apPos,
                     networkSwitch
-            )) {
+            )
+                    && networkSwitch
+                    .w119EnsureAccessPointAttachment(
+                            apPos
+                    )) {
                 return networkSwitch;
             }
 
@@ -192,6 +197,13 @@ public final class W119WorldDistributionSystem {
                         level,
                         apPos
                 );
+
+        if (found != null
+                && !found.w119EnsureAccessPointAttachment(
+                apPos
+        )) {
+            found = null;
+        }
 
         if (found != null) {
             SWITCH_CACHE.put(
