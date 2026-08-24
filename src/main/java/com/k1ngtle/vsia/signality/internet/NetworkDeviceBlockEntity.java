@@ -4806,10 +4806,7 @@ private final WifiPhyController wifiPhy =
             return;
         }
 
-        if (isWifiProfile()
-                && wifiMac.mode()
-                != WifiMode.LEGACY_DIRECT
-                && "TCP".equalsIgnoreCase(
+        if ("TCP".equalsIgnoreCase(
                 packet.applicationProtocol
         )) {
             wifiTcpLive.handleIncoming(

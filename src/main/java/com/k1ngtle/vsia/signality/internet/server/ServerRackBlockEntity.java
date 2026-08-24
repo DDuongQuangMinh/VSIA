@@ -223,23 +223,99 @@ public final class ServerRackBlockEntity extends NetworkDeviceBlockEntity implem
         w120EmitFrames(w120Host.tick(System.currentTimeMillis()));
     }
 
-    private boolean w120AcceptWiredFrame(OSINetworkPacket packet){
-        if(packet==null)return false;
-        w120ConfigureHost();
-        boolean arp="ARP".equalsIgnoreCase(packet.applicationProtocol);
-        boolean forIp=ipAddress.equals(packet.targetIp);
-        boolean forMac=macAddress!=null&&!macAddress.isBlank()&&macAddress.equalsIgnoreCase(packet.targetMac);
-        boolean group="ff:ff:ff:ff:ff:ff".equalsIgnoreCase(packet.targetMac);
-        if(!arp&&!forIp&&!forMac&&!group)return false;
-        w120EmitFrames(w120Host.receive(packet,System.currentTimeMillis()));
-        return arp||forIp||forMac;
-    }
+    private boolean w120AcceptWiredFrame(
+            OSINetworkPacket packet
+    ) {
+        if (packet == null) {
+            return false;
+        }
 
+        w120ConfigureHost();
+
+        boolean arp =
+                "ARP".equalsIgnoreCase(
+                        packet.applicationProtocol
+                );
+
+        boolean addressedToIp =
+                ipAddress.equals(
+                        packet.targetIp
+                );
+
+        boolean addressedToMac =
+                macAddress != null
+                        && !macAddress.isBlank()
+                        && macAddress.equalsIgnoreCase(
+                        packet.targetMac
+                );
+
+        boolean broadcast =
+                "FF:FF:FF:FF:FF:FF".equalsIgnoreCase(
+                        packet.targetMac
+                );
+
+        boolean dhcpClientResponse =
+                "DHCP".equalsIgnoreCase(
+                        packet.applicationProtocol
+                )
+                        && packet.isResponse;
+
+        boolean dnsClientResponse =
+                "DNS".equalsIgnoreCase(
+                        packet.applicationProtocol
+                )
+                        && packet.isResponse;
+
+        boolean w117Echo =
+                packet.payload != null
+                        && (
+                        packet.payload.getBoolean(
+                                "w117_echo_request"
+                        )
+                                || packet.payload.getBoolean(
+                                "w117_echo_reply"
+                        )
+                );
+
+        boolean ownedByW120Host =
+                arp
+                        || dhcpClientResponse
+                        || dnsClientResponse
+                        || w117Echo;
+
+        if (!ownedByW120Host) {
+            return false;
+        }
+
+        if (!arp
+                && !addressedToIp
+                && !addressedToMac
+                && !broadcast) {
+            return false;
+        }
+
+        w120EmitFrames(
+                w120Host.receive(
+                        packet,
+                        System.currentTimeMillis()
+                )
+        );
+
+        return true;
+    }
     public String cableLinkData(){if(cableLinks.isEmpty())return "No physical links";return cableLinks.stream().map(p->p.getX()+", "+p.getY()+", "+p.getZ()).collect(java.util.stream.Collectors.joining("; "));}
     public double configuredMaximumRangeBlocks(){return profile.maximumRangeBlocks();}
     public double effectiveMaximumRangeBlocks(){return profile.wiredBeyondCampus()&&!wiredBackboneConnected?10_000.0:profile.maximumRangeBlocks();}
     @Override public double maximumReceptionRangeBlocks(){return effectiveMaximumRangeBlocks();}
     @Override protected void transmitPacket(OSINetworkPacket packet){
+        if(packet != null
+                && packet.isResponse
+                && packet.sessionId != null
+                && !packet.sessionId.isBlank()
+                && !"TCP".equalsIgnoreCase(packet.applicationProtocol)){
+            super.transmitPacket(packet);
+            return;
+        }
         if(level instanceof ServerLevel serverLevel&&!packet.targetIp.isBlank()&&!packet.targetIp.equals("255.255.255.255")){
             ServerRackBlockEntity target=ServerRackDirectory.byIp(serverLevel,packet.targetIp);
             if(target!=null){
