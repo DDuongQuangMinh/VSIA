@@ -4092,17 +4092,12 @@ private final WifiPhyController wifiPhy =
                     previousResponseReference;
         }
 
-        if (data != null
-                && data.contains(
-                "osi_packet"
-        )) {
-            OSINetworkPacket packet =
-                    OSINetworkPacket.deserializeNBT(
-                            data.getCompound(
-                                    "osi_packet"
-                            )
-                    );
+        OSINetworkPacket packet =
+                decodeWifiReceivedLogicalPacket(
+                        data
+                );
 
+        if (packet != null) {
             if (wifiMac.mode()
                     == WifiMode.ACCESS_POINT) {
                 w119HandleWirelessData(
@@ -4110,7 +4105,9 @@ private final WifiPhyController wifiPhy =
                         frame
                 );
             } else {
-                processLayer2(packet);
+                processLayer2(
+                        packet
+                );
             }
         }
 
@@ -4135,6 +4132,65 @@ private final WifiPhyController wifiPhy =
                 )) {
             setChanged();
         }
+    }
+
+    private OSINetworkPacket decodeWifiReceivedLogicalPacket(
+            CompoundTag data
+    ) {
+        if (data == null) {
+            return null;
+        }
+
+        try {
+            if (data.contains(
+                    "osi_packet"
+            )) {
+                return OSINetworkPacket.deserializeNBT(
+                        data.getCompound(
+                                "osi_packet"
+                        )
+                );
+            }
+
+            if (DhcpRawLiveCarrierCodec.isRawDhcpCarrier(
+                    data
+            )) {
+                return DhcpRawLiveCarrierCodec.decode(
+                        data
+                );
+            }
+
+            if (ArpRawLiveCarrierCodec.isRawArpCarrier(
+                    data
+            )) {
+                return ArpRawLiveCarrierCodec.decode(
+                        data
+                );
+            }
+
+            if (DnsRawLiveCarrierCodec.isRawDnsCarrier(
+                    data
+            )) {
+                return DnsRawLiveCarrierCodec.decode(
+                        data
+                );
+            }
+
+            if (IcmpRawLiveCarrierCodec.isRawCarrier(
+                    data
+            )) {
+                return IcmpRawLiveCarrierCodec.decode(
+                        data
+                );
+            }
+        } catch (IllegalArgumentException ex) {
+            wifiIpApplication.setStatus(
+                    "Wi-Fi RX carrier decode failed: "
+                            + ex.getMessage()
+            );
+        }
+
+        return null;
     }
 
     private W119ApBridgeEngine w119Bridge() {
