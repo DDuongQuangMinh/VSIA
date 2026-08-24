@@ -10,18 +10,6 @@ public final class WifiIpEngineeringService {
     public static WifiIpEngineeringSnapshot snapshot(
             NetworkDeviceBlockEntity device
     ) {
-        NetworkDeviceBlockEntity peer =
-                WifiIpPeerResolver.resolve(
-                        device
-                );
-
-        if (peer != null) {
-            device.configureWifiIpPeer(
-                    peer.wifiIpAddress(),
-                    peer.wifiMacAddress()
-            );
-        }
-
         WifiIpFlowSnapshot flow =
                 device.wifiIpFlowSnapshot();
 
@@ -69,9 +57,25 @@ public final class WifiIpEngineeringService {
             );
         }
 
+        if (action == null) {
+            device.setWifiIpStatus(
+                    "Wi-Fi IP action is null"
+            );
+            return snapshot(device);
+        }
+
         if (action == WifiIpAction.CLEAR_METRICS) {
             device.clearWifiIpMetrics();
             device.clearWifiTcpLive();
+
+            return snapshot(device);
+        }
+
+        if (action == WifiIpAction.RAW_HTTP_WORKFLOW) {
+            device.startWifiRawHttpWorkflow(
+                    "www.vsia-net.com",
+                    "/"
+            );
 
             return snapshot(device);
         }
@@ -134,7 +138,7 @@ public final class WifiIpEngineeringService {
             case TCP_CLOSE ->
                     device.closeWifiTcpLive();
 
-            case CLEAR_METRICS -> {
+            case RAW_HTTP_WORKFLOW, CLEAR_METRICS -> {
             }
         }
 
