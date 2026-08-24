@@ -111,6 +111,7 @@ import com.k1ngtle.vsia.signality.engineering.channel.RfTransmissionRegistry;
 import com.k1ngtle.vsia.signality.engineering.wifi.bridge.w119.W119ApBridgeEngine;
 import com.k1ngtle.vsia.signality.engineering.wifi.bridge.w119.W119BridgeAction;
 import com.k1ngtle.vsia.signality.engineering.wifi.bridge.w119.W119BridgeDecision;
+import com.k1ngtle.vsia.signality.engineering.wifi.bridge.w119.W119Mac;
 import com.k1ngtle.vsia.signality.engineering.wifi.bridge.w119.W119WorldDistributionSystem;
 import com.k1ngtle.vsia.signality.internet.network.NetworkKind;
 import com.k1ngtle.vsia.signality.internet.network.NetworkProfile;
@@ -4618,13 +4619,14 @@ private final WifiPhyController wifiPhy =
             OSINetworkPacket packet
     ) {
         boolean addressed =
-                packet.targetMac.equals(
+                W119Mac.equals(
+                        packet.targetMac,
                         macAddress
                 );
 
         boolean broadcast =
-                packet.targetMac.equals(
-                        "FF:FF:FF:FF:FF:FF"
+                W119Mac.isBroadcast(
+                        packet.targetMac
                 );
 
         /*
