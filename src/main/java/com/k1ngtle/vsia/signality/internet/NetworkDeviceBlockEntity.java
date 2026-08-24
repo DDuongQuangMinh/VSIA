@@ -4177,6 +4177,49 @@ private final WifiPhyController wifiPhy =
                 );
             }
 
+            if (TcpRawLiveCarrierCodec.isRawCarrier(
+                    data
+            )) {
+                return TcpRawLiveCarrierCodec.decode(
+                        data
+                );
+            }
+
+            if (RawIpv4LiveCarrierCodec.isRawFragmentCarrier(
+                    data
+            )) {
+                RawIpv4LiveCarrierCodec.DecodedFragment decodedFragment =
+                        RawIpv4LiveCarrierCodec.decodeFragment(
+                                data
+                        );
+
+                RawIpv4ReassemblyTable.ReassemblyResult reassembly =
+                        wifiRawIpv4Reassembly.accept(
+                                decodedFragment.rawIpv4(),
+                                wifiNetworkNowMicros()
+                        );
+
+                if (reassembly.status()
+                        == RawIpv4ReassemblyTable.Status.COMPLETE) {
+                    return RawIpv4LiveCarrierCodec.toLogical(
+                            reassembly.rawPacket(),
+                            decodedFragment.sourceMac(),
+                            decodedFragment.targetMac(),
+                            decodedFragment.metadata()
+                    );
+                }
+
+                if (reassembly.status()
+                        == RawIpv4ReassemblyTable.Status.REJECTED) {
+                    wifiIpApplication.setStatus(
+                            "RAW IPv4 RX reassembly rejected | "
+                                    + reassembly.reason()
+                    );
+                }
+
+                return null;
+            }
+
             if (IcmpRawLiveCarrierCodec.isRawCarrier(
                     data
             )) {
