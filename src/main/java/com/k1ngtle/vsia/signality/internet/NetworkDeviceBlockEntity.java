@@ -1126,6 +1126,145 @@ private final WifiPhyController wifiPhy =
         return connected;
     }
 
+    public String wifiSelectedSsid() {
+        return wifiMac.selectedSsid();
+    }
+
+    public String wifiSelectedBssid() {
+        return wifiMac.selectedBssid();
+    }
+
+    public String wifiSelectedSecurity() {
+        return wifiMac.selectedSecurity();
+    }
+
+    public double wifiSelectedApSnrDb() {
+        return wifiMac.selectedBssidSnrDb();
+    }
+
+    public WifiNetworkRecord bestWifiRoamCandidate() {
+        if (!isWifiProfile()
+                || wifiMac.mode() != WifiMode.STATION
+                || wifiMac.stationState()
+                != WifiStationState.ASSOCIATED
+                || wifiMac.selectedSsid().isBlank()
+                || wifiMac.selectedBssid().isBlank()) {
+            return null;
+        }
+
+        WifiNetworkRecord best = null;
+        double bestSnr =
+                Double.NEGATIVE_INFINITY;
+
+        for (WifiNetworkRecord candidate
+                : wifiMac.discoveredNetworks()) {
+            if (candidate == null
+                    || candidate.ssid() == null
+                    || candidate.bssid() == null
+                    || !wifiMac.selectedSsid().equals(
+                    candidate.ssid()
+            )
+                    || wifiMac.selectedBssid()
+                    .equalsIgnoreCase(
+                            candidate.bssid()
+                    )) {
+                continue;
+            }
+
+            String candidateSecurity =
+                    candidate.security() == null
+                            ? ""
+                            : candidate.security();
+
+            String selectedSecurity =
+                    wifiMac.selectedSecurity() == null
+                            ? ""
+                            : wifiMac.selectedSecurity();
+
+            if (!candidateSecurity.equalsIgnoreCase(
+                    selectedSecurity
+            )) {
+                continue;
+            }
+
+            double snr =
+                    wifiMac.discoveredNetworkSnrDb(
+                            candidate.bssid()
+                    );
+
+            if (best == null
+                    || snr > bestSnr
+                    || (
+                    Double.compare(
+                            snr,
+                            bestSnr
+                    ) == 0
+                            && candidate.lastSeenNanos()
+                            > best.lastSeenNanos()
+            )
+                    || (
+                    Double.compare(
+                            snr,
+                            bestSnr
+                    ) == 0
+                            && candidate.lastSeenNanos()
+                            == best.lastSeenNanos()
+                            && candidate.bssid()
+                            .compareToIgnoreCase(
+                                    best.bssid()
+                            ) < 0
+            )) {
+                best =
+                        candidate;
+
+                bestSnr =
+                        snr;
+            }
+        }
+
+        return best;
+    }
+
+    public boolean roamWifiToBestCandidate(
+            double hysteresisDb
+    ) {
+        WifiNetworkRecord candidate =
+                bestWifiRoamCandidate();
+
+        if (candidate == null) {
+            return false;
+        }
+
+        double currentSnr =
+                wifiMac.selectedBssidSnrDb();
+
+        double candidateSnr =
+                wifiMac.discoveredNetworkSnrDb(
+                        candidate.bssid()
+                );
+
+        double requiredMargin =
+                Math.max(
+                        0.0,
+                        hysteresisDb
+                );
+
+        if (Double.isFinite(currentSnr)
+                && (
+                !Double.isFinite(candidateSnr)
+                        || candidateSnr
+                        < currentSnr
+                        + requiredMargin
+        )) {
+            return false;
+        }
+
+        return connectWifiBssid(
+                candidate.ssid(),
+                candidate.bssid()
+        );
+    }
+
     public boolean provisionWifiLabAccessPoint(
             String ssid
     ) {

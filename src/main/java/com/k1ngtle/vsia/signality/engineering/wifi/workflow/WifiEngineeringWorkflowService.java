@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.signality.engineering.wifi.workflow;
 
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiMode;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiNetworkRecord;
+import com.k1ngtle.vsia.signality.engineering.wifi.WifiStationState;
 import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
 
 import java.util.List;
@@ -72,6 +73,11 @@ public final class WifiEngineeringWorkflowService {
                                     device
                             );
 
+                    case CONFIGURE_ROAM_AP ->
+                            configureRoamAp(
+                                    device
+                            );
+
                     case CONFIGURE_STATION ->
                             configureStation(
                                     device
@@ -89,6 +95,11 @@ public final class WifiEngineeringWorkflowService {
 
                     case CONNECT_FIRST ->
                             connectFirst(
+                                    device
+                            );
+
+                    case ROAM_BEST ->
+                            roamBest(
                                     device
                             );
 
@@ -138,6 +149,28 @@ public final class WifiEngineeringWorkflowService {
                 + "; initial beacon queued";
     }
 
+    private static String configureRoamAp(
+            NetworkDeviceBlockEntity device
+    ) {
+        boolean configured =
+                device.configureWifiAccessPoint(
+                        WifiEngineeringWorkflowLogic
+                                .ROAM_LAB_SSID,
+                        ""
+                );
+
+        if (!configured) {
+            return "Roam AP configuration rejected: target is not a Wi-Fi profile";
+        }
+
+        device.sendWifiBeacon();
+
+        return "ROAM AP configured as "
+                + WifiEngineeringWorkflowLogic
+                .ROAM_LAB_SSID
+                + "; use the same SSID on two APs";
+    }
+
     private static String configureStation(
             NetworkDeviceBlockEntity device
     ) {
@@ -149,6 +182,95 @@ public final class WifiEngineeringWorkflowService {
         return configured
                 ? "STATION configured; press Scan to discover APs"
                 : "Station configuration rejected: target is not a Wi-Fi profile";
+    }
+
+    private static String roamBest(
+            NetworkDeviceBlockEntity device
+    ) {
+        if (device.wifiMode()
+                != WifiMode.STATION
+                || device.wifiStationState()
+                != WifiStationState.ASSOCIATED) {
+            return "Roam rejected: station must already be ASSOCIATED";
+        }
+
+        WifiNetworkRecord candidate =
+                device.bestWifiRoamCandidate();
+
+        if (candidate == null) {
+            return "Roam held: no fresh alternate AP with the same SSID/security";
+        }
+
+        String currentBssid =
+                device.wifiSelectedBssid();
+
+        double currentSnr =
+                device.wifiSelectedApSnrDb();
+
+        double candidateSnr =
+                device.discoveredWifiNetworkSnrDb(
+                        candidate.bssid()
+                );
+
+        double improvement =
+                candidateSnr
+                        - currentSnr;
+
+        String currentQuality =
+                Double.isFinite(currentSnr)
+                        ? String.format(
+                        java.util.Locale.ROOT,
+                        "%.1f dB",
+                        currentSnr
+                )
+                        : "n/a";
+
+        String candidateQuality =
+                Double.isFinite(candidateSnr)
+                        ? String.format(
+                        java.util.Locale.ROOT,
+                        "%.1f dB",
+                        candidateSnr
+                )
+                        : "n/a";
+
+        if (Double.isFinite(currentSnr)
+                && (
+                !Double.isFinite(candidateSnr)
+                        || improvement
+                        < WifiEngineeringWorkflowLogic
+                        .ROAM_HYSTERESIS_DB
+        )) {
+            return "Roam held: current "
+                    + currentBssid
+                    + " "
+                    + currentQuality
+                    + " | candidate "
+                    + candidate.bssid()
+                    + " "
+                    + candidateQuality
+                    + " | need +"
+                    + String.format(
+                    java.util.Locale.ROOT,
+                    "%.1f dB",
+                    WifiEngineeringWorkflowLogic
+                            .ROAM_HYSTERESIS_DB
+            );
+        }
+
+        return device.roamWifiToBestCandidate(
+                WifiEngineeringWorkflowLogic
+                        .ROAM_HYSTERESIS_DB
+        )
+                ? "Roam authentication started "
+                + currentBssid
+                + " -> "
+                + candidate.bssid()
+                + " | "
+                + currentQuality
+                + " -> "
+                + candidateQuality
+                : "Roam request was rejected after candidate selection";
     }
 
     private static String connectFirst(

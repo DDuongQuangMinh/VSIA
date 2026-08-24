@@ -405,6 +405,24 @@ public final class WifiMacController {
                 && securityState == WifiSecurityState.SECURED;
     }
 
+    public String selectedSsid() {
+        return selectedSsid;
+    }
+
+    public String selectedBssid() {
+        return selectedBssid;
+    }
+
+    public String selectedSecurity() {
+        return selectedSecurity;
+    }
+
+    public double selectedBssidSnrDb() {
+        return discoveredNetworkSnrDb(
+                selectedBssid
+        );
+    }
+
     public void provisionLabAccessPoint(
             String ssid
     ) {

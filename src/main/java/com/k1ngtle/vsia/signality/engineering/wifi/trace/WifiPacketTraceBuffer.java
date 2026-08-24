@@ -69,6 +69,19 @@ public final class WifiPacketTraceBuffer {
                         detail
                 );
 
+        if (isReplaceableBeacon(event)) {
+            events.removeIf(
+                    existing ->
+                            isReplaceableBeacon(existing)
+                                    && existing.direction()
+                                    == event.direction()
+                                    && existing.sourceMac()
+                                    .equalsIgnoreCase(
+                                            event.sourceMac()
+                                    )
+            );
+        }
+
         events.addLast(event);
 
         while (events.size() > capacity) {
@@ -76,6 +89,16 @@ public final class WifiPacketTraceBuffer {
         }
 
         return event;
+    }
+
+    private static boolean isReplaceableBeacon(
+            WifiPacketTraceEvent event
+    ) {
+        return event != null
+                && "MANAGEMENT".equalsIgnoreCase(
+                event.frameType()
+        )
+                && event.subtype() == 8;
     }
 
     public synchronized List<WifiPacketTraceEvent> snapshot() {

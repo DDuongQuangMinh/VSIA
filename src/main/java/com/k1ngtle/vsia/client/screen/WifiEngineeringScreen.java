@@ -88,7 +88,7 @@ public final class WifiEngineeringScreen
     private List<WifiPacketTraceEvent> packetTrace =
             List.of();
 
-    private boolean packetView;
+    private int analyzerView;
 
     private Button viewButton;
 
@@ -452,12 +452,12 @@ public final class WifiEngineeringScreen
 
         int workflowWidth =
                 Math.max(
-                        52,
+                        44,
                         (
                                 usableWidth
-                                        - workflowGap * 6
+                                        - workflowGap * 8
                         )
-                                / 7
+                                / 9
                 );
 
         addWorkflowButton(
@@ -469,9 +469,22 @@ public final class WifiEngineeringScreen
         );
 
         addWorkflowButton(
-                "Station",
+                "Roam AP",
                 OUTER_MARGIN
                         + (
+                        workflowWidth
+                                + workflowGap
+                ),
+                workflowY,
+                workflowWidth,
+                WifiEngineeringWorkflowAction.CONFIGURE_ROAM_AP
+        );
+
+        addWorkflowButton(
+                "Station",
+                OUTER_MARGIN
+                        + 2
+                        * (
                         workflowWidth
                                 + workflowGap
                 ),
@@ -483,7 +496,7 @@ public final class WifiEngineeringScreen
         addWorkflowButton(
                 "Beacon",
                 OUTER_MARGIN
-                        + 2
+                        + 3
                         * (
                         workflowWidth
                                 + workflowGap
@@ -496,7 +509,7 @@ public final class WifiEngineeringScreen
         addWorkflowButton(
                 "Scan",
                 OUTER_MARGIN
-                        + 3
+                        + 4
                         * (
                         workflowWidth
                                 + workflowGap
@@ -509,7 +522,7 @@ public final class WifiEngineeringScreen
         addWorkflowButton(
                 "Connect",
                 OUTER_MARGIN
-                        + 4
+                        + 5
                         * (
                         workflowWidth
                                 + workflowGap
@@ -520,9 +533,22 @@ public final class WifiEngineeringScreen
         );
 
         addWorkflowButton(
+                "Roam",
+                OUTER_MARGIN
+                        + 6
+                        * (
+                        workflowWidth
+                                + workflowGap
+                ),
+                workflowY,
+                workflowWidth,
+                WifiEngineeringWorkflowAction.ROAM_BEST
+        );
+
+        addWorkflowButton(
                 "Send DATA",
                 OUTER_MARGIN
-                        + 5
+                        + 7
                         * (
                         workflowWidth
                                 + workflowGap
@@ -535,7 +561,7 @@ public final class WifiEngineeringScreen
         addWorkflowButton(
                 "Legacy",
                 OUTER_MARGIN
-                        + 6
+                        + 8
                         * (
                         workflowWidth
                                 + workflowGap
@@ -1224,7 +1250,7 @@ public final class WifiEngineeringScreen
             int right,
             int bottom
     ) {
-        if (packetView) {
+        if (analyzerView != 0) {
             drawPacketAnalyzer(
                     graphics,
                     left,
@@ -1352,11 +1378,17 @@ public final class WifiEngineeringScreen
                 false
         );
 
+        List<WifiPacketTraceEvent> visibleTrace =
+                filteredPacketTrace();
+
         graphics.drawString(
                 font,
                 "events "
+                        + visibleTrace.size()
+                        + "/"
                         + packetTrace.size()
-                        + "/128 | newest last",
+                        + " | "
+                        + packetFilterLabel(),
                 left + 8,
                 top + 20,
                 0x8295A3,
@@ -1390,7 +1422,7 @@ public final class WifiEngineeringScreen
         int start =
                 Math.max(
                         0,
-                        packetTrace.size()
+                        visibleTrace.size()
                                 - maxRows
                 );
 
@@ -1405,10 +1437,10 @@ public final class WifiEngineeringScreen
         );
 
         for (int i = start;
-             i < packetTrace.size();
+             i < visibleTrace.size();
              i++) {
             WifiPacketTraceEvent event =
-                    packetTrace.get(i);
+                    visibleTrace.get(i);
 
             int color =
                     switch (event.outcome()) {
@@ -1460,10 +1492,10 @@ public final class WifiEngineeringScreen
                 0xFF35505E
         );
 
-        if (!packetTrace.isEmpty()) {
+        if (!visibleTrace.isEmpty()) {
             WifiPacketTraceEvent newest =
-                    packetTrace.get(
-                            packetTrace.size() - 1
+                    visibleTrace.get(
+                            visibleTrace.size() - 1
                     );
 
             graphics.drawString(
@@ -2133,8 +2165,8 @@ public final class WifiEngineeringScreen
     }
 
     private void toggleAnalyzerView() {
-        packetView =
-                !packetView;
+        analyzerView =
+                (analyzerView + 1) % 4;
 
         if (viewButton != null) {
             viewButton.setMessage(
@@ -2142,7 +2174,7 @@ public final class WifiEngineeringScreen
             );
         }
 
-        if (packetView) {
+        if (analyzerView != 0) {
             requestPacketTrace();
         }
     }
@@ -2216,11 +2248,48 @@ public final class WifiEngineeringScreen
         );
     }
 
+    private List<WifiPacketTraceEvent> filteredPacketTrace() {
+        if (analyzerView == 2) {
+            return packetTrace.stream()
+                    .filter(
+                            event ->
+                                    !"MANAGEMENT".equalsIgnoreCase(
+                                            event.frameType()
+                                    )
+                    )
+                    .toList();
+        }
+
+        if (analyzerView == 3) {
+            return packetTrace.stream()
+                    .filter(
+                            event ->
+                                    "MANAGEMENT".equalsIgnoreCase(
+                                            event.frameType()
+                                    )
+                    )
+                    .toList();
+        }
+
+        return packetTrace;
+    }
+
+    private String packetFilterLabel() {
+        return switch (analyzerView) {
+            case 2 -> "DATA/CTRL | newest last";
+            case 3 -> "MGMT | newest last";
+            default -> "ALL | newest last";
+        };
+    }
+
     private Component viewText() {
         return Component.literal(
-                packetView
-                        ? "View: PACKETS"
-                        : "View: HISTORY"
+                switch (analyzerView) {
+                    case 1 -> "View: PACKETS";
+                    case 2 -> "View: DATA/CTRL";
+                    case 3 -> "View: MGMT";
+                    default -> "View: HISTORY";
+                }
         );
     }
 

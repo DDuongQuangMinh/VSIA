@@ -4,6 +4,8 @@ import java.util.List;
 
 public final class WifiEngineeringWorkflowLogic {
     public static final int DEFAULT_DATA_BYTES = 512;
+    public static final String ROAM_LAB_SSID = "VSIA-ROAM";
+    public static final double ROAM_HYSTERESIS_DB = 6.0;
 
     private WifiEngineeringWorkflowLogic() {
     }
