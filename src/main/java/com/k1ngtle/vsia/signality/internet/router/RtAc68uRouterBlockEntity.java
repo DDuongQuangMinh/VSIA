@@ -93,6 +93,160 @@ public final class RtAc68uRouterBlockEntity
     }
 
     @Override
+    protected void handleWebRequest(
+            OSINetworkPacket packet
+    ) {
+        if (packet == null
+                || packet.isResponse
+                || !"HTTP".equalsIgnoreCase(
+                packet.applicationProtocol
+        )
+                || packet.targetPort != 80) {
+            return;
+        }
+
+        String path =
+                packet.payload.getString(
+                        "path"
+                );
+
+        if (path == null
+                || path.isBlank()) {
+            path = "/";
+        }
+
+        String content =
+                "VS:IA RT-AC68U management endpoint "
+                        + path;
+
+        byte[] contentBytes =
+                content.getBytes(
+                        java.nio.charset.StandardCharsets.UTF_8
+                );
+
+        String responseHead =
+                "HTTP/1.1 200 OK\r\n"
+                        + "Server: VSIA-RT-AC68U\r\n"
+                        + "Content-Type: text/plain; charset=utf-8\r\n"
+                        + "Content-Length: "
+                        + contentBytes.length
+                        + "\r\n"
+                        + "Connection: close\r\n"
+                        + "\r\n";
+
+        byte[] headBytes =
+                responseHead.getBytes(
+                        java.nio.charset.StandardCharsets.US_ASCII
+                );
+
+        byte[] responseWire =
+                new byte[
+                        headBytes.length
+                                + contentBytes.length
+                ];
+
+        System.arraycopy(
+                headBytes,
+                0,
+                responseWire,
+                0,
+                headBytes.length
+        );
+
+        System.arraycopy(
+                contentBytes,
+                0,
+                responseWire,
+                headBytes.length,
+                contentBytes.length
+        );
+
+        OSINetworkPacket response =
+                new OSINetworkPacket();
+
+        response.sourceMac =
+                macAddress;
+
+        response.targetMac =
+                packet.sourceMac;
+
+        response.sourceIp =
+                packet.targetIp == null
+                        || packet.targetIp.isBlank()
+                        ? wifiIpAddress()
+                        : packet.targetIp;
+
+        response.targetIp =
+                packet.sourceIp;
+
+        response.ttl =
+                64;
+
+        response.ipProtocol =
+                6;
+
+        response.sourcePort =
+                80;
+
+        response.targetPort =
+                packet.sourcePort;
+
+        response.sessionId =
+                packet.sessionId;
+
+        response.isResponse =
+                true;
+
+        response.applicationProtocol =
+                "HTTP";
+
+        response.payload.putInt(
+                "status",
+                200
+        );
+
+        response.payload.putString(
+                "server",
+                "VSIA-RT-AC68U"
+        );
+
+        response.payload.putString(
+                "content_type",
+                "text/plain; charset=utf-8"
+        );
+
+        response.payload.putString(
+                "path",
+                path
+        );
+
+        response.payload.putString(
+                "content",
+                content
+        );
+
+        response.payload.putByteArray(
+                "response_wire",
+                responseWire
+        );
+
+        if (packet.payload.contains(
+                "w1_request_id"
+        )) {
+            response.payload.putLong(
+                    "w1_request_id",
+                    packet.payload.getLong(
+                            "w1_request_id"
+                    )
+            );
+        }
+
+        transmitPacket(
+                response
+        );
+    }
+
+    @Override
     public void onLoad() {
         super.onLoad();
 
