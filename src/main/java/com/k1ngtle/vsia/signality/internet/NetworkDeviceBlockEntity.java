@@ -236,6 +236,18 @@ private final WifiPhyController wifiPhy =
     private static final long WIFI_SCAN_DWELL_US =
             120_000L;
 
+    private static final long WIFI_ROAM_BACKGROUND_SCAN_INTERVAL_US =
+            2_000_000L;
+
+    private static final long WIFI_ROAM_COOLDOWN_US =
+            5_000_000L;
+
+    private static final double WIFI_ROAM_HYSTERESIS_DB =
+            6.0D;
+
+    private static final int WIFI_PROBE_RESPONSE_CONTENTION_SLOTS =
+            16;
+
     private long nextWifiAutomaticBeaconMicros =
             0L;
 
@@ -247,6 +259,18 @@ private final WifiPhyController wifiPhy =
     private int wifiSinglePlayerScanIndex;
 
     private long wifiSinglePlayerNextScanStepMicros;
+
+    private boolean wifiSinglePlayerScanPreserveAssociation;
+
+    private boolean wifiSinglePlayerScanAutoRoam;
+
+    private double wifiSinglePlayerScanReturnFrequencyHz =
+            Double.NaN;
+
+    private long nextWifiRoamScanMicros;
+
+    private long wifiLastRoamAttemptMicros =
+            -1L;
 
     private int wifiEngineeringTestSequence;
 
@@ -1259,10 +1283,28 @@ private final WifiPhyController wifiPhy =
             return false;
         }
 
-        return connectWifiBssid(
-                candidate.ssid(),
-                candidate.bssid()
-        );
+        boolean started =
+                connectWifiBssid(
+                        candidate.ssid(),
+                        candidate.bssid()
+                );
+
+        if (started
+                && level instanceof ServerLevel serverLevel) {
+            long nowMicros =
+                    NetworkTimebase.nowMicros(
+                            serverLevel
+                    );
+
+            wifiLastRoamAttemptMicros =
+                    nowMicros;
+
+            nextWifiRoamScanMicros =
+                    nowMicros
+                            + WIFI_ROAM_COOLDOWN_US;
+        }
+
+        return started;
     }
 
     public boolean provisionWifiLabAccessPoint(
@@ -3148,36 +3190,23 @@ private final WifiPhyController wifiPhy =
             return false;
         }
 
-        double[] frequencies =
-                networkProfile().frequenciesHz();
-
-        if (frequencies == null
-                || frequencies.length == 0) {
-            return false;
-        }
-
-        wifiMac.beginScan();
-
-        wifiSinglePlayerScanFrequencies =
-                frequencies.clone();
-
-        wifiSinglePlayerScanIndex =
-                0;
-
-        wifiSinglePlayerScanActive =
-                true;
-
-        wifiSinglePlayerNextScanStepMicros =
+        long nowMicros =
                 NetworkTimebase.nowMicros(
                         serverLevel
                 );
 
-        tickWifiSinglePlayerAutomation(
-                wifiSinglePlayerNextScanStepMicros
-        );
+        boolean started =
+                beginWifiScanCycle(
+                        nowMicros,
+                        wifiMac.isAssociated(),
+                        false
+                );
 
-        setChanged();
-        return true;
+        if (started) {
+            setChanged();
+        }
+
+        return started;
     }
 
     public boolean connectWifi(String ssid) {
@@ -9229,6 +9258,99 @@ private final WifiPhyController wifiPhy =
     }
 
     // W1.21 FULL V6.5 SINGLE-PLAYER WIFI
+
+    private boolean beginWifiScanCycle(
+            long nowMicros,
+            boolean preserveAssociation,
+            boolean automaticRoam
+    ) {
+        if (wifiSinglePlayerScanActive
+                || wifiMac.mode()
+                != WifiMode.STATION) {
+            return false;
+        }
+
+        if (preserveAssociation
+                && !wifiMac.isAssociated()) {
+            return false;
+        }
+
+        if (preserveAssociation
+                && wifiMac.pendingDataTransmissions() > 0) {
+            return false;
+        }
+
+        double[] frequencies =
+                networkProfile().frequenciesHz();
+
+        if (frequencies == null
+                || frequencies.length == 0) {
+            return false;
+        }
+
+        wifiSinglePlayerScanReturnFrequencyHz =
+                activeFrequencyHz;
+
+        wifiSinglePlayerScanPreserveAssociation =
+                preserveAssociation;
+
+        wifiSinglePlayerScanAutoRoam =
+                automaticRoam;
+
+        if (preserveAssociation) {
+            wifiMac.beginRoamScan();
+        } else {
+            wifiMac.beginScan();
+        }
+
+        wifiSinglePlayerScanFrequencies =
+                frequencies.clone();
+
+        wifiSinglePlayerScanIndex =
+                0;
+
+        wifiSinglePlayerScanActive =
+                true;
+
+        wifiSinglePlayerNextScanStepMicros =
+                nowMicros;
+
+        tickWifiSinglePlayerScan(
+                nowMicros
+        );
+
+        return true;
+    }
+
+    private boolean wifiRoamCooldownElapsed(
+            long nowMicros
+    ) {
+        return wifiLastRoamAttemptMicros < 0L
+                || nowMicros
+                - wifiLastRoamAttemptMicros
+                >= WIFI_ROAM_COOLDOWN_US;
+    }
+
+    private long wifiBeaconPhaseOffsetMicros() {
+        long spread =
+                Math.max(
+                        1L,
+                        WIFI_AUTO_BEACON_INTERVAL_US
+                                / 2L
+                );
+
+        long seed =
+                31L
+                        * macAddress.hashCode()
+                        + worldPosition.asLong();
+
+        return 1_000L
+                + Math.floorMod(
+                seed,
+                spread
+        );
+    }
+
     private void tickWifiSinglePlayerAutomation(
             long nowMicros
     ) {
@@ -9242,20 +9364,76 @@ private final WifiPhyController wifiPhy =
             tickWifiAutomaticBeacon(
                     nowMicros
             );
+            return;
         }
 
         if (wifiMac.mode()
-                == WifiMode.STATION
-                && wifiSinglePlayerScanActive) {
+                != WifiMode.STATION) {
+            return;
+        }
+
+        if (wifiSinglePlayerScanActive) {
             tickWifiSinglePlayerScan(
                     nowMicros
             );
+            return;
+        }
+
+        if (!wifiMac.isAssociated()) {
+            nextWifiRoamScanMicros =
+                    0L;
+            return;
+        }
+
+        if (nextWifiRoamScanMicros <= 0L) {
+            nextWifiRoamScanMicros =
+                    nowMicros
+                            + WIFI_ROAM_BACKGROUND_SCAN_INTERVAL_US;
+            return;
+        }
+
+        if (nowMicros
+                < nextWifiRoamScanMicros) {
+            return;
+        }
+
+        if (wifiMac.pendingDataTransmissions() > 0) {
+            nextWifiRoamScanMicros =
+                    nowMicros
+                            + NetworkTimebase.MICROS_PER_SERVER_TICK;
+            return;
+        }
+
+        if (!wifiRoamCooldownElapsed(
+                nowMicros
+        )) {
+            nextWifiRoamScanMicros =
+                    wifiLastRoamAttemptMicros
+                            + WIFI_ROAM_COOLDOWN_US;
+            return;
+        }
+
+        if (!beginWifiScanCycle(
+                nowMicros,
+                true,
+                true
+        )) {
+            nextWifiRoamScanMicros =
+                    nowMicros
+                            + WIFI_ROAM_BACKGROUND_SCAN_INTERVAL_US;
         }
     }
 
     private void tickWifiAutomaticBeacon(
             long nowMicros
     ) {
+        if (nextWifiAutomaticBeaconMicros <= 0L) {
+            nextWifiAutomaticBeaconMicros =
+                    nowMicros
+                            + wifiBeaconPhaseOffsetMicros();
+            return;
+        }
+
         if (nowMicros
                 < nextWifiAutomaticBeaconMicros) {
             return;
@@ -9324,10 +9502,24 @@ private final WifiPhyController wifiPhy =
         if (wifiSinglePlayerScanFrequencies == null
                 || wifiSinglePlayerScanIndex
                 >= wifiSinglePlayerScanFrequencies.length) {
+            boolean preserveAssociation =
+                    wifiSinglePlayerScanPreserveAssociation;
+
+            boolean automaticRoam =
+                    wifiSinglePlayerScanAutoRoam;
+
             wifiSinglePlayerScanActive =
                     false;
 
-            wifiMac.finishScan();
+            if (Double.isFinite(
+                    wifiSinglePlayerScanReturnFrequencyHz
+            )
+                    && networkProfile().supportsFrequency(
+                    wifiSinglePlayerScanReturnFrequencyHz
+            )) {
+                activeFrequencyHz =
+                        wifiSinglePlayerScanReturnFrequencyHz;
+            }
 
             wifiSinglePlayerScanFrequencies =
                     new double[0];
@@ -9335,7 +9527,43 @@ private final WifiPhyController wifiPhy =
             wifiSinglePlayerScanIndex =
                     0;
 
-            setChanged();
+            wifiSinglePlayerScanPreserveAssociation =
+                    false;
+
+            wifiSinglePlayerScanAutoRoam =
+                    false;
+
+            wifiSinglePlayerScanReturnFrequencyHz =
+                    Double.NaN;
+
+            if (preserveAssociation) {
+                wifiMac.finishRoamScan();
+
+                if (automaticRoam
+                        && wifiMac.isAssociated()
+                        && wifiMac.pendingDataTransmissions() == 0
+                        && wifiRoamCooldownElapsed(
+                        nowMicros
+                )) {
+                    boolean started =
+                            roamWifiToBestCandidate(
+                                    WIFI_ROAM_HYSTERESIS_DB
+                            );
+
+                    if (!started) {
+                        nextWifiRoamScanMicros =
+                                nowMicros
+                                        + WIFI_ROAM_BACKGROUND_SCAN_INTERVAL_US;
+                    }
+                } else {
+                    nextWifiRoamScanMicros =
+                            nowMicros
+                                    + WIFI_ROAM_BACKGROUND_SCAN_INTERVAL_US;
+                }
+            } else {
+                wifiMac.finishScan();
+            }
+
             return;
         }
 
@@ -9361,8 +9589,6 @@ private final WifiPhyController wifiPhy =
         wifiSinglePlayerNextScanStepMicros =
                 nowMicros
                         + WIFI_SCAN_DWELL_US;
-
-        setChanged();
     }
 
     private long wifiIncomingFrameEndMicros(
@@ -9525,13 +9751,24 @@ private final WifiPhyController wifiPhy =
         );
 
         if (activeWifiResponseReferenceMicros >= 0L
+                && isWifiProbeResponse(
+                frame
+        )) {
+            payload.putLong(
+                    "rf_absolute_start_us",
+                    activeWifiResponseReferenceMicros
+                            + wifiProbeResponseDelayMicros(
+                            frame
+                    )
+            );
+        } else if (activeWifiResponseReferenceMicros >= 0L
                 && (
                 frame.isAck()
                         || frame.isCts()
                         || frame.type()
-                        == com.k1ngtle.vsia.signality.engineering.wifi.WifiFrameType.DATA
+                        == WifiFrameType.DATA
                         || frame.type()
-                        == com.k1ngtle.vsia.signality.engineering.wifi.WifiFrameType.MANAGEMENT
+                        == WifiFrameType.MANAGEMENT
         )) {
             payload.putLong(
                     "rf_absolute_start_us",
@@ -9552,6 +9789,13 @@ private final WifiPhyController wifiPhy =
                                     .sifsUs()
                     )
             );
+        } else if (isWifiBeaconFrame(
+                frame
+        )) {
+            payload.putLong(
+                    "rf_start_delay_us",
+                    wifiBeaconTransmitOffsetMicros()
+            );
         }
 
         traceWifiTransmit(
@@ -9561,6 +9805,115 @@ private final WifiPhyController wifiPhy =
         );
 
         broadcastPayload(payload);
+    }
+
+
+    private boolean isWifiProbeResponse(
+            WifiMacFrame frame
+    ) {
+        return frame != null
+                && frame.type()
+                == WifiFrameType.MANAGEMENT
+                && (
+                frame.frameControl()
+                        & 0x00FC
+        )
+                == (
+                WifiMacController.FC_PROBE_RESP
+                        & 0x00FC
+        );
+    }
+
+    private boolean isWifiBeaconFrame(
+            WifiMacFrame frame
+    ) {
+        return frame != null
+                && frame.type()
+                == WifiFrameType.MANAGEMENT
+                && (
+                frame.frameControl()
+                        & 0x00FC
+        )
+                == (
+                WifiMacController.FC_BEACON
+                        & 0x00FC
+        );
+    }
+
+    private long wifiProbeResponseDelayMicros(
+            WifiMacFrame frame
+    ) {
+        int seed =
+                17;
+
+        seed =
+                31
+                        * seed
+                        + macAddress.hashCode();
+
+        seed =
+                31
+                        * seed
+                        + Long.hashCode(
+                        worldPosition.asLong()
+                );
+
+        seed =
+                31
+                        * seed
+                        + frame.sequenceControl();
+
+        int slots =
+                Math.floorMod(
+                        seed,
+                        WIFI_PROBE_RESPONSE_CONTENTION_SLOTS
+                );
+
+        int slotMicros =
+                Math.max(
+                        1,
+                        wifiMac.timingProfile()
+                                .slotTimeUs()
+                );
+
+        int tieBreakMicros =
+                Math.floorMod(
+                        Integer.rotateRight(
+                                seed,
+                                9
+                        ),
+                        slotMicros
+                );
+
+        return Math.max(
+                0,
+                wifiMac.timingProfile()
+                        .difsUs()
+        )
+                + (
+                (long) slots
+                        * slotMicros
+        )
+                + tieBreakMicros;
+    }
+
+    private long wifiBeaconTransmitOffsetMicros() {
+        long spread =
+                Math.max(
+                        1L,
+                        NetworkTimebase.MICROS_PER_SERVER_TICK
+                                - 1L
+                );
+
+        long seed =
+                31L
+                        * macAddress.hashCode()
+                        + worldPosition.asLong();
+
+        return Math.floorMod(
+                seed,
+                spread
+        );
     }
 
     private WifiMcs selectWifiMcsForFrame(

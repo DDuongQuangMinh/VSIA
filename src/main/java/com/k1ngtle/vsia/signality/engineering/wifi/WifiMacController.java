@@ -90,6 +90,8 @@ public final class WifiMacController {
     private final Map<String, Double> discoveredSnrDb =
             new HashMap<>();
 
+    private boolean roamScanActive;
+
     private final Set<String> authenticated =
             new LinkedHashSet<>();
 
@@ -611,6 +613,9 @@ public final class WifiMacController {
     public void beginScan() {
         requireStation();
 
+        roamScanActive =
+                false;
+
         discovered.clear();
         discoveredSnrDb.clear();
 
@@ -627,9 +632,20 @@ public final class WifiMacController {
     ) {
         requireStation();
 
-        if (stationState != WifiStationState.SCANNING) {
-            stationState =
-                    WifiStationState.SCANNING;
+        boolean normalScan =
+                stationState
+                        == WifiStationState.SCANNING;
+
+        boolean roamingScan =
+                stationState
+                        == WifiStationState.ASSOCIATED
+                        && roamScanActive;
+
+        if (!normalScan
+                && !roamingScan) {
+            throw new IllegalStateException(
+                    "Probe request requires an active Wi-Fi scan"
+            );
         }
 
         CompoundTag body =
@@ -654,6 +670,9 @@ public final class WifiMacController {
     public void finishScan() {
         requireStation();
 
+        roamScanActive =
+                false;
+
         if (stationState == WifiStationState.SCANNING) {
             stationState =
                     WifiStationState.DISCONNECTED;
@@ -662,6 +681,52 @@ public final class WifiMacController {
         lastSecurityDiagnostic =
                 "SCAN_COMPLETE_APS_"
                         + discovered.size();
+    }
+
+
+    public void beginRoamScan() {
+        requireStation();
+
+        if (!isAssociated()) {
+            throw new IllegalStateException(
+                    "Roaming scan requires an associated station"
+            );
+        }
+
+        pruneStaleDiscoveredNetworks();
+
+        roamScanActive =
+                true;
+
+        lastSecurityDiagnostic =
+                "ROAM_SCAN_ACTIVE";
+    }
+
+    public void finishRoamScan() {
+        requireStation();
+
+        if (!roamScanActive) {
+            return;
+        }
+
+        pruneStaleDiscoveredNetworks();
+
+        roamScanActive =
+                false;
+
+        if (stationState
+                == WifiStationState.ASSOCIATED) {
+            lastSecurityDiagnostic =
+                    "ROAM_SCAN_COMPLETE_APS_"
+                            + discovered.size();
+        }
+    }
+
+    public boolean roamScanActive() {
+        return mode == WifiMode.STATION
+                && stationState
+                == WifiStationState.ASSOCIATED
+                && roamScanActive;
     }
 
     public void startScan(
@@ -3047,6 +3112,9 @@ public final class WifiMacController {
         pendingTransmissions.clear();
         lastDeliveredSequenceBySender.clear();
         nav.clear();
+
+        roamScanActive =
+                false;
 
         WifiMacTimingScheduler.untrack(
                 this
