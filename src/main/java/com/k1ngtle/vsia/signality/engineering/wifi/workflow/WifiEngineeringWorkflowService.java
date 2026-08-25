@@ -198,7 +198,7 @@ public final class WifiEngineeringWorkflowService {
                 device.bestWifiRoamCandidate();
 
         if (candidate == null) {
-            return "Roam held: no fresh alternate AP with the same SSID/security";
+            return "Manual roam held: no fresh alternate AP with the same SSID/security";
         }
 
         String currentBssid =
@@ -211,10 +211,6 @@ public final class WifiEngineeringWorkflowService {
                 device.discoveredWifiNetworkSnrDb(
                         candidate.bssid()
                 );
-
-        double improvement =
-                candidateSnr
-                        - currentSnr;
 
         String currentQuality =
                 Double.isFinite(currentSnr)
@@ -234,43 +230,44 @@ public final class WifiEngineeringWorkflowService {
                 )
                         : "n/a";
 
-        if (Double.isFinite(currentSnr)
-                && (
-                !Double.isFinite(candidateSnr)
-                        || improvement
-                        < WifiEngineeringWorkflowLogic
-                        .ROAM_HYSTERESIS_DB
-        )) {
-            return "Roam held: current "
-                    + currentBssid
-                    + " "
-                    + currentQuality
-                    + " | candidate "
-                    + candidate.bssid()
-                    + " "
-                    + candidateQuality
-                    + " | need +"
-                    + String.format(
-                    java.util.Locale.ROOT,
-                    "%.1f dB",
-                    WifiEngineeringWorkflowLogic
-                            .ROAM_HYSTERESIS_DB
-            );
-        }
+        boolean started =
+                device.connectWifiBssid(
+                        candidate.ssid(),
+                        candidate.bssid()
+                );
 
-        return device.roamWifiToBestCandidate(
-                WifiEngineeringWorkflowLogic
-                        .ROAM_HYSTERESIS_DB
-        )
-                ? "Roam authentication started "
-                + currentBssid
+        return started
+                ? "Manual roam started "
+                + shortBssid(currentBssid)
                 + " -> "
-                + candidate.bssid()
+                + shortBssid(candidate.bssid())
                 + " | "
                 + currentQuality
                 + " -> "
                 + candidateQuality
-                : "Roam request was rejected after candidate selection";
+                : "Manual roam request to "
+                + shortBssid(candidate.bssid())
+                + " was rejected";
+    }
+
+    private static String shortBssid(
+            String bssid
+    ) {
+        if (bssid == null
+                || bssid.isBlank()) {
+            return "n/a";
+        }
+
+        String normalized =
+                bssid.toUpperCase(
+                        java.util.Locale.ROOT
+                );
+
+        return normalized.length() <= 8
+                ? normalized
+                : normalized.substring(
+                normalized.length() - 8
+        );
     }
 
     private static String connectFirst(
