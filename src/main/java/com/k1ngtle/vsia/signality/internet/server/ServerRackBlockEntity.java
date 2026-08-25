@@ -4,6 +4,7 @@ import com.k1ngtle.vsia.signality.SignalityBlocks;
 import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
 import com.k1ngtle.vsia.signality.engineering.host.w120.W120HostStack;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.WifiIpApplicationEngine;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.EnumSet;
@@ -59,6 +60,8 @@ public final class ServerRackBlockEntity extends NetworkDeviceBlockEntity implem
 
     // W1.20 REAL WIRED HOST STACK
     private final W120HostStack w120Host = new W120HostStack();
+    private final WifiIpApplicationEngine engineeringIpApplication =
+            new WifiIpApplicationEngine();
     private long w120LastTickGameTime = Long.MIN_VALUE;
     private String ipv6Address="fd00::2", ipv6Gateway="fd00::1", ipv6DnsServer="fd00::2";
     private int ipv6PrefixLength=64;
@@ -312,6 +315,7 @@ public final class ServerRackBlockEntity extends NetworkDeviceBlockEntity implem
                 && packet.isResponse
                 && packet.sessionId != null
                 && !packet.sessionId.isBlank()
+                && packet.sessionId.startsWith("tcp-")
                 && !"TCP".equalsIgnoreCase(packet.applicationProtocol)){
             super.transmitPacket(packet);
             return;
@@ -587,7 +591,33 @@ processLayer2(packet);}
         r.targetIp=q.sourceIp;r.sourcePort=port;r.targetPort=q.sourcePort;r.applicationProtocol=protocol;r.isResponse=true;r.sessionId=q.sessionId;return r;
     }
     @Override protected void handleWebRequest(OSINetworkPacket q){if(httpEnabled&&!q.isResponse&&"HTTP".equalsIgnoreCase(q.applicationProtocol))serveFile(q,"HTTP",httpPort,false);}
-    @Override protected void handleIncomingData(OSINetworkPacket q){if(q.isResponse)return;String protocol=q.applicationProtocol.toUpperCase();if(protocol.equals("RADIUS_EAP")&&serviceEnabled(ServerRackService.RADIUS_EAP)){boolean ok=radiusAuthenticate(q.sourceIp,q.payload.getString("shared_secret"),q.payload.getString("username"),q.payload.getString("password"),q.payload.getInt("required_privilege"),q.payload.getString("eap_method"));OSINetworkPacket r=response(q,1812,"RADIUS_EAP");r.payload.putString("result",ok?"Access-Accept":"Access-Reject");r.payload.putBoolean("accepted",ok);transmitPacket(r);return;}if(protocol.equals("AAA")&&serviceEnabled(ServerRackService.AAA)){boolean ok=authenticateAaa(q.payload.getString("username"),q.payload.getString("password"),q.payload.getInt("required_privilege"),q.payload.getString("service"),q.sourceIp);OSINetworkPacket r=response(q,0,"AAA");r.payload.putBoolean("accepted",ok);ServerRackAaaUser u=aaaUsers.get(q.payload.getString("username").toLowerCase());r.payload.putInt("privilege",ok&&u!=null?u.privilege():-1);transmitPacket(r);return;}if(protocol.equals("SYSLOG")&&serviceEnabled(ServerRackService.SYSLOG)&&syslogAcceptRemote){addSyslog(q.sourceIp,q.payload.getString("facility"),q.payload.getInt("severity"),q.payload.getString("message"));return;}if(protocol.equals("HTTPS")&&httpsEnabled){serveFile(q,"HTTPS",httpsPort,true);return;}if(protocol.equals("FTP")&&serviceEnabled(ServerRackService.FTP)){fileTransfer(q,"FTP",ftpPort,true);return;}if(protocol.equals("TFTP")&&serviceEnabled(ServerRackService.TFTP)){fileTransfer(q,"TFTP",tftpPort,false);}}
+    @Override
+    protected void handleIncomingData(OSINetworkPacket q) {
+        if (q == null || q.isResponse) {
+            return;
+        }
+
+        String protocol =
+                q.applicationProtocol == null
+                        ? ""
+                        : q.applicationProtocol.toUpperCase();
+
+        if ("UDP".equals(protocol)
+                && q.targetPort
+                == WifiIpApplicationEngine.UDP_ECHO_PORT
+                && "ECHO".equalsIgnoreCase(
+                q.payload.getString("service")
+        )) {
+            engineeringIpApplication.handleIncoming(
+                    macAddress,
+                    ipAddress,
+                    q,
+                    System.nanoTime() / 1_000L,
+                    this::transmitPacket
+            );
+            return;
+        }
+if(protocol.equals("RADIUS_EAP")&&serviceEnabled(ServerRackService.RADIUS_EAP)){boolean ok=radiusAuthenticate(q.sourceIp,q.payload.getString("shared_secret"),q.payload.getString("username"),q.payload.getString("password"),q.payload.getInt("required_privilege"),q.payload.getString("eap_method"));OSINetworkPacket r=response(q,1812,"RADIUS_EAP");r.payload.putString("result",ok?"Access-Accept":"Access-Reject");r.payload.putBoolean("accepted",ok);transmitPacket(r);return;}if(protocol.equals("AAA")&&serviceEnabled(ServerRackService.AAA)){boolean ok=authenticateAaa(q.payload.getString("username"),q.payload.getString("password"),q.payload.getInt("required_privilege"),q.payload.getString("service"),q.sourceIp);OSINetworkPacket r=response(q,0,"AAA");r.payload.putBoolean("accepted",ok);ServerRackAaaUser u=aaaUsers.get(q.payload.getString("username").toLowerCase());r.payload.putInt("privilege",ok&&u!=null?u.privilege():-1);transmitPacket(r);return;}if(protocol.equals("SYSLOG")&&serviceEnabled(ServerRackService.SYSLOG)&&syslogAcceptRemote){addSyslog(q.sourceIp,q.payload.getString("facility"),q.payload.getInt("severity"),q.payload.getString("message"));return;}if(protocol.equals("HTTPS")&&httpsEnabled){serveFile(q,"HTTPS",httpsPort,true);return;}if(protocol.equals("FTP")&&serviceEnabled(ServerRackService.FTP)){fileTransfer(q,"FTP",ftpPort,true);return;}if(protocol.equals("TFTP")&&serviceEnabled(ServerRackService.TFTP)){fileTransfer(q,"TFTP",tftpPort,false);}}
     private void serveFile(OSINetworkPacket q,String protocol,int port,boolean secure){OSINetworkPacket r=response(q,port,protocol);String path=q.payload.getString("path");if(path.isBlank()||path.equals("/"))path="index.html";path=path.replaceFirst("^/","").toLowerCase();ServerRackHostedFile file=hostedFiles.get(path);if(file==null||!file.readable()){r.payload.putInt("status",404);r.payload.putString("content","Not Found");}else{r.payload.putInt("status",200);r.payload.putString("content",file.content());r.payload.putBoolean("secure",secure);}transmitPacket(r);}
     private void fileTransfer(OSINetworkPacket q,String protocol,int port,boolean requiresLogin){OSINetworkPacket r=response(q,port,protocol);String action=q.payload.getString("action");String user=q.payload.getString("username").toLowerCase();if(requiresLogin&&!java.util.Objects.equals(fileUsers.get(user),q.payload.getString("password"))){r.payload.putString("status","AUTH_FAILED");transmitPacket(r);return;}String name=q.payload.getString("filename").toLowerCase();if(action.equalsIgnoreCase("GET")){ServerRackHostedFile f=hostedFiles.get(name);if(f==null||!f.readable())r.payload.putString("status","NOT_FOUND");else{r.payload.putString("status","OK");r.payload.putString("content",f.content());}}else if(action.equalsIgnoreCase("PUT")){String result=manageHostedFile("SAVE",protocol,name,q.payload.getString("content"),true,true);r.payload.putString("status",result.startsWith("File saved")?"OK":result);}else if(action.equalsIgnoreCase("LIST")){r.payload.putString("status","OK");r.payload.putString("files",hostedFileData());}transmitPacket(r);}
     @Override protected void handleDnsRequest(OSINetworkPacket q){if(dnsEnabled&&!q.isResponse&&"DNS".equalsIgnoreCase(q.applicationProtocol)){OSINetworkPacket r=response(q,53,"DNS");String d=q.payload.getString("domain").toLowerCase();String type=q.payload.contains("query_type")?q.payload.getString("query_type"):"A";String answer=resolveDns(d,type);ServerRackDnsRecord record=detailedDnsRecords.get(type.toUpperCase()+"|"+d);int ttl=record==null?300:record.ttl();r.payload.putInt("dns_id",q.payload.getInt("dns_id"));r.payload.putString("domain",d);r.payload.putString("query_type",type);r.payload.putString("record_type",type);r.payload.putString("answer",answer==null?"":answer);r.payload.putString("resolved_ip",answer==null||!"A".equalsIgnoreCase(type)?"0.0.0.0":answer);r.payload.putInt("ttl",answer==null?0:ttl);r.payload.putInt("rcode",answer==null?3:0);transmitPacket(r);}}
