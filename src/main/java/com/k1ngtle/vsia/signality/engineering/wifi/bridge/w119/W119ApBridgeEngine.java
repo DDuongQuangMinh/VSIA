@@ -235,6 +235,37 @@ public final class W119ApBridgeEngine {
         );
     }
 
+    public boolean forgetStation(
+            String stationMac
+    ) {
+        if (stationMac == null
+                || stationMac.isBlank()) {
+            return false;
+        }
+
+        boolean stationRemoved =
+                stations.remove(
+                        stationMac
+                );
+
+        boolean bridgeRemoved =
+                bridgeTable.remove(
+                        stationMac
+                );
+
+        if (stationRemoved
+                || bridgeRemoved) {
+            lastDecision =
+                    "ROAM_RELEASE:"
+                            + W119Mac.normalize(
+                            stationMac
+                    );
+        }
+
+        return stationRemoved
+                || bridgeRemoved;
+    }
+
     public void noteWirelessTransmit() {
         wirelessTx++;
     }

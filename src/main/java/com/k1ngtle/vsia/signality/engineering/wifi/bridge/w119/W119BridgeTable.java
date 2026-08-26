@@ -64,6 +64,21 @@ public final class W119BridgeTable {
         );
     }
 
+    public boolean remove(
+            String macAddress
+    ) {
+        if (macAddress == null
+                || macAddress.isBlank()) {
+            return false;
+        }
+
+        return entries.remove(
+                W119Mac.normalize(
+                        macAddress
+                )
+        ) != null;
+    }
+
     public int expire(long nowMillis) {
         int before =
                 entries.size();

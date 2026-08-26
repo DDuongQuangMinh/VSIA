@@ -219,6 +219,9 @@ public final class WifiEngineeringWorkflowService {
                         candidate.bssid()
                 );
 
+        double hysteresisDb =
+                device.wifiRoamHysteresisDb();
+
         String currentQuality =
                 Double.isFinite(currentSnr)
                         ? String.format(
@@ -237,10 +240,39 @@ public final class WifiEngineeringWorkflowService {
                 )
                         : "n/a";
 
+        boolean meetsHysteresis =
+                !Double.isFinite(
+                        currentSnr
+                )
+                        || (
+                        Double.isFinite(
+                                candidateSnr
+                        )
+                                && candidateSnr
+                                >= currentSnr
+                                + hysteresisDb
+                );
+
+        if (!meetsHysteresis) {
+            return "Manual roam held "
+                    + shortBssid(currentBssid)
+                    + " -> "
+                    + shortBssid(candidate.bssid())
+                    + " | "
+                    + currentQuality
+                    + " -> "
+                    + candidateQuality
+                    + " | requires +"
+                    + String.format(
+                    java.util.Locale.ROOT,
+                    "%.1f dB",
+                    hysteresisDb
+            );
+        }
+
         boolean started =
-                device.connectWifiBssid(
-                        candidate.ssid(),
-                        candidate.bssid()
+                device.roamWifiToBestCandidate(
+                        hysteresisDb
                 );
 
         return started
@@ -252,6 +284,13 @@ public final class WifiEngineeringWorkflowService {
                 + currentQuality
                 + " -> "
                 + candidateQuality
+                + " | hysteresis +"
+                + String.format(
+                java.util.Locale.ROOT,
+                "%.1f dB",
+                hysteresisDb
+        )
+                + " satisfied"
                 : "Manual roam request to "
                 + shortBssid(candidate.bssid())
                 + " was rejected";

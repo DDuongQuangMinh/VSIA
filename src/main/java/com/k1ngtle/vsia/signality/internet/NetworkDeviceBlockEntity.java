@@ -272,6 +272,9 @@ private final WifiPhyController wifiPhy =
     private long wifiLastRoamAttemptMicros =
             -1L;
 
+    private String wifiPendingRoamPreviousBssid =
+            "";
+
     private int wifiEngineeringTestSequence;
 
     private final WifiPacketTraceBuffer wifiPacketTrace =
@@ -1132,6 +1135,19 @@ private final WifiPhyController wifiPhy =
             return false;
         }
 
+        String previousBssid =
+                wifiMac.isAssociated()
+                        ? wifiMac.selectedBssid()
+                        : "";
+
+        boolean reassociation =
+                previousBssid != null
+                        && !previousBssid.isBlank()
+                        && !W119Mac.equals(
+                        previousBssid,
+                        network.bssid()
+                );
+
         activeFrequencyHz =
                 network.frequencyHz();
 
@@ -1144,6 +1160,11 @@ private final WifiPhyController wifiPhy =
                 );
 
         if (connected) {
+            wifiPendingRoamPreviousBssid =
+                    reassociation
+                            ? previousBssid
+                            : "";
+
             setChanged();
         }
 
@@ -1164,6 +1185,10 @@ private final WifiPhyController wifiPhy =
 
     public double wifiSelectedApSnrDb() {
         return wifiMac.selectedBssidSnrDb();
+    }
+
+    public double wifiRoamHysteresisDb() {
+        return WIFI_ROAM_HYSTERESIS_DB;
     }
 
     public WifiNetworkRecord bestWifiRoamCandidate() {
@@ -3187,6 +3212,9 @@ private final WifiPhyController wifiPhy =
         wifiSinglePlayerNextScanStepMicros =
                 0L;
 
+        wifiPendingRoamPreviousBssid =
+                "";
+
         setChanged();
         return true;
     }
@@ -3215,12 +3243,19 @@ private final WifiPhyController wifiPhy =
         nextWifiAutomaticBeaconMicros =
                 0L;
 
+        wifiPendingRoamPreviousBssid =
+                "";
+
         setChanged();
         return true;
     }
 
     public void useLegacyWifiDirectMode() {
         wifiMac.useLegacyDirectMode();
+
+        wifiPendingRoamPreviousBssid =
+                "";
+
         setChanged();
     }
 
@@ -4302,6 +4337,8 @@ private final WifiPhyController wifiPhy =
                     previousResponseReference;
         }
 
+        reconcileCompletedWifiRoam();
+
         OSINetworkPacket packet =
                 decodeWifiReceivedLogicalPacket(
                         data
@@ -4342,6 +4379,100 @@ private final WifiPhyController wifiPhy =
                 )) {
             setChanged();
         }
+    }
+
+    private void reconcileCompletedWifiRoam() {
+        if (wifiPendingRoamPreviousBssid == null
+                || wifiPendingRoamPreviousBssid.isBlank()) {
+            return;
+        }
+
+        if (wifiMac.mode()
+                != WifiMode.STATION) {
+            wifiPendingRoamPreviousBssid =
+                    "";
+            return;
+        }
+
+        if (wifiMac.stationState()
+                == WifiStationState.DISCONNECTED) {
+            wifiPendingRoamPreviousBssid =
+                    "";
+            return;
+        }
+
+        if (wifiMac.stationState()
+                != WifiStationState.ASSOCIATED) {
+            return;
+        }
+
+        String previousBssid =
+                wifiPendingRoamPreviousBssid;
+
+        String currentBssid =
+                wifiMac.selectedBssid();
+
+        if (currentBssid == null
+                || currentBssid.isBlank()
+                || W119Mac.equals(
+                previousBssid,
+                currentBssid
+        )) {
+            wifiPendingRoamPreviousBssid =
+                    "";
+            return;
+        }
+
+        if (level instanceof ServerLevel serverLevel) {
+            for (ISignalReceiver receiver
+                    : SignalBus.receiversInLevel(
+                    serverLevel
+            )) {
+                if (!(receiver
+                        instanceof NetworkDeviceBlockEntity oldAp)
+                        || oldAp == this
+                        || oldAp.wifiMode()
+                        != WifiMode.ACCESS_POINT
+                        || !W119Mac.equals(
+                        previousBssid,
+                        oldAp.wifiMacAddress()
+                )) {
+                    continue;
+                }
+
+                oldAp.releaseWifiStationForRoam(
+                        macAddress
+                );
+
+                break;
+            }
+        }
+
+        wifiPendingRoamPreviousBssid =
+                "";
+    }
+
+    private boolean releaseWifiStationForRoam(
+            String stationMac
+    ) {
+        boolean macReleased =
+                wifiMac.disassociateStationForRoam(
+                        stationMac
+                );
+
+        boolean bridgeReleased =
+                w119Bridge != null
+                        && w119Bridge.forgetStation(
+                        stationMac
+                );
+
+        if (macReleased
+                || bridgeReleased) {
+            setChanged();
+            return true;
+        }
+
+        return false;
     }
 
     private OSINetworkPacket decodeWifiReceivedLogicalPacket(

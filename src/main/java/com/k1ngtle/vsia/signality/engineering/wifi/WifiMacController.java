@@ -283,6 +283,92 @@ public final class WifiMacController {
         );
     }
 
+    public boolean disassociateStationForRoam(
+            String stationMac
+    ) {
+        if (mode != WifiMode.ACCESS_POINT
+                || stationMac == null
+                || stationMac.isBlank()) {
+            return false;
+        }
+
+        final String key;
+
+        try {
+            key =
+                    normalizeMac(
+                            stationMac
+                    );
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
+
+        boolean changed =
+                authenticated.remove(
+                        key
+                );
+
+        changed =
+                associated.remove(
+                        key
+                )
+                        || changed;
+
+        changed =
+                securedStations.remove(
+                        key
+                )
+                        || changed;
+
+        changed =
+                apPtkByStation.remove(
+                        key
+                ) != null
+                        || changed;
+
+        changed =
+                pendingAnonceByStation.remove(
+                        key
+                ) != null
+                        || changed;
+
+        int pendingBefore =
+                pendingTransmissions.size();
+
+        pendingTransmissions.entrySet()
+                .removeIf(
+                        entry ->
+                                entry.getValue() != null
+                                        && macEquals(
+                                        entry.getValue()
+                                                .address1(),
+                                        key
+                                )
+                );
+
+        if (pendingTransmissions.size()
+                != pendingBefore) {
+            changed = true;
+        }
+
+        if (pendingTransmissions.isEmpty()) {
+            WifiMacTimingScheduler.untrack(
+                    this
+            );
+        }
+
+        if (changed) {
+            lastSecurityDiagnostic =
+                    "ROAM_STA_RELEASED_"
+                            + key.replace(
+                            ":",
+                            ""
+                    );
+        }
+
+        return changed;
+    }
+
     public int pendingDataTransmissions() {
         return pendingTransmissions.size();
     }
