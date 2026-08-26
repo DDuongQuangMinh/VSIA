@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.signality.integration.vs.item;
 
+import com.k1ngtle.vsia.signality.integration.vs.VsRuntimeCompat;
 import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -17,10 +18,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
-import org.valkyrienskies.core.api.ships.ServerShip;
-import org.valkyrienskies.core.api.ships.Ship;
-import org.valkyrienskies.mod.common.VSGameUtilsKt;
-import org.valkyrienskies.mod.common.util.GameTickForceApplier;
 
 import java.util.List;
 
@@ -68,8 +65,8 @@ public final class ShipGrabberItem extends Item {
         ItemStack stack =
                 context.getItemInHand();
 
-        ServerShip ship =
-                VSGameUtilsKt.getShipManagingPos(
+        Object ship =
+                VsRuntimeCompat.findShipManagingPos(
                         level,
                         context.getClickedPos()
                 );
@@ -86,7 +83,20 @@ public final class ShipGrabberItem extends Item {
         }
 
         long shipId =
-                ship.getId();
+                VsRuntimeCompat.shipId(
+                        ship
+                );
+
+        if (shipId < 0L) {
+            player.displayClientMessage(
+                    Component.literal(
+                            "Unable to identify Valkyrien Skies ship"
+                    ),
+                    true
+            );
+
+            return InteractionResult.CONSUME;
+        }
 
         if (hasShip(stack)
                 && getShipId(stack) == shipId) {
@@ -180,16 +190,13 @@ public final class ShipGrabberItem extends Item {
         long shipId =
                 getShipId(stack);
 
-        Ship found =
-                VSGameUtilsKt.getShipObjectWorld(
-                                serverLevel
-                        )
-                        .getLoadedShips()
-                        .getById(
-                                shipId
-                        );
+        Object ship =
+                VsRuntimeCompat.findLoadedShipById(
+                        serverLevel,
+                        shipId
+                );
 
-        if (!(found instanceof ServerShip ship)) {
+        if (ship == null) {
             clearShip(stack);
 
             player.displayClientMessage(
@@ -203,8 +210,28 @@ public final class ShipGrabberItem extends Item {
         }
 
         Vector3dc shipPosition =
-                ship.getTransform()
-                        .getPositionInWorld();
+                VsRuntimeCompat.shipWorldPosition(
+                        ship
+                );
+
+        Vector3dc velocity =
+                VsRuntimeCompat.shipVelocity(
+                        ship
+                );
+
+        if (shipPosition == null
+                || velocity == null) {
+            clearShip(stack);
+
+            player.displayClientMessage(
+                    Component.literal(
+                            "Ship Grabber released: unsupported VS ship state API"
+                    ),
+                    true
+            );
+
+            return;
+        }
 
         Vec3 eye =
                 player.getEyePosition();
@@ -243,20 +270,20 @@ public final class ShipGrabberItem extends Item {
             return;
         }
 
-        Vector3dc velocity =
-                ship.getVelocity();
-
         Vector3d acceleration =
-                new Vector3d(error)
+                new Vector3d(
+                        error
+                )
                         .mul(
                                 SPRING_ACCELERATION
                         )
                         .sub(
                                 new Vector3d(
                                         velocity
-                                ).mul(
-                                        DAMPING
                                 )
+                                        .mul(
+                                                DAMPING
+                                        )
                         );
 
         double accelerationLength =
@@ -273,8 +300,9 @@ public final class ShipGrabberItem extends Item {
         }
 
         double mass =
-                ship.getInertiaData()
-                        .getMass();
+                VsRuntimeCompat.shipMass(
+                        ship
+                );
 
         if (!Double.isFinite(mass)
                 || mass <= 0.0D) {
@@ -290,27 +318,19 @@ public final class ShipGrabberItem extends Item {
             return;
         }
 
-        GameTickForceApplier forceApplier =
-                ship.getAttachment(
-                        GameTickForceApplier.class
-                );
-
-        if (forceApplier == null) {
+        if (!VsRuntimeCompat.applyWorldForce(
+                ship,
+                force
+        )) {
             clearShip(stack);
 
             player.displayClientMessage(
                     Component.literal(
-                            "Ship Grabber released: VS beta.5 force applier is unavailable"
+                            "Ship Grabber released: unsupported VS force API"
                     ),
                     true
             );
-
-            return;
         }
-
-        forceApplier.applyInvariantForce(
-                force
-        );
     }
 
     @Override

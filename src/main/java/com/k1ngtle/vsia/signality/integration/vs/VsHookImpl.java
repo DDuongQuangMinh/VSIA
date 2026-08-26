@@ -2,8 +2,6 @@ package com.k1ngtle.vsia.signality.integration.vs;
 
 import com.k1ngtle.vsia.signality.api.geom.Obb;
 import com.k1ngtle.vsia.signality.api.radar.IRadarTarget;
-import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
@@ -13,84 +11,300 @@ import org.joml.Vector3d;
 import org.joml.Vector3dc;
 import org.joml.primitives.AABBdc;
 import org.joml.primitives.AABBic;
-import org.valkyrienskies.core.api.ships.LoadedServerShip;
-import org.valkyrienskies.core.api.ships.QueryableShipData;
-import org.valkyrienskies.core.api.ships.ServerShip;
-import org.valkyrienskies.core.api.ships.Ship;
-import org.valkyrienskies.core.api.ships.properties.ShipTransform;
-import org.valkyrienskies.mod.common.VSGameUtilsKt;
+
+import java.util.stream.Stream;
 
 public final class VsHookImpl implements VsCompat.VsHook {
-   @Override
-   public Object shipManagingPos(ServerLevel level, BlockPos pos) {
-      return VSGameUtilsKt.getShipManagingPos(level, pos);
-   }
+    @Override
+    public Object shipManagingPos(
+            ServerLevel level,
+            BlockPos pos
+    ) {
+        return VsRuntimeCompat.findShipManagingPos(
+                level,
+                pos
+        );
+    }
 
-   @Override
-   public Vec3 transformShipToWorld(Object ship, Vec3 shipPos) {
-      Matrix4dc m = ((Ship)ship).getTransform().getShipToWorld();
-      Vector3d v = new Vector3d(shipPos.x, shipPos.y, shipPos.z);
-      m.transformPosition(v);
-      return new Vec3(v.x, v.y, v.z);
-   }
+    @Override
+    public Vec3 transformShipToWorld(
+            Object ship,
+            Vec3 shipPos
+    ) {
+        Matrix4dc matrix =
+                VsRuntimeCompat.shipToWorld(
+                        ship
+                );
 
-   @Override
-   public Vec3 transformDirShipToWorld(Object ship, Vec3 shipDir) {
-      Matrix4dc m = ((Ship)ship).getTransform().getShipToWorld();
-      Vector3d v = new Vector3d(shipDir.x, shipDir.y, shipDir.z);
-      m.transformDirection(v);
-      return new Vec3(v.x, v.y, v.z);
-   }
+        if (matrix == null) {
+            return shipPos;
+        }
 
-   @Override
-   public Vec3 transformWorldToShip(Object ship, Vec3 worldPos) {
-      Matrix4dc m = ((Ship)ship).getTransform().getWorldToShip();
-      Vector3d v = new Vector3d(worldPos.x, worldPos.y, worldPos.z);
-      m.transformPosition(v);
-      return new Vec3(v.x, v.y, v.z);
-   }
+        Vector3d value =
+                new Vector3d(
+                        shipPos.x,
+                        shipPos.y,
+                        shipPos.z
+                );
 
-   @Override
-   public Vec3 transformDirWorldToShip(Object ship, Vec3 worldDir) {
-      Matrix4dc m = ((Ship)ship).getTransform().getWorldToShip();
-      Vector3d v = new Vector3d(worldDir.x, worldDir.y, worldDir.z);
-      m.transformDirection(v);
-      return new Vec3(v.x, v.y, v.z);
-   }
+        matrix.transformPosition(
+                value
+        );
 
-   @Override
-   public Vec3 shipCenter(Object ship) {
-      AABBdc aabb = ((Ship)ship).getWorldAABB();
-      return new Vec3((aabb.minX() + aabb.maxX()) * 0.5, (aabb.minY() + aabb.maxY()) * 0.5, (aabb.minZ() + aabb.maxZ()) * 0.5);
-   }
+        return new Vec3(
+                value.x,
+                value.y,
+                value.z
+        );
+    }
 
-   @Override
-   public Vec3 shipVelocity(Object ship) {
-      Vector3dc v = ((ServerShip)ship).getVelocity();
-      return new Vec3(v.x(), v.y(), v.z());
-   }
+    @Override
+    public Vec3 transformDirShipToWorld(
+            Object ship,
+            Vec3 shipDir
+    ) {
+        Matrix4dc matrix =
+                VsRuntimeCompat.shipToWorld(
+                        ship
+                );
 
-   @Override
-   public Obb shipObb(Object ship) {
-      Ship s = (Ship)ship;
-      ShipTransform t = s.getTransform();
-      AABBic shipAabb = s.getShipAABB();
-      double cx = (double)(shipAabb.minX() + shipAabb.maxX()) * 0.5;
-      double cy = (double)(shipAabb.minY() + shipAabb.maxY()) * 0.5;
-      double cz = (double)(shipAabb.minZ() + shipAabb.maxZ()) * 0.5;
-      double hx = (double)(shipAabb.maxX() - shipAabb.minX()) * 0.5;
-      double hy = (double)(shipAabb.maxY() - shipAabb.minY()) * 0.5;
-      double hz = (double)(shipAabb.maxZ() - shipAabb.minZ()) * 0.5;
-      Vector3d centerShip = new Vector3d(cx, cy, cz);
-      t.getShipToWorld().transformPosition(centerShip);
-      Quaterniond rot = new Quaterniond();
-      t.getShipToWorld().getNormalizedRotation(rot);
-      return new Obb(new Vec3(centerShip.x, centerShip.y, centerShip.z), new Vec3(hx, hy, hz), rot);
-   }
+        if (matrix == null) {
+            return shipDir;
+        }
 
-   @Override
-   public Stream<IRadarTarget> shipTargetsIn(ServerLevel level) {
-      QueryableShipData<LoadedServerShip> ships = VSGameUtilsKt.getShipObjectWorld(level).getLoadedShips();
-      return StreamSupport.<LoadedServerShip>stream(ships.spliterator(), false).map(ship -> new VsShipTargetView(level, ship, this));
-   }
+        Vector3d value =
+                new Vector3d(
+                        shipDir.x,
+                        shipDir.y,
+                        shipDir.z
+                );
+
+        matrix.transformDirection(
+                value
+        );
+
+        return new Vec3(
+                value.x,
+                value.y,
+                value.z
+        );
+    }
+
+    @Override
+    public Vec3 transformWorldToShip(
+            Object ship,
+            Vec3 worldPos
+    ) {
+        Matrix4dc matrix =
+                VsRuntimeCompat.worldToShip(
+                        ship
+                );
+
+        if (matrix == null) {
+            return worldPos;
+        }
+
+        Vector3d value =
+                new Vector3d(
+                        worldPos.x,
+                        worldPos.y,
+                        worldPos.z
+                );
+
+        matrix.transformPosition(
+                value
+        );
+
+        return new Vec3(
+                value.x,
+                value.y,
+                value.z
+        );
+    }
+
+    @Override
+    public Vec3 transformDirWorldToShip(
+            Object ship,
+            Vec3 worldDir
+    ) {
+        Matrix4dc matrix =
+                VsRuntimeCompat.worldToShip(
+                        ship
+                );
+
+        if (matrix == null) {
+            return worldDir;
+        }
+
+        Vector3d value =
+                new Vector3d(
+                        worldDir.x,
+                        worldDir.y,
+                        worldDir.z
+                );
+
+        matrix.transformDirection(
+                value
+        );
+
+        return new Vec3(
+                value.x,
+                value.y,
+                value.z
+        );
+    }
+
+    @Override
+    public Vec3 shipCenter(
+            Object ship
+    ) {
+        AABBdc aabb =
+                VsRuntimeCompat.worldAabb(
+                        ship
+                );
+
+        if (aabb != null) {
+            return new Vec3(
+                    (aabb.minX()
+                            + aabb.maxX()) * 0.5D,
+                    (aabb.minY()
+                            + aabb.maxY()) * 0.5D,
+                    (aabb.minZ()
+                            + aabb.maxZ()) * 0.5D
+            );
+        }
+
+        Vector3dc position =
+                VsRuntimeCompat.shipWorldPosition(
+                        ship
+                );
+
+        if (position == null) {
+            return Vec3.ZERO;
+        }
+
+        return new Vec3(
+                position.x(),
+                position.y(),
+                position.z()
+        );
+    }
+
+    @Override
+    public Vec3 shipVelocity(
+            Object ship
+    ) {
+        Vector3dc velocity =
+                VsRuntimeCompat.shipVelocity(
+                        ship
+                );
+
+        if (velocity == null) {
+            return Vec3.ZERO;
+        }
+
+        return new Vec3(
+                velocity.x(),
+                velocity.y(),
+                velocity.z()
+        );
+    }
+
+    @Override
+    public Obb shipObb(
+            Object ship
+    ) {
+        AABBic shipAabb =
+                VsRuntimeCompat.shipAabb(
+                        ship
+                );
+
+        Matrix4dc matrix =
+                VsRuntimeCompat.shipToWorld(
+                        ship
+                );
+
+        if (shipAabb == null
+                || matrix == null) {
+            return new Obb(
+                    shipCenter(
+                            ship
+                    ),
+                    Vec3.ZERO,
+                    new Quaterniond()
+            );
+        }
+
+        double cx =
+                (shipAabb.minX()
+                        + shipAabb.maxX()) * 0.5D;
+
+        double cy =
+                (shipAabb.minY()
+                        + shipAabb.maxY()) * 0.5D;
+
+        double cz =
+                (shipAabb.minZ()
+                        + shipAabb.maxZ()) * 0.5D;
+
+        double hx =
+                (shipAabb.maxX()
+                        - shipAabb.minX()) * 0.5D;
+
+        double hy =
+                (shipAabb.maxY()
+                        - shipAabb.minY()) * 0.5D;
+
+        double hz =
+                (shipAabb.maxZ()
+                        - shipAabb.minZ()) * 0.5D;
+
+        Vector3d centerShip =
+                new Vector3d(
+                        cx,
+                        cy,
+                        cz
+                );
+
+        matrix.transformPosition(
+                centerShip
+        );
+
+        Quaterniond rotation =
+                new Quaterniond();
+
+        matrix.getNormalizedRotation(
+                rotation
+        );
+
+        return new Obb(
+                new Vec3(
+                        centerShip.x,
+                        centerShip.y,
+                        centerShip.z
+                ),
+                new Vec3(
+                        hx,
+                        hy,
+                        hz
+                ),
+                rotation
+        );
+    }
+
+    @Override
+    public Stream<IRadarTarget> shipTargetsIn(
+            ServerLevel level
+    ) {
+        return VsRuntimeCompat.loadedShips(
+                        level
+                )
+                .map(ship ->
+                        new VsShipTargetView(
+                                level,
+                                ship,
+                                this
+                        )
+                );
+    }
 }

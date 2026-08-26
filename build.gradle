@@ -69,6 +69,9 @@ repositories {
     flatDir { dir 'libs' }
 }
 
+def vs2CompileArtifact = findProperty('vs2_compile_artifact') ?: '2.3.0-beta.5tt22x2'
+def vs2RuntimeArtifact = findProperty('vs2_runtime_artifact') ?: vs2CompileArtifact
+
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
@@ -79,7 +82,7 @@ dependencies {
 
     // Valkyrien Skies API available while compiling VSIA.
     compileOnly fg.deobf(
-            "blank:valkyrienskies-120:2.3.0-beta.5tt22x2"
+            "blank:valkyrienskies-120:${vs2CompileArtifact}"
     )
 
     compileOnly files(
@@ -101,7 +104,7 @@ dependencies {
 // Load the actual VS2 mod only in Forge development runs.
 // runtimeOnly dependencies are not included inside the finished VSIA JAR.
     runtimeOnly fg.deobf(
-            "blank:valkyrienskies-120:2.3.0-beta.5tt22x2"
+            "blank:valkyrienskies-120:${vs2RuntimeArtifact}"
     )
 
 // VS2 is written partly in Kotlin and requires the Kotlin runtime.
@@ -115,6 +118,7 @@ tasks.named('processResources', ProcessResources).configure {
             minecraft_version: minecraft_version, minecraft_version_range: minecraft_version_range,
             forge_version: forge_version, forge_version_range: forge_version_range,
             loader_version_range: loader_version_range,
+            vs2_version_range: vs2_version_range,
             mod_id: mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: mod_version,
             mod_authors: mod_authors, mod_description: mod_description,
     ]
