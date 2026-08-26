@@ -452,12 +452,12 @@ public final class WifiEngineeringScreen
 
         int workflowWidth =
                 Math.max(
-                        44,
+                        40,
                         (
                                 usableWidth
-                                        - workflowGap * 8
+                                        - workflowGap * 9
                         )
-                                / 9
+                                / 10
                 );
 
         addWorkflowButton(
@@ -559,9 +559,22 @@ public final class WifiEngineeringScreen
         );
 
         addWorkflowButton(
-                "Legacy",
+                "Burst x32",
                 OUTER_MARGIN
                         + 8
+                        * (
+                        workflowWidth
+                                + workflowGap
+                ),
+                workflowY,
+                workflowWidth,
+                WifiEngineeringWorkflowAction.CONTENTION_BURST
+        );
+
+        addWorkflowButton(
+                "Legacy",
+                OUTER_MARGIN
+                        + 9
                         * (
                         workflowWidth
                                 + workflowGap

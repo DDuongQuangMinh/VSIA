@@ -1446,6 +1446,47 @@ private final WifiPhyController wifiPhy =
         return wifiMac.pendingTransmissionDiagnostics();
     }
 
+    public WifiContentionSnapshot wifiContentionSnapshot() {
+        return wifiMac.contentionSnapshot();
+    }
+
+    public String wifiContentionDiagnostic() {
+        return wifiMac.contentionDiagnostic();
+    }
+
+    public void clearWifiContentionMetrics() {
+        wifiMac.clearContentionMetrics();
+    }
+
+    public int sendWifiContentionBurst(
+            int frames,
+            int bytesPerFrame
+    ) {
+        int count =
+                Math.max(
+                        1,
+                        Math.min(
+                                128,
+                                frames
+                        )
+                );
+
+        int accepted =
+                0;
+
+        for (int i = 0;
+             i < count;
+             i++) {
+            if (sendWifiEngineeringAssociatedData(
+                    bytesPerFrame
+            )) {
+                accepted++;
+            }
+        }
+
+        return accepted;
+    }
+
     public String wifiIpAddress() {
         return ipAddress;
     }

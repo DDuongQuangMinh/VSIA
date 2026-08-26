@@ -147,6 +147,17 @@ public final class WifiMacController {
     private String lastSecurityDiagnostic =
             "IDLE";
 
+    private static final int WIFI_CONTENTION_QUEUE_CAPACITY =
+            64;
+
+    private long contentionEnqueued;
+    private long contentionAttempts;
+    private long contentionSuccesses;
+    private long contentionRetries;
+    private long contentionDrops;
+    private long contentionDeferrals;
+    private int contentionQueuePeak;
+
     public WifiMode mode() {
         return mode;
     }
@@ -274,6 +285,47 @@ public final class WifiMacController {
 
     public int pendingDataTransmissions() {
         return pendingTransmissions.size();
+    }
+
+    public WifiContentionSnapshot contentionSnapshot() {
+        return new WifiContentionSnapshot(
+                pendingTransmissions.size(),
+                WIFI_CONTENTION_QUEUE_CAPACITY,
+                contentionQueuePeak,
+                contentionEnqueued,
+                contentionAttempts,
+                contentionSuccesses,
+                contentionRetries,
+                contentionDrops,
+                contentionDeferrals,
+                edca.contentionWindow(
+                        WifiAccessCategory.VOICE
+                ),
+                edca.contentionWindow(
+                        WifiAccessCategory.VIDEO
+                ),
+                edca.contentionWindow(
+                        WifiAccessCategory.BEST_EFFORT
+                ),
+                edca.contentionWindow(
+                        WifiAccessCategory.BACKGROUND
+                )
+        );
+    }
+
+    public String contentionDiagnostic() {
+        return contentionSnapshot().compact();
+    }
+
+    public void clearContentionMetrics() {
+        contentionEnqueued = 0L;
+        contentionAttempts = 0L;
+        contentionSuccesses = 0L;
+        contentionRetries = 0L;
+        contentionDrops = 0L;
+        contentionDeferrals = 0L;
+        contentionQueuePeak =
+                pendingTransmissions.size();
     }
 
     public List<String> pendingTransmissionDiagnostics() {
@@ -1087,6 +1139,8 @@ public final class WifiMacController {
                 edca.onSuccess(
                         pending.category()
                 );
+
+                contentionSuccesses++;
             }
 
             return null;
@@ -1305,6 +1359,19 @@ public final class WifiMacController {
             WifiAccessCategory category,
             Sender sender
     ) {
+        if (pendingTransmissions.size()
+                >= WIFI_CONTENTION_QUEUE_CAPACITY) {
+            contentionDrops++;
+
+            lastSecurityDiagnostic =
+                    "W123_QUEUE_DROP_"
+                            + pendingTransmissions.size();
+
+            return false;
+        }
+
+        contentionEnqueued++;
+
         int sequence =
                 sequenceNumber++ & 0x0FFF;
 
@@ -1366,6 +1433,12 @@ public final class WifiMacController {
                 sequence,
                 pending
         );
+
+        contentionQueuePeak =
+                Math.max(
+                        contentionQueuePeak,
+                        pendingTransmissions.size()
+                );
 
         WifiMacTimingScheduler.track(
                 this
@@ -1431,6 +1504,8 @@ public final class WifiMacController {
                 pending,
                 nowMicros
         )) {
+            contentionDeferrals++;
+
             pendingTransmissions.put(
                     pending.sequence(),
                     copyPending(
@@ -1484,6 +1559,8 @@ public final class WifiMacController {
                 pending,
                 nowMicros
         )) {
+            contentionDeferrals++;
+
             pendingTransmissions.put(
                     pending.sequence(),
                     copyPending(
@@ -1567,8 +1644,11 @@ public final class WifiMacController {
                 pending.category()
         );
 
+        contentionRetries++;
+
         if (pending.attempt()
                 >= MAX_RETRIES) {
+            contentionDrops++;
             pendingTransmissions.remove(
                     pending.sequence()
             );
@@ -1659,6 +1739,8 @@ public final class WifiMacController {
     private void sendPendingAttempt(
             PendingTransmission pending
     ) {
+        contentionAttempts++;
+
         if (pending.useRts()) {
             sendRts(
                     pending
@@ -1778,6 +1860,8 @@ public final class WifiMacController {
             edca.onSuccess(
                     pending.category()
             );
+
+            contentionSuccesses++;
 
             lastSecurityDiagnostic =
                     "BROADCAST_EDCA_QUEUED";

@@ -9,5 +9,6 @@ public enum WifiEngineeringWorkflowAction {
     CONNECT_FIRST,
     ROAM_BEST,
     SEND_DATA,
+    CONTENTION_BURST,
     LEGACY_DIRECT
 }

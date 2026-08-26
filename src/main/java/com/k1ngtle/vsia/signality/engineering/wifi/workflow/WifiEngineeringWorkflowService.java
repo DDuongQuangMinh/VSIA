@@ -44,7 +44,9 @@ public final class WifiEngineeringWorkflowService {
                         device.wifiAssociatedStations()
                 ),
                 device.wifiPendingDataTransmissions(),
-                device.wifiSecurityDiagnostic(),
+                device.wifiSecurityDiagnostic()
+                        + " | "
+                        + device.wifiContentionDiagnostic(),
                 status
         );
     }
@@ -110,6 +112,11 @@ public final class WifiEngineeringWorkflowService {
                             )
                                     ? "Associated unicast DATA queued; watch DATA / ACK / retry events"
                                     : "DATA rejected: endpoint is not associated or AP has no associated station";
+
+                    case CONTENTION_BURST ->
+                            contentionBurst(
+                                    device
+                            );
 
                     case LEGACY_DIRECT -> {
                         device.useLegacyWifiDirectMode();
@@ -268,6 +275,26 @@ public final class WifiEngineeringWorkflowService {
                 : normalized.substring(
                 normalized.length() - 8
         );
+    }
+
+    private static String contentionBurst(
+            NetworkDeviceBlockEntity device
+    ) {
+        int requested =
+                32;
+
+        int accepted =
+                device.sendWifiContentionBurst(
+                        requested,
+                        1024
+                );
+
+        return "W1.23 contention burst "
+                + accepted
+                + "/"
+                + requested
+                + " accepted | "
+                + device.wifiContentionDiagnostic();
     }
 
     private static String connectFirst(
