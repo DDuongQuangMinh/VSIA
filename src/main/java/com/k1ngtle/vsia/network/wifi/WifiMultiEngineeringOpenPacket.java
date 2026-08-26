@@ -9,7 +9,9 @@ import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -31,49 +33,92 @@ public final class WifiMultiEngineeringOpenPacket {
             );
         }
 
-        List<UUID> ids = new ArrayList<>(DEVICE_COUNT);
+        List<UUID> ids =
+                new ArrayList<>(DEVICE_COUNT);
 
-        for (WifiEngineeringSnapshot snapshot : snapshots) {
-            if (snapshot == null || snapshot.deviceId() == null) {
+        for (WifiEngineeringSnapshot snapshot
+                : snapshots) {
+            if (snapshot == null
+                    || snapshot.deviceId() == null) {
                 throw new IllegalArgumentException(
                         "Every W1.23.3 target must have a persistent device UUID"
                 );
             }
 
-            ids.add(snapshot.deviceId());
+            ids.add(
+                    snapshot.deviceId()
+            );
         }
 
-        deviceIds = List.copyOf(ids);
-    }
+        Set<UUID> unique =
+                new HashSet<>(ids);
 
-    public WifiMultiEngineeringOpenPacket(FriendlyByteBuf buf) {
-        List<UUID> ids = new ArrayList<>(DEVICE_COUNT);
-
-        for (int index = 0; index < DEVICE_COUNT; index++) {
-            ids.add(buf.readUUID());
+        if (unique.size()
+                != DEVICE_COUNT) {
+            throw new IllegalArgumentException(
+                    "W1.23.3 refuses duplicate device UUID targets"
+            );
         }
 
-        deviceIds = List.copyOf(ids);
+        deviceIds =
+                List.copyOf(ids);
     }
 
-    public void toBytes(FriendlyByteBuf buf) {
-        for (UUID deviceId : deviceIds) {
-            buf.writeUUID(deviceId);
+    public WifiMultiEngineeringOpenPacket(
+            FriendlyByteBuf buf
+    ) {
+        List<UUID> ids =
+                new ArrayList<>(DEVICE_COUNT);
+
+        for (int index = 0;
+             index < DEVICE_COUNT;
+             index++) {
+            ids.add(
+                    buf.readUUID()
+            );
+        }
+
+        if (new HashSet<>(ids).size()
+                != DEVICE_COUNT) {
+            throw new IllegalArgumentException(
+                    "Received W1.23.3 open packet with duplicate device UUIDs"
+            );
+        }
+
+        deviceIds =
+                List.copyOf(ids);
+    }
+
+    public void toBytes(
+            FriendlyByteBuf buf
+    ) {
+        for (UUID deviceId
+                : deviceIds) {
+            buf.writeUUID(
+                    deviceId
+            );
         }
     }
 
-    public void handle(Supplier<NetworkEvent.Context> supplier) {
-        NetworkEvent.Context context = supplier.get();
+    public void handle(
+            Supplier<NetworkEvent.Context> supplier
+    ) {
+        NetworkEvent.Context context =
+                supplier.get();
 
         context.enqueueWork(
                 () -> DistExecutor.unsafeRunWhenOn(
                         Dist.CLIENT,
                         () -> () ->
                                 WifiEngineeringClientPacketHandler
-                                        .handleMultiOpen(deviceIds)
+                                        .handleMultiOpen(
+                                                deviceIds
+                                        )
                 )
         );
 
-        context.setPacketHandled(true);
+        context.setPacketHandled(
+                true
+        );
     }
 }
