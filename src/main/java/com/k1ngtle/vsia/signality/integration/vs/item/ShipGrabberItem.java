@@ -15,74 +15,103 @@ import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
-import org.valkyrienskies.core.api.ships.LoadedServerShip;
+import org.valkyrienskies.core.api.ships.ServerShip;
 import org.valkyrienskies.core.api.ships.Ship;
 import org.valkyrienskies.mod.common.VSGameUtilsKt;
-import org.valkyrienskies.mod.common.ValkyrienSkiesMod;
+import org.valkyrienskies.mod.common.util.GameTickForceApplier;
 
 import java.util.List;
 
 public final class ShipGrabberItem extends Item {
-    private static final String TAG_SHIP_ID = "VsiaGrabbedShipId";
+    private static final String TAG_SHIP_ID =
+            "VsiaGrabbedShipId";
 
-    private static final double HOLD_DISTANCE = 4.0D;
-    private static final double SPRING_ACCELERATION = 8.0D;
-    private static final double DAMPING = 4.0D;
-    private static final double MAX_ACCELERATION = 30.0D;
-    private static final double MAX_DISTANCE = 96.0D;
+    private static final double HOLD_DISTANCE =
+            4.0D;
 
-    public ShipGrabberItem(Properties properties) {
+    private static final double SPRING_ACCELERATION =
+            8.0D;
+
+    private static final double DAMPING =
+            4.0D;
+
+    private static final double MAX_ACCELERATION =
+            30.0D;
+
+    private static final double MAX_DISTANCE =
+            96.0D;
+
+    public ShipGrabberItem(
+            Properties properties
+    ) {
         super(properties);
     }
 
     @Override
-    public InteractionResult useOn(UseOnContext context) {
-        if (!(context.getLevel() instanceof ServerLevel level)) {
+    public InteractionResult useOn(
+            UseOnContext context
+    ) {
+        if (!(context.getLevel()
+                instanceof ServerLevel level)) {
             return InteractionResult.SUCCESS;
         }
 
-        Player player = context.getPlayer();
+        Player player =
+                context.getPlayer();
 
         if (player == null) {
             return InteractionResult.PASS;
         }
 
-        ItemStack stack = context.getItemInHand();
+        ItemStack stack =
+                context.getItemInHand();
 
-        LoadedServerShip ship =
-                VSGameUtilsKt.getLoadedShipManagingPos(
+        ServerShip ship =
+                VSGameUtilsKt.getShipManagingPos(
                         level,
                         context.getClickedPos()
                 );
 
         if (ship == null) {
             player.displayClientMessage(
-                    Component.literal("No Valkyrien Skies ship at this block"),
+                    Component.literal(
+                            "No Valkyrien Skies ship at this block"
+                    ),
                     true
             );
+
             return InteractionResult.CONSUME;
         }
 
-        long shipId = ship.getId();
+        long shipId =
+                ship.getId();
 
-        if (hasShip(stack) && getShipId(stack) == shipId) {
+        if (hasShip(stack)
+                && getShipId(stack) == shipId) {
             clearShip(stack);
+
             player.displayClientMessage(
-                    Component.literal("Released ship " + shipId),
+                    Component.literal(
+                            "Released ship " + shipId
+                    ),
                     true
             );
+
             return InteractionResult.CONSUME;
         }
 
-        stack.getOrCreateTag().putLong(TAG_SHIP_ID, shipId);
+        stack.getOrCreateTag()
+                .putLong(
+                        TAG_SHIP_ID,
+                        shipId
+                );
 
         player.displayClientMessage(
                 Component.literal(
-                        "Grabbed ship " + shipId
+                        "Grabbed ship "
+                                + shipId
                                 + " - keep the item selected to pull it"
                 ),
                 true
@@ -97,14 +126,20 @@ public final class ShipGrabberItem extends Item {
             Player player,
             InteractionHand hand
     ) {
-        ItemStack stack = player.getItemInHand(hand);
+        ItemStack stack =
+                player.getItemInHand(hand);
 
-        if (!level.isClientSide && hasShip(stack)) {
-            long shipId = getShipId(stack);
+        if (!level.isClientSide
+                && hasShip(stack)) {
+            long shipId =
+                    getShipId(stack);
+
             clearShip(stack);
 
             player.displayClientMessage(
-                    Component.literal("Released ship " + shipId),
+                    Component.literal(
+                            "Released ship " + shipId
+                    ),
                     true
             );
         }
@@ -123,7 +158,13 @@ public final class ShipGrabberItem extends Item {
             int slot,
             boolean selected
     ) {
-        super.inventoryTick(stack, level, entity, slot, selected);
+        super.inventoryTick(
+                stack,
+                level,
+                entity,
+                slot,
+                selected
+        );
 
         if (!(level instanceof ServerLevel serverLevel)
                 || !(entity instanceof Player player)
@@ -136,98 +177,151 @@ public final class ShipGrabberItem extends Item {
             return;
         }
 
-        long shipId = getShipId(stack);
+        long shipId =
+                getShipId(stack);
 
         Ship found =
-                VSGameUtilsKt.getShipObjectWorld(serverLevel)
+                VSGameUtilsKt.getShipObjectWorld(
+                                serverLevel
+                        )
                         .getLoadedShips()
-                        .getById(shipId);
+                        .getById(
+                                shipId
+                        );
 
-        if (!(found instanceof LoadedServerShip ship)) {
+        if (!(found instanceof ServerShip ship)) {
             clearShip(stack);
+
             player.displayClientMessage(
-                    Component.literal("Grabbed ship is no longer loaded"),
+                    Component.literal(
+                            "Grabbed ship is no longer loaded"
+                    ),
                     true
             );
+
             return;
         }
 
         Vector3dc shipPosition =
-                ship.getTransform().getPositionInWorld();
+                ship.getTransform()
+                        .getPositionInWorld();
 
-        Vec3 eye = player.getEyePosition();
-        Vec3 look = player.getLookAngle();
+        Vec3 eye =
+                player.getEyePosition();
 
-        Vec3 target = eye.add(
-                look.x * HOLD_DISTANCE,
-                look.y * HOLD_DISTANCE,
-                look.z * HOLD_DISTANCE
-        );
+        Vec3 look =
+                player.getLookAngle();
 
-        Vector3d error = new Vector3d(
-                target.x - shipPosition.x(),
-                target.y - shipPosition.y(),
-                target.z - shipPosition.z()
-        );
+        Vec3 target =
+                eye.add(
+                        look.x * HOLD_DISTANCE,
+                        look.y * HOLD_DISTANCE,
+                        look.z * HOLD_DISTANCE
+                );
 
-        if (error.lengthSquared() > MAX_DISTANCE * MAX_DISTANCE) {
+        Vector3d error =
+                new Vector3d(
+                        target.x
+                                - shipPosition.x(),
+                        target.y
+                                - shipPosition.y(),
+                        target.z
+                                - shipPosition.z()
+                );
+
+        if (error.lengthSquared()
+                > MAX_DISTANCE * MAX_DISTANCE) {
             clearShip(stack);
+
             player.displayClientMessage(
                     Component.literal(
                             "Ship Grabber released: ship is too far away"
                     ),
                     true
             );
+
             return;
         }
 
-        Vector3dc velocity = ship.getVelocity();
+        Vector3dc velocity =
+                ship.getVelocity();
 
-        Vector3d acceleration = new Vector3d(error)
-                .mul(SPRING_ACCELERATION)
-                .sub(
-                        new Vector3d(velocity)
-                                .mul(DAMPING)
-                );
+        Vector3d acceleration =
+                new Vector3d(error)
+                        .mul(
+                                SPRING_ACCELERATION
+                        )
+                        .sub(
+                                new Vector3d(
+                                        velocity
+                                ).mul(
+                                        DAMPING
+                                )
+                        );
 
-        double accelerationLength = acceleration.length();
+        double accelerationLength =
+                acceleration.length();
 
-        if (accelerationLength > MAX_ACCELERATION
-                && accelerationLength > 1.0E-9D) {
+        if (accelerationLength
+                > MAX_ACCELERATION
+                && accelerationLength
+                > 1.0E-9D) {
             acceleration.mul(
-                    MAX_ACCELERATION / accelerationLength
+                    MAX_ACCELERATION
+                            / accelerationLength
             );
         }
 
-        double mass = ship.getInertiaData().getMass();
+        double mass =
+                ship.getInertiaData()
+                        .getMass();
 
-        if (!Double.isFinite(mass) || mass <= 0.0D) {
+        if (!Double.isFinite(mass)
+                || mass <= 0.0D) {
             return;
         }
 
-        Vector3d force = acceleration.mul(mass);
+        Vector3d force =
+                acceleration.mul(
+                        mass
+                );
 
         if (!force.isFinite()) {
             return;
         }
 
-        ValkyrienSkiesMod.getOrCreateGTPA(
-                        ship.getChunkClaimDimension()
-                )
-                .applyWorldForce(
-                        ship.getId(),
-                        force,
-                        null
+        GameTickForceApplier forceApplier =
+                ship.getAttachment(
+                        GameTickForceApplier.class
                 );
+
+        if (forceApplier == null) {
+            clearShip(stack);
+
+            player.displayClientMessage(
+                    Component.literal(
+                            "Ship Grabber released: VS beta.5 force applier is unavailable"
+                    ),
+                    true
+            );
+
+            return;
+        }
+
+        forceApplier.applyInvariantForce(
+                force
+        );
     }
 
     @Override
-    public boolean isFoil(ItemStack stack) {
-        return hasShip(stack) || super.isFoil(stack);
+    public boolean isFoil(
+            ItemStack stack
+    ) {
+        return hasShip(stack)
+                || super.isFoil(stack);
     }
 
     @Override
-    @OnlyIn(Dist.CLIENT)
     public void appendHoverText(
             ItemStack stack,
             Level level,
@@ -235,48 +329,81 @@ public final class ShipGrabberItem extends Item {
             TooltipFlag flag
     ) {
         tooltip.add(
-                Component.literal("Right-click a VS ship to grab it")
-                        .withStyle(ChatFormatting.GRAY)
+                Component.literal(
+                                "Right-click a VS ship to grab it"
+                        )
+                        .withStyle(
+                                ChatFormatting.GRAY
+                        )
         );
 
         tooltip.add(
                 Component.literal(
                                 "Keep selected to pull it; right-click air to release"
                         )
-                        .withStyle(ChatFormatting.DARK_GRAY)
+                        .withStyle(
+                                ChatFormatting.DARK_GRAY
+                        )
         );
 
         if (hasShip(stack)) {
             tooltip.add(
                     Component.literal(
-                                    "Holding ship " + getShipId(stack)
+                                    "Holding ship "
+                                            + getShipId(
+                                            stack
+                                    )
                             )
-                            .withStyle(ChatFormatting.AQUA)
+                            .withStyle(
+                                    ChatFormatting.AQUA
+                            )
             );
         }
     }
 
-    private static boolean hasShip(ItemStack stack) {
-        CompoundTag tag = stack.getTag();
-        return tag != null && tag.contains(TAG_SHIP_ID);
+    private static boolean hasShip(
+            ItemStack stack
+    ) {
+        CompoundTag tag =
+                stack.getTag();
+
+        return tag != null
+                && tag.contains(
+                        TAG_SHIP_ID
+                );
     }
 
-    private static long getShipId(ItemStack stack) {
-        CompoundTag tag = stack.getTag();
-        return tag == null ? -1L : tag.getLong(TAG_SHIP_ID);
+    private static long getShipId(
+            ItemStack stack
+    ) {
+        CompoundTag tag =
+                stack.getTag();
+
+        return tag == null
+                ? -1L
+                : tag.getLong(
+                        TAG_SHIP_ID
+                );
     }
 
-    private static void clearShip(ItemStack stack) {
-        CompoundTag tag = stack.getTag();
+    private static void clearShip(
+            ItemStack stack
+    ) {
+        CompoundTag tag =
+                stack.getTag();
 
         if (tag == null) {
             return;
         }
 
-        tag.remove(TAG_SHIP_ID);
+        tag.remove(
+                TAG_SHIP_ID
+        );
 
         if (tag.isEmpty()) {
-            stack.setTag(null);
+            stack.setTag(
+                    null
+            );
         }
     }
 }
