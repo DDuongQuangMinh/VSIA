@@ -31,6 +31,7 @@ import com.k1ngtle.vsia.signality.internet.server.StorageServerItem;
 import com.k1ngtle.vsia.signality.internet.router.RtAc68uRouterBlock;
 import com.k1ngtle.vsia.signality.internet.router.RtAc68uRouterBlockEntity;
 import com.k1ngtle.vsia.signality.internet.router.RtAc68uRouterItem;
+import com.k1ngtle.vsia.signality.integration.vs.item.ShipGrabberItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
@@ -178,6 +179,14 @@ public class SignalityBlocks {
                     RtAc68uRouterBlockEntity::new,
                     RT_AC68U_ROUTER.get()
             ).build(null)
+    );
+
+    public static final RegistryObject<Item> SHIP_GRABBER = ITEMS.register(
+            "ship_grabber",
+            () -> new ShipGrabberItem(
+                    new Item.Properties()
+                            .stacksTo(1)
+            )
     );
 
     // --- Utilities & Cables ---
