@@ -1,6 +1,7 @@
 package com.k1ngtle.vsia.client.wifi;
 
 import com.k1ngtle.vsia.client.screen.WifiEngineeringScreen;
+import com.k1ngtle.vsia.client.screen.WifiMultiEngineeringScreen;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringSnapshot;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringTestLinkResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.trace.WifiPacketTraceEvent;
@@ -43,7 +44,31 @@ public final class WifiEngineeringClientPacketHandler {
                     snapshot
             );
         }
+
+        if (minecraft.screen
+                instanceof WifiMultiEngineeringScreen screen
+                && screen.accepts(pos)) {
+            screen.acceptSnapshot(
+                    pos,
+                    snapshot
+            );
+        }
     }
+    public static void handleMultiOpen(
+            List<BlockPos> positions,
+            List<WifiEngineeringSnapshot> snapshots
+    ) {
+        Minecraft minecraft =
+                Minecraft.getInstance();
+
+        minecraft.setScreen(
+                new WifiMultiEngineeringScreen(
+                        positions,
+                        snapshots
+                )
+        );
+    }
+
     public static void handleTestLinkResult(
             BlockPos pos,
             WifiEngineeringTestLinkResult result
@@ -96,6 +121,15 @@ public final class WifiEngineeringClientPacketHandler {
                         pos
                 )) {
             screen.acceptWorkflowSnapshot(
+                    snapshot
+            );
+        }
+
+        if (minecraft.screen
+                instanceof WifiMultiEngineeringScreen screen
+                && screen.accepts(pos)) {
+            screen.acceptWorkflowSnapshot(
+                    pos,
                     snapshot
             );
         }
