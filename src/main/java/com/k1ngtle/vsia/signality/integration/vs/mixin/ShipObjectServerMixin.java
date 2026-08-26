@@ -1,5 +1,7 @@
 package com.k1ngtle.vsia.signality.integration.vs.mixin;
 
+import com.k1ngtle.vsia.signality.integration.vs.access.SignalityShipSnapshot;
+
 import java.util.concurrent.atomic.AtomicReference;
 import org.joml.Vector3dc;
 import org.spongepowered.asm.mixin.Mixin;
