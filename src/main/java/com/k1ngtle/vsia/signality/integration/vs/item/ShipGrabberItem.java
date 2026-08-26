@@ -15,6 +15,8 @@ import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.api.distmarker.OnlyIn;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
 import org.valkyrienskies.core.api.ships.LoadedServerShip;
@@ -52,7 +54,7 @@ public final class ShipGrabberItem extends Item {
         ItemStack stack = context.getItemInHand();
 
         LoadedServerShip ship =
-                VSGameUtilsKt.getShipManagingPos(
+                VSGameUtilsKt.getLoadedShipManagingPos(
                         level,
                         context.getClickedPos()
                 );
@@ -205,8 +207,11 @@ public final class ShipGrabberItem extends Item {
 
         Vector3d force = acceleration.mul(mass);
 
-        ValkyrienSkiesMod.INSTANCE
-                .getOrCreateGTPA(
+        if (!force.isFinite()) {
+            return;
+        }
+
+        ValkyrienSkiesMod.getOrCreateGTPA(
                         ship.getChunkClaimDimension()
                 )
                 .applyWorldForce(
@@ -222,6 +227,7 @@ public final class ShipGrabberItem extends Item {
     }
 
     @Override
+    @OnlyIn(Dist.CLIENT)
     public void appendHoverText(
             ItemStack stack,
             Level level,

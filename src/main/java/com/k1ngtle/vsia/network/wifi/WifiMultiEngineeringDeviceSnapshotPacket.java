@@ -9,10 +9,10 @@ import com.k1ngtle.vsia.signality.engineering.wifi.workflow.WifiEngineeringWorkf
 import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.network.NetworkEvent;
-import org.joml.Vector3d;
 
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -49,7 +49,7 @@ public final class WifiMultiEngineeringDeviceSnapshotPacket {
             NetworkDeviceBlockEntity device,
             String status
     ) {
-        Vector3d world = device.positionWorld();
+        Vec3 world = device.positionWorld();
 
         return new WifiMultiEngineeringDeviceSnapshotPacket(
                 device.id(),

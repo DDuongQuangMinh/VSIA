@@ -5,8 +5,8 @@ import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringDev
 import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.network.NetworkEvent;
-import org.joml.Vector3d;
 
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -56,7 +56,7 @@ public final class WifiMultiEngineeringDeviceRequestPacket {
                         return;
                     }
 
-                    Vector3d world = device.positionWorld();
+                    Vec3 world = device.positionWorld();
 
                     double dx = player.getX() - world.x;
                     double dy = player.getY() - world.y;
