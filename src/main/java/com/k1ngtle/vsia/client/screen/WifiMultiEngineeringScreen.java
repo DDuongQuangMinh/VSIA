@@ -1,66 +1,55 @@
 package com.k1ngtle.vsia.client.screen;
 
 import com.k1ngtle.vsia.network.VsiaNetwork;
-import com.k1ngtle.vsia.network.wifi.WifiEngineeringSnapshotRequestPacket;
-import com.k1ngtle.vsia.network.wifi.WifiEngineeringWorkflowActionPacket;
-import com.k1ngtle.vsia.network.wifi.WifiEngineeringWorkflowRequestPacket;
+import com.k1ngtle.vsia.network.wifi.WifiMultiEngineeringDeviceActionPacket;
+import com.k1ngtle.vsia.network.wifi.WifiMultiEngineeringDeviceRequestPacket;
+import com.k1ngtle.vsia.network.wifi.WifiMultiEngineeringDeviceSnapshotPacket;
 import com.k1ngtle.vsia.signality.engineering.wifi.instrument.WifiEngineeringSnapshot;
 import com.k1ngtle.vsia.signality.engineering.wifi.workflow.WifiEngineeringWorkflowAction;
 import com.k1ngtle.vsia.signality.engineering.wifi.workflow.WifiEngineeringWorkflowSnapshot;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 public final class WifiMultiEngineeringScreen extends Screen {
-    private static final int DEVICE_COUNT = 4;
-    private static final int POLL_INTERVAL_TICKS = 10;
-    private static final int OUTER_MARGIN = 10;
-    private static final int TOP_AREA = 28;
-    private static final int PANEL_GAP = 8;
-    private static final int PANEL_PADDING = 8;
-    private static final int BUTTON_HEIGHT = 20;
+    private static final int COUNT = 4;
+    private static final int POLL_TICKS = 10;
+    private static final int MARGIN = 10;
+    private static final int GAP = 8;
+    private static final int TOP = 30;
+    private static final int BUTTON_H = 20;
     private static final int BUTTON_GAP = 4;
 
-    private final BlockPos[] targetPositions = new BlockPos[DEVICE_COUNT];
-    private final WifiEngineeringSnapshot[] snapshots = new WifiEngineeringSnapshot[DEVICE_COUNT];
-    private final WifiEngineeringWorkflowSnapshot[] workflowSnapshots = new WifiEngineeringWorkflowSnapshot[DEVICE_COUNT];
-    private final String[] workflowStatus = new String[DEVICE_COUNT];
+    private final UUID[] ids = new UUID[COUNT];
+    private final WifiEngineeringSnapshot[] snapshots =
+            new WifiEngineeringSnapshot[COUNT];
+    private final WifiEngineeringWorkflowSnapshot[] workflows =
+            new WifiEngineeringWorkflowSnapshot[COUNT];
+    private final String[] status = new String[COUNT];
+    private final double[] x = new double[COUNT];
+    private final double[] y = new double[COUNT];
+    private final double[] z = new double[COUNT];
+    private final boolean[] resolved = new boolean[COUNT];
 
     private int pollTicker;
 
-    public WifiMultiEngineeringScreen(
-            List<BlockPos> positions,
-            List<WifiEngineeringSnapshot> initialSnapshots
-    ) {
-        super(Component.literal("W1.23 Multi-Device Wi-Fi Analyzer"));
+    public WifiMultiEngineeringScreen(List<UUID> deviceIds) {
+        super(Component.literal("W1.23.3 Multi-Device Wi-Fi Analyzer"));
 
-        if (positions == null
-                || initialSnapshots == null
-                || positions.size() != DEVICE_COUNT
-                || initialSnapshots.size() != DEVICE_COUNT) {
+        if (deviceIds == null || deviceIds.size() != COUNT) {
             throw new IllegalArgumentException(
-                    "W1.23 multi analyzer requires exactly four positions and four snapshots"
+                    "W1.23.3 requires exactly four device UUIDs"
             );
         }
 
-        for (int index = 0; index < DEVICE_COUNT; index++) {
-            BlockPos position = positions.get(index);
-            WifiEngineeringSnapshot snapshot = initialSnapshots.get(index);
-
-            if (position == null || snapshot == null) {
-                throw new IllegalArgumentException(
-                        "W1.23 multi analyzer positions/snapshots cannot contain null"
-                );
-            }
-
-            targetPositions[index] = position.immutable();
-            snapshots[index] = snapshot;
-            workflowStatus[index] = "Ready";
+        for (int i = 0; i < COUNT; i++) {
+            ids[i] = deviceIds.get(i);
+            status[i] = "Resolving UUID...";
         }
     }
 
@@ -68,8 +57,8 @@ public final class WifiMultiEngineeringScreen extends Screen {
     protected void init() {
         clearWidgets();
 
-        for (int index = 0; index < DEVICE_COUNT; index++) {
-            addPanelButtons(index);
+        for (int i = 0; i < COUNT; i++) {
+            addButtons(i);
         }
 
         requestAll();
@@ -82,46 +71,38 @@ public final class WifiMultiEngineeringScreen extends Screen {
 
     @Override
     public void tick() {
-        pollTicker++;
-
-        if (pollTicker >= POLL_INTERVAL_TICKS) {
+        if (++pollTicker >= POLL_TICKS) {
             pollTicker = 0;
             requestAll();
         }
     }
 
-    public boolean accepts(BlockPos pos) {
-        return indexOf(pos) >= 0;
-    }
-
-    public void acceptSnapshot(
-            BlockPos pos,
-            WifiEngineeringSnapshot snapshot
+    public void acceptDeviceSnapshot(
+            WifiMultiEngineeringDeviceSnapshotPacket packet
     ) {
-        int index = indexOf(pos);
+        int index = indexOf(packet.deviceId());
 
-        if (index < 0 || snapshot == null) {
+        if (index < 0) {
             return;
         }
 
-        snapshots[index] = snapshot;
-    }
+        resolved[index] = packet.resolved();
 
-    public void acceptWorkflowSnapshot(
-            BlockPos pos,
-            WifiEngineeringWorkflowSnapshot snapshot
-    ) {
-        int index = indexOf(pos);
-
-        if (index < 0 || snapshot == null) {
+        if (!packet.resolved()) {
+            status[index] = packet.status();
             return;
         }
 
-        workflowSnapshots[index] = snapshot;
+        snapshots[index] = packet.snapshot();
+        workflows[index] = packet.workflow();
+        x[index] = packet.worldX();
+        y[index] = packet.worldY();
+        z[index] = packet.worldZ();
 
-        if (snapshot.status() != null
-                && !snapshot.status().isBlank()) {
-            workflowStatus[index] = snapshot.status();
+        if (packet.status() != null && !packet.status().isBlank()) {
+            status[index] = packet.status();
+        } else {
+            status[index] = "Live";
         }
     }
 
@@ -138,251 +119,197 @@ public final class WifiMultiEngineeringScreen extends Screen {
                 font,
                 title,
                 width / 2,
-                9,
+                10,
                 0xE8F3FF
         );
 
         graphics.drawString(
                 font,
-                "Four persistent targets | each panel sends actions only to its own BlockPos",
-                OUTER_MARGIN,
-                20,
+                "Persistent UUID identity; world position is telemetry only",
+                MARGIN,
+                21,
                 0x8FA9BD,
                 false
         );
 
-        for (int index = 0; index < DEVICE_COUNT; index++) {
-            renderPanel(graphics, index);
+        for (int i = 0; i < COUNT; i++) {
+            renderPanel(graphics, i);
         }
 
-        super.render(
-                graphics,
-                mouseX,
-                mouseY,
-                partialTick
-        );
+        super.render(graphics, mouseX, mouseY, partialTick);
     }
 
-    private void renderPanel(
-            GuiGraphics graphics,
-            int index
-    ) {
+    private void renderPanel(GuiGraphics graphics, int index) {
         int left = panelLeft(index);
         int top = panelTop(index);
-        int panelWidth = panelWidth();
-        int panelHeight = panelHeight();
-        int right = left + panelWidth;
-        int bottom = top + panelHeight;
+        int width = panelWidth();
+        int height = panelHeight();
 
         graphics.fill(
                 left,
                 top,
-                right,
-                bottom,
+                left + width,
+                top + height,
                 0xD00B1219
         );
 
         graphics.fill(
                 left,
                 top,
-                right,
+                left + width,
                 top + 18,
                 0xD0182732
         );
 
-        BlockPos pos = targetPositions[index];
-        WifiEngineeringSnapshot snapshot = snapshots[index];
-        WifiEngineeringWorkflowSnapshot workflow = workflowSnapshots[index];
-
-        int textX = left + PANEL_PADDING;
-        int y = top + 5;
+        int textX = left + 8;
+        int textY = top + 5;
 
         graphics.drawString(
                 font,
                 "DEVICE " + (char) ('A' + index)
-                        + "  @ " + pos.toShortString(),
+                        + " | UUID " + shortId(ids[index]),
                 textX,
-                y,
+                textY,
                 0x6FD7FF,
                 false
         );
 
-        y += 18;
+        textY += 18;
 
-        drawLine(
-                graphics,
-                textX,
-                y,
-                "Device " + shortDevice(snapshot)
-                        + " | " + truncate(snapshot.networkProfile(), 34)
-        );
-        y += 11;
-
-        drawLine(
-                graphics,
-                textX,
-                y,
-                "Wi-Fi " + safe(snapshot.wifiMode())
-                        + " | station " + safe(snapshot.stationState())
-        );
-        y += 11;
-
-        drawLine(
-                graphics,
-                textX,
-                y,
-                "Security " + safe(snapshot.securityState())
-                        + " | MCS " + snapshot.mcsIndex()
-        );
-        y += 11;
-
-        drawLine(
-                graphics,
-                textX,
-                y,
-                "Freq " + frequency(snapshot.frequencyHz())
-                        + " | RSSI " + metric(snapshot.receivedPowerDbm(), " dBm")
-        );
-        y += 11;
-
-        drawLine(
-                graphics,
-                textX,
-                y,
-                "SNR " + metric(snapshot.snrDb(), " dB")
-                        + " | SINR " + metric(snapshot.correctedSinrDb(), " dB")
-        );
-        y += 11;
-
-        drawLine(
-                graphics,
-                textX,
-                y,
-                "Medium " + (snapshot.mediumBusy() ? "BUSY" : "IDLE")
-                        + " | overlap " + snapshot.overlappingTransmitters()
-        );
-        y += 11;
-
-        if (workflow == null) {
-            drawLine(graphics, textX, y, "MAC n/a | APs n/a");
-            y += 11;
-            drawLine(graphics, textX, y, "Association n/a | pending DATA n/a");
-        } else {
-            drawLine(
-                    graphics,
-                    textX,
-                    y,
-                    "MAC " + truncate(workflow.macAddress(), 24)
-                            + " | APs " + discovered(workflow)
-            );
-            y += 11;
-
-            drawLine(
-                    graphics,
-                    textX,
-                    y,
-                    "Associated " + workflow.associatedStations().size()
-                            + " | pending DATA " + workflow.pendingDataTransmissions()
-            );
+        if (!resolved[index] || snapshots[index] == null) {
+            draw(graphics, textX, textY, "Target unavailable");
+            textY += 12;
+            draw(graphics, textX, textY, status[index]);
+            return;
         }
 
-        y += 13;
+        WifiEngineeringSnapshot snapshot = snapshots[index];
+        WifiEngineeringWorkflowSnapshot workflow = workflows[index];
+
+        draw(
+                graphics,
+                textX,
+                textY,
+                String.format(
+                        Locale.ROOT,
+                        "World %.1f, %.1f, %.1f",
+                        x[index],
+                        y[index],
+                        z[index]
+                )
+        );
+        textY += 11;
+
+        draw(
+                graphics,
+                textX,
+                textY,
+                "Profile " + safe(snapshot.networkProfile())
+                        + " | " + safe(snapshot.wifiMode())
+        );
+        textY += 11;
+
+        draw(
+                graphics,
+                textX,
+                textY,
+                "Station " + safe(snapshot.stationState())
+                        + " | Security " + safe(snapshot.securityState())
+        );
+        textY += 11;
+
+        draw(
+                graphics,
+                textX,
+                textY,
+                String.format(
+                        Locale.ROOT,
+                        "RSSI %.1f dBm | SNR %.1f dB",
+                        snapshot.receivedPowerDbm(),
+                        snapshot.snrDb()
+                )
+        );
+        textY += 11;
+
+        draw(
+                graphics,
+                textX,
+                textY,
+                String.format(
+                        Locale.ROOT,
+                        "SINR %.1f dB | MCS %d",
+                        snapshot.correctedSinrDb(),
+                        snapshot.mcsIndex()
+                )
+        );
+        textY += 11;
+
+        if (workflow != null) {
+            draw(
+                    graphics,
+                    textX,
+                    textY,
+                    "MAC " + workflow.macAddress()
+            );
+            textY += 11;
+
+            draw(
+                    graphics,
+                    textX,
+                    textY,
+                    "APs " + workflow.discoveredSsids().size()
+                            + " | associated "
+                            + workflow.associatedStations().size()
+                            + " | DATA "
+                            + workflow.pendingDataTransmissions()
+            );
+            textY += 11;
+        }
 
         graphics.drawString(
                 font,
-                "Status: " + truncate(workflowStatus[index], statusCharacters()),
+                truncate("Status: " + status[index], maxChars()),
                 textX,
-                y,
+                textY + 2,
                 0xB9DCA6,
                 false
         );
     }
 
-    private void drawLine(
-            GuiGraphics graphics,
-            int x,
-            int y,
-            String text
-    ) {
-        graphics.drawString(
-                font,
-                truncate(text, statusCharacters()),
-                x,
-                y,
-                0xD5E2EA,
-                false
-        );
-    }
-
-    private void addPanelButtons(int index) {
-        int left = panelLeft(index) + PANEL_PADDING;
-        int top = panelTop(index);
-        int panelWidth = panelWidth();
-        int panelHeight = panelHeight();
-        int innerWidth = Math.max(1, panelWidth - PANEL_PADDING * 2);
+    private void addButtons(int index) {
+        int panelLeft = panelLeft(index) + 8;
+        int panelTop = panelTop(index);
+        int innerWidth = panelWidth() - 16;
         int buttonWidth = Math.max(
                 48,
                 (innerWidth - BUTTON_GAP * 2) / 3
         );
 
-        int firstRowY = top + panelHeight
-                - PANEL_PADDING
-                - BUTTON_HEIGHT * 2
-                - BUTTON_GAP;
-        int secondRowY = firstRowY + BUTTON_HEIGHT + BUTTON_GAP;
+        int row1 = panelTop + panelHeight()
+                - 8 - BUTTON_H * 2 - BUTTON_GAP;
+        int row2 = row1 + BUTTON_H + BUTTON_GAP;
 
-        addActionButton(
-                index,
-                "Roam AP",
-                left,
-                firstRowY,
-                buttonWidth,
-                WifiEngineeringWorkflowAction.CONFIGURE_ROAM_AP
-        );
-        addActionButton(
-                index,
-                "Station",
-                left + buttonWidth + BUTTON_GAP,
-                firstRowY,
-                buttonWidth,
-                WifiEngineeringWorkflowAction.CONFIGURE_STATION
-        );
-        addActionButton(
-                index,
-                "Scan",
-                left + (buttonWidth + BUTTON_GAP) * 2,
-                firstRowY,
-                buttonWidth,
-                WifiEngineeringWorkflowAction.SCAN
-        );
+        addButton(index, "Roam AP", panelLeft, row1, buttonWidth,
+                WifiEngineeringWorkflowAction.CONFIGURE_ROAM_AP);
+        addButton(index, "Station", panelLeft + buttonWidth + BUTTON_GAP,
+                row1, buttonWidth,
+                WifiEngineeringWorkflowAction.CONFIGURE_STATION);
+        addButton(index, "Scan", panelLeft + (buttonWidth + BUTTON_GAP) * 2,
+                row1, buttonWidth,
+                WifiEngineeringWorkflowAction.SCAN);
 
-        addActionButton(
-                index,
-                "Connect",
-                left,
-                secondRowY,
-                buttonWidth,
-                WifiEngineeringWorkflowAction.CONNECT_FIRST
-        );
-        addActionButton(
-                index,
-                "Roam",
-                left + buttonWidth + BUTTON_GAP,
-                secondRowY,
-                buttonWidth,
-                WifiEngineeringWorkflowAction.ROAM_BEST
-        );
-        addActionButton(
-                index,
-                "Burst x32",
-                left + (buttonWidth + BUTTON_GAP) * 2,
-                secondRowY,
-                buttonWidth,
-                WifiEngineeringWorkflowAction.CONTENTION_BURST
-        );
+        addButton(index, "Connect", panelLeft, row2, buttonWidth,
+                WifiEngineeringWorkflowAction.CONNECT_FIRST);
+        addButton(index, "Roam", panelLeft + buttonWidth + BUTTON_GAP,
+                row2, buttonWidth,
+                WifiEngineeringWorkflowAction.ROAM_BEST);
+        addButton(index, "Burst x32",
+                panelLeft + (buttonWidth + BUTTON_GAP) * 2,
+                row2, buttonWidth,
+                WifiEngineeringWorkflowAction.CONTENTION_BURST);
     }
 
-    private void addActionButton(
+    private void addButton(
             int index,
             String label,
             int x,
@@ -395,12 +322,7 @@ public final class WifiMultiEngineeringScreen extends Screen {
                                 Component.literal(label),
                                 button -> sendAction(index, action)
                         )
-                        .bounds(
-                                x,
-                                y,
-                                buttonWidth,
-                                BUTTON_HEIGHT
-                        )
+                        .bounds(x, y, buttonWidth, BUTTON_H)
                         .build()
         );
     }
@@ -409,36 +331,32 @@ public final class WifiMultiEngineeringScreen extends Screen {
             int index,
             WifiEngineeringWorkflowAction action
     ) {
-        workflowStatus[index] = "Requesting " + action + "...";
+        status[index] = "Requesting " + action + "...";
 
         VsiaNetwork.sendToServer(
-                new WifiEngineeringWorkflowActionPacket(
-                        targetPositions[index],
+                new WifiMultiEngineeringDeviceActionPacket(
+                        ids[index],
                         action
                 )
         );
     }
 
     private void requestAll() {
-        for (BlockPos pos : targetPositions) {
+        for (UUID id : ids) {
             VsiaNetwork.sendToServer(
-                    new WifiEngineeringSnapshotRequestPacket(pos)
-            );
-
-            VsiaNetwork.sendToServer(
-                    new WifiEngineeringWorkflowRequestPacket(pos)
+                    new WifiMultiEngineeringDeviceRequestPacket(id)
             );
         }
     }
 
-    private int indexOf(BlockPos pos) {
-        if (pos == null) {
+    private int indexOf(UUID id) {
+        if (id == null) {
             return -1;
         }
 
-        for (int index = 0; index < DEVICE_COUNT; index++) {
-            if (targetPositions[index].equals(pos)) {
-                return index;
+        for (int i = 0; i < COUNT; i++) {
+            if (id.equals(ids[i])) {
+                return i;
             }
         }
 
@@ -446,118 +364,67 @@ public final class WifiMultiEngineeringScreen extends Screen {
     }
 
     private int panelWidth() {
-        return Math.max(
-                1,
-                (width - OUTER_MARGIN * 2 - PANEL_GAP) / 2
-        );
+        return Math.max(1, (width - MARGIN * 2 - GAP) / 2);
     }
 
     private int panelHeight() {
-        return Math.max(
-                1,
-                (height - TOP_AREA - OUTER_MARGIN - PANEL_GAP) / 2
-        );
+        return Math.max(1, (height - TOP - MARGIN - GAP) / 2);
     }
 
     private int panelLeft(int index) {
-        int column = index % 2;
-        return OUTER_MARGIN
-                + column * (panelWidth() + PANEL_GAP);
+        return MARGIN + (index % 2) * (panelWidth() + GAP);
     }
 
     private int panelTop(int index) {
-        int row = index / 2;
-        return TOP_AREA
-                + row * (panelHeight() + PANEL_GAP);
+        return TOP + (index / 2) * (panelHeight() + GAP);
     }
 
-    private int statusCharacters() {
-        return Math.max(
-                24,
-                panelWidth() / 6
+    private void draw(
+            GuiGraphics graphics,
+            int x,
+            int y,
+            String value
+    ) {
+        graphics.drawString(
+                font,
+                truncate(value, maxChars()),
+                x,
+                y,
+                0xD5E2EA,
+                false
         );
     }
 
-    private static String discovered(
-            WifiEngineeringWorkflowSnapshot workflow
-    ) {
-        if (workflow.discoveredSsids().isEmpty()) {
-            return "none";
-        }
-
-        return truncate(
-                String.join(
-                        ", ",
-                        workflow.discoveredSsids()
-                                .stream()
-                                .limit(2)
-                                .toList()
-                ),
-                24
-        );
+    private int maxChars() {
+        return Math.max(24, panelWidth() / 6);
     }
 
-    private static String shortDevice(
-            WifiEngineeringSnapshot snapshot
-    ) {
-        if (snapshot.deviceId() == null) {
+    private static String shortId(UUID id) {
+        if (id == null) {
             return "n/a";
         }
 
-        String value = snapshot.deviceId().toString();
+        String value = id.toString();
         return value.substring(0, Math.min(8, value.length()));
     }
 
-    private static String frequency(double hz) {
-        if (!Double.isFinite(hz)) {
-            return "n/a";
-        }
-
-        return String.format(
-                Locale.ROOT,
-                "%.4f GHz",
-                hz / 1.0E9
-        );
-    }
-
-    private static String metric(
-            double value,
-            String suffix
-    ) {
-        if (!Double.isFinite(value)) {
-            return "n/a";
-        }
-
-        return String.format(
-                Locale.ROOT,
-                "%.1f%s",
-                value,
-                suffix
-        );
-    }
-
     private static String safe(String value) {
-        return value == null || value.isBlank()
-                ? "n/a"
-                : value;
+        return value == null || value.isBlank() ? "n/a" : value;
     }
 
-    private static String truncate(
-            String value,
-            int maxLength
-    ) {
-        if (value == null || value.isBlank()) {
-            return "n/a";
+    private static String truncate(String value, int max) {
+        if (value == null) {
+            return "";
         }
 
-        if (value.length() <= maxLength) {
+        if (value.length() <= max) {
             return value;
         }
 
-        if (maxLength <= 3) {
-            return value.substring(0, Math.max(0, maxLength));
+        if (max <= 3) {
+            return value.substring(0, Math.max(0, max));
         }
 
-        return value.substring(0, maxLength - 3) + "...";
+        return value.substring(0, max - 3) + "...";
     }
 }
