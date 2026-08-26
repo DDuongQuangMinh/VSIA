@@ -40,6 +40,16 @@ public final class RtAc68uRouterBlock extends BaseEntityBlock {
                     11.5D
             );
 
+    private static final VoxelShape COLLISION_SHAPE =
+            Block.box(
+                    0.0D,
+                    0.0D,
+                    0.0D,
+                    16.0D,
+                    16.0D,
+                    16.0D
+            );
+
     public RtAc68uRouterBlock(Properties properties) {
         super(properties);
 
@@ -96,7 +106,7 @@ public final class RtAc68uRouterBlock extends BaseEntityBlock {
             BlockPos pos,
             CollisionContext context
     ) {
-        return SHAPE;
+        return COLLISION_SHAPE;
     }
 
     @Override
