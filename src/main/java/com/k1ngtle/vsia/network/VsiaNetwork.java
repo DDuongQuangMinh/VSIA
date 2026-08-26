@@ -15,6 +15,9 @@ import com.k1ngtle.vsia.network.wifi.WifiEngineeringWorkflowSnapshotPacket;
 import com.k1ngtle.vsia.network.wifi.WifiIpEngineeringRequestPacket;
 import com.k1ngtle.vsia.network.wifi.WifiIpEngineeringActionPacket;
 import com.k1ngtle.vsia.network.wifi.WifiIpEngineeringSnapshotPacket;
+import com.k1ngtle.vsia.network.wifi.WifiMultiEngineeringDeviceRequestPacket;
+import com.k1ngtle.vsia.network.wifi.WifiMultiEngineeringDeviceActionPacket;
+import com.k1ngtle.vsia.network.wifi.WifiMultiEngineeringDeviceSnapshotPacket;
 import com.k1ngtle.vsia.network.wifi.WifiMultiEngineeringOpenPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -197,6 +200,36 @@ public class VsiaNetwork {
                 .decoder(WifiIpEngineeringSnapshotPacket::new)
                 .encoder(WifiIpEngineeringSnapshotPacket::toBytes)
                 .consumerMainThread(WifiIpEngineeringSnapshotPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        WifiMultiEngineeringDeviceRequestPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
+                .decoder(WifiMultiEngineeringDeviceRequestPacket::new)
+                .encoder(WifiMultiEngineeringDeviceRequestPacket::toBytes)
+                .consumerMainThread(WifiMultiEngineeringDeviceRequestPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        WifiMultiEngineeringDeviceActionPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
+                .decoder(WifiMultiEngineeringDeviceActionPacket::new)
+                .encoder(WifiMultiEngineeringDeviceActionPacket::toBytes)
+                .consumerMainThread(WifiMultiEngineeringDeviceActionPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        WifiMultiEngineeringDeviceSnapshotPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_CLIENT
+                )
+                .decoder(WifiMultiEngineeringDeviceSnapshotPacket::new)
+                .encoder(WifiMultiEngineeringDeviceSnapshotPacket::toBytes)
+                .consumerMainThread(WifiMultiEngineeringDeviceSnapshotPacket::handle)
                 .add();
 
         net.messageBuilder(
