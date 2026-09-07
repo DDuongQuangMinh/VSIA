@@ -18,17 +18,13 @@ import java.util.UUID;
 
 public final class WifiEngineeringDeviceIdentityResolver {
     public static final double WORLD_ACQUIRE_RADIUS_BLOCKS = 1.75D;
-
     private static final double SHIP_SEARCH_MARGIN_BLOCKS = 3.0D;
     private static final int SHIP_BLOCK_SEARCH_RADIUS = 2;
 
     private WifiEngineeringDeviceIdentityResolver() {
     }
 
-    public static NetworkDeviceBlockEntity resolve(
-            ServerLevel level,
-            UUID deviceId
-    ) {
+    public static NetworkDeviceBlockEntity resolve(ServerLevel level, UUID deviceId) {
         if (level == null || deviceId == null) {
             return null;
         }
@@ -38,10 +34,17 @@ public final class WifiEngineeringDeviceIdentityResolver {
                 continue;
             }
 
-            if (receiver instanceof NetworkDeviceBlockEntity device
-                    && isLive(level, device)) {
-                return device;
+            if (!(receiver instanceof NetworkDeviceBlockEntity device)) {
+                continue;
             }
+
+            if (device.isRemoved()
+                    || device.getLevel() != level
+                    || !WifiEngineeringProbe.supports(device)) {
+                continue;
+            }
+
+            return device;
         }
 
         return null;
@@ -56,38 +59,48 @@ public final class WifiEngineeringDeviceIdentityResolver {
             return null;
         }
 
-        Set<UUID> excluded = excludedIds == null
-                ? Set.of()
-                : excludedIds;
+        Set<UUID> excluded = excludedIds == null ? Set.of() : excludedIds;
 
         BlockEntity exact = level.getBlockEntity(requestedWorldPos);
 
         if (exact instanceof NetworkDeviceBlockEntity device
                 && WifiEngineeringProbe.supports(device)
-                && isLive(level, device)
+                && registeredAndActive(level, device)
                 && !excluded.contains(device.id())) {
             rebind(device);
             return device;
         }
 
+        NetworkDeviceBlockEntity storageMatch =
+                SignalBus.receiversInLevel(level)
+                        .stream()
+                        .filter(NetworkDeviceBlockEntity.class::isInstance)
+                        .map(NetworkDeviceBlockEntity.class::cast)
+                        .filter(WifiEngineeringProbe::supports)
+                        .filter(value -> registeredAndActive(level, value))
+                        .filter(value -> !excluded.contains(value.id()))
+                        .filter(value -> requestedWorldPos.equals(value.getBlockPos()))
+                        .findFirst()
+                        .orElse(null);
+
+        if (storageMatch != null) {
+            rebind(storageMatch);
+            return storageMatch;
+        }
+
         NetworkDeviceBlockEntity shipDevice =
-                resolveShipDeviceNearWorld(
-                        level,
-                        requestedWorldPos,
-                        excluded
-                );
+                resolveShipDeviceNearWorld(level, requestedWorldPos, excluded);
 
         if (shipDevice != null) {
             rebind(shipDevice);
             return shipDevice;
         }
 
-        Vec3 requestedRfPoint = Vec3.atCenterOf(requestedWorldPos)
-                .add(0.0D, 0.5D, 0.0D);
+        Vec3 requestedRfPoint =
+                Vec3.atCenterOf(requestedWorldPos).add(0.0D, 0.5D, 0.0D);
 
         double maxDistanceSquared =
-                WORLD_ACQUIRE_RADIUS_BLOCKS
-                        * WORLD_ACQUIRE_RADIUS_BLOCKS;
+                WORLD_ACQUIRE_RADIUS_BLOCKS * WORLD_ACQUIRE_RADIUS_BLOCKS;
 
         NetworkDeviceBlockEntity candidate =
                 SignalBus.receiversInLevel(level)
@@ -95,7 +108,7 @@ public final class WifiEngineeringDeviceIdentityResolver {
                         .filter(NetworkDeviceBlockEntity.class::isInstance)
                         .map(NetworkDeviceBlockEntity.class::cast)
                         .filter(WifiEngineeringProbe::supports)
-                        .filter(value -> isLive(level, value))
+                        .filter(value -> registeredAndActive(level, value))
                         .filter(value -> !excluded.contains(value.id()))
                         .filter(value -> {
                             Vec3 world = value.positionWorld();
@@ -121,11 +134,8 @@ public final class WifiEngineeringDeviceIdentityResolver {
             BlockPos requestedWorldPos,
             Set<UUID> excluded
     ) {
-        Vec3 requestedCenter =
-                Vec3.atCenterOf(requestedWorldPos);
-
-        Vec3 requestedRf =
-                requestedCenter.add(0.0D, 0.5D, 0.0D);
+        Vec3 requestedCenter = Vec3.atCenterOf(requestedWorldPos);
+        Vec3 requestedRf = requestedCenter.add(0.0D, 0.5D, 0.0D);
 
         NetworkDeviceBlockEntity[] best = {null};
         double[] bestDistance = {Double.POSITIVE_INFINITY};
@@ -135,10 +145,10 @@ public final class WifiEngineeringDeviceIdentityResolver {
 
             if (worldAabb != null
                     && !insideExpanded(
-                    worldAabb,
-                    requestedCenter,
-                    SHIP_SEARCH_MARGIN_BLOCKS
-            )) {
+                            worldAabb,
+                            requestedCenter,
+                            SHIP_SEARCH_MARGIN_BLOCKS
+                    )) {
                 return;
             }
 
@@ -172,20 +182,16 @@ public final class WifiEngineeringDeviceIdentityResolver {
                     for (int dz = -SHIP_BLOCK_SEARCH_RADIUS;
                          dz <= SHIP_BLOCK_SEARCH_RADIUS;
                          dz++) {
-                        BlockPos candidatePos =
-                                base.offset(dx, dy, dz);
+                        BlockPos candidatePos = base.offset(dx, dy, dz);
+                        BlockEntity blockEntity = level.getBlockEntity(candidatePos);
 
-                        BlockEntity blockEntity =
-                                level.getBlockEntity(candidatePos);
-
-                        if (!(blockEntity
-                                instanceof NetworkDeviceBlockEntity device)) {
+                        if (!(blockEntity instanceof NetworkDeviceBlockEntity candidate)) {
                             continue;
                         }
 
-                        if (!WifiEngineeringProbe.supports(device)
-                                || device.isRemoved()
-                                || excluded.contains(device.id())) {
+                        if (!WifiEngineeringProbe.supports(candidate)
+                                || candidate.isRemoved()
+                                || excluded.contains(candidate.id())) {
                             continue;
                         }
 
@@ -206,12 +212,11 @@ public final class WifiEngineeringDeviceIdentityResolver {
                                 worldRf.z
                         );
 
-                        if (distance
-                                <= WORLD_ACQUIRE_RADIUS_BLOCKS
+                        if (distance <= WORLD_ACQUIRE_RADIUS_BLOCKS
                                 * WORLD_ACQUIRE_RADIUS_BLOCKS
                                 && distance < bestDistance[0]) {
                             bestDistance[0] = distance;
-                            best[0] = device;
+                            best[0] = candidate;
                         }
                     }
                 }
@@ -226,14 +231,13 @@ public final class WifiEngineeringDeviceIdentityResolver {
         SignalBus.registerTransmitter(device);
     }
 
-    private static boolean isLive(
+    private static boolean registeredAndActive(
             ServerLevel level,
             NetworkDeviceBlockEntity device
     ) {
         return device != null
                 && !device.isRemoved()
-                && device.getLevel() == level
-                && level.getBlockEntity(device.getBlockPos()) == device;
+                && device.getLevel() == level;
     }
 
     private static boolean insideExpanded(

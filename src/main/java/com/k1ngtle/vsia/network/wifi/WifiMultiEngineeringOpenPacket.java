@@ -20,6 +20,10 @@ public final class WifiMultiEngineeringOpenPacket {
 
     private final List<UUID> deviceIds;
 
+    public WifiMultiEngineeringOpenPacket(List<UUID> deviceIds) {
+        this.deviceIds = validateIds(deviceIds);
+    }
+
     public WifiMultiEngineeringOpenPacket(
             List<BlockPos> positions,
             List<WifiEngineeringSnapshot> snapshots
@@ -33,92 +37,69 @@ public final class WifiMultiEngineeringOpenPacket {
             );
         }
 
-        List<UUID> ids =
-                new ArrayList<>(DEVICE_COUNT);
+        List<UUID> ids = new ArrayList<>(DEVICE_COUNT);
 
-        for (WifiEngineeringSnapshot snapshot
-                : snapshots) {
-            if (snapshot == null
-                    || snapshot.deviceId() == null) {
+        for (WifiEngineeringSnapshot snapshot : snapshots) {
+            if (snapshot == null || snapshot.deviceId() == null) {
                 throw new IllegalArgumentException(
                         "Every W1.23.3 target must have a persistent device UUID"
                 );
             }
 
-            ids.add(
-                    snapshot.deviceId()
-            );
+            ids.add(snapshot.deviceId());
         }
 
-        Set<UUID> unique =
-                new HashSet<>(ids);
-
-        if (unique.size()
-                != DEVICE_COUNT) {
-            throw new IllegalArgumentException(
-                    "W1.23.3 refuses duplicate device UUID targets"
-            );
-        }
-
-        deviceIds =
-                List.copyOf(ids);
+        deviceIds = validateIds(ids);
     }
 
-    public WifiMultiEngineeringOpenPacket(
-            FriendlyByteBuf buf
-    ) {
-        List<UUID> ids =
-                new ArrayList<>(DEVICE_COUNT);
+    public WifiMultiEngineeringOpenPacket(FriendlyByteBuf buf) {
+        List<UUID> ids = new ArrayList<>(DEVICE_COUNT);
 
-        for (int index = 0;
-             index < DEVICE_COUNT;
-             index++) {
-            ids.add(
-                    buf.readUUID()
-            );
+        for (int index = 0; index < DEVICE_COUNT; index++) {
+            ids.add(buf.readUUID());
         }
 
-        if (new HashSet<>(ids).size()
-                != DEVICE_COUNT) {
-            throw new IllegalArgumentException(
-                    "Received W1.23.3 open packet with duplicate device UUIDs"
-            );
-        }
-
-        deviceIds =
-                List.copyOf(ids);
+        deviceIds = validateIds(ids);
     }
 
-    public void toBytes(
-            FriendlyByteBuf buf
-    ) {
-        for (UUID deviceId
-                : deviceIds) {
-            buf.writeUUID(
-                    deviceId
-            );
+    public void toBytes(FriendlyByteBuf buf) {
+        for (UUID deviceId : deviceIds) {
+            buf.writeUUID(deviceId);
         }
     }
 
-    public void handle(
-            Supplier<NetworkEvent.Context> supplier
-    ) {
-        NetworkEvent.Context context =
-                supplier.get();
+    public void handle(Supplier<NetworkEvent.Context> supplier) {
+        NetworkEvent.Context context = supplier.get();
 
         context.enqueueWork(
                 () -> DistExecutor.unsafeRunWhenOn(
                         Dist.CLIENT,
                         () -> () ->
                                 WifiEngineeringClientPacketHandler
-                                        .handleMultiOpen(
-                                                deviceIds
-                                        )
+                                        .handleMultiOpen(deviceIds)
                 )
         );
 
-        context.setPacketHandled(
-                true
-        );
+        context.setPacketHandled(true);
+    }
+
+    private static List<UUID> validateIds(List<UUID> ids) {
+        if (ids == null
+                || ids.size() != DEVICE_COUNT
+                || ids.stream().anyMatch(id -> id == null)) {
+            throw new IllegalArgumentException(
+                    "W1.23.3 requires exactly four non-null persistent device UUIDs"
+            );
+        }
+
+        Set<UUID> unique = new HashSet<>(ids);
+
+        if (unique.size() != DEVICE_COUNT) {
+            throw new IllegalArgumentException(
+                    "W1.23.3 refuses duplicate device UUID targets"
+            );
+        }
+
+        return List.copyOf(ids);
     }
 }
