@@ -552,8 +552,8 @@ private final WifiPhyController wifiPhy =
                 signalId
         );
 
-        SignalBus.unregisterReceiver(signalId);
-        SignalBus.unregisterTransmitter(signalId);
+        SignalBus.unregisterReceiver(signalId, this);
+        SignalBus.unregisterTransmitter(signalId, this);
 
         RfKinematicTracker.remove(
                 signalId

@@ -31,12 +31,20 @@ public final class SignalBus {
       TX.remove(id);
    }
 
+   public static void unregisterTransmitter(UUID id, ISignalTransmitter expected) {
+      TX.remove(id, expected);
+   }
+
    public static void registerReceiver(ISignalReceiver rx) {
       RX.put(rx.id(), rx);
    }
 
    public static void unregisterReceiver(UUID id) {
       RX.remove(id);
+   }
+
+   public static void unregisterReceiver(UUID id, ISignalReceiver expected) {
+      RX.remove(id, expected);
    }
 
    public static List<ISignalReceiver> receiversInLevel(ServerLevel level) {
