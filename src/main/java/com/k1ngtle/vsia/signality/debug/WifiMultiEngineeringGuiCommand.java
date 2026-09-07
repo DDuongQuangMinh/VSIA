@@ -75,10 +75,10 @@ public final class WifiMultiEngineeringGuiCommand {
                                                                                                 context -> open(
                                                                                                         context.getSource(),
                                                                                                         List.of(
-                                                                                                                BlockPosArgument.getLoadedBlockPos(context, "a"),
-                                                                                                                BlockPosArgument.getLoadedBlockPos(context, "b"),
-                                                                                                                BlockPosArgument.getLoadedBlockPos(context, "c"),
-                                                                                                                BlockPosArgument.getLoadedBlockPos(context, "d")
+                                                                                                                BlockPosArgument.getBlockPos(context, "a"),
+                                                                                                                BlockPosArgument.getBlockPos(context, "b"),
+                                                                                                                BlockPosArgument.getBlockPos(context, "c"),
+                                                                                                                BlockPosArgument.getBlockPos(context, "d")
                                                                                                         )
                                                                                                 )
                                                                                         )
