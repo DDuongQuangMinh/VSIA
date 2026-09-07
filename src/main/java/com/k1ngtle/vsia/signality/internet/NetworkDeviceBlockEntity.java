@@ -511,11 +511,13 @@ private final WifiPhyController wifiPhy =
 
             ProtocolVmScheduler.register(
                     signalId,
+                    this,
                     protocolVm
             );
 
             TcpLiveScheduler.register(
                     signalId,
+                    this,
                     () -> {
                         if (level instanceof ServerLevel serverLevel) {
                             long nowMicros =
@@ -545,11 +547,13 @@ private final WifiPhyController wifiPhy =
     @Override
     public void setRemoved() {
         ProtocolVmScheduler.unregister(
-                signalId
+                signalId,
+                this
         );
 
         TcpLiveScheduler.unregister(
-                signalId
+                signalId,
+                this
         );
 
         SignalBus.unregisterReceiver(signalId, this);
