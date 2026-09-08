@@ -11,6 +11,14 @@ import java.util.HashSet;
 import java.util.Set;
 
 public final class MaterialAttenuationModel {
+    /*
+     * Ignore only the immediate endpoint near-field. This prevents a router
+     * sitting on/inside its own support surface (especially after a VS
+     * transform) from being treated as multiple penetrated walls.
+     */
+    private static final double ENDPOINT_CLEARANCE_BLOCKS =
+            0.75D;
+
     private MaterialAttenuationModel() {
     }
 
@@ -72,6 +80,15 @@ public final class MaterialAttenuationModel {
                             receiver,
                             t
                     );
+
+            if (point.distanceTo(
+                    transmitter
+            ) < ENDPOINT_CLEARANCE_BLOCKS
+                    || point.distanceTo(
+                    receiver
+            ) < ENDPOINT_CLEARANCE_BLOCKS) {
+                continue;
+            }
 
             BlockPos pos =
                     BlockPos.containing(

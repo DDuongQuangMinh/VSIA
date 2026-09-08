@@ -32,5 +32,15 @@ public interface ISignalReceiver {
       return Double.POSITIVE_INFINITY;
    }
 
+   /**
+    * True when the receiver applies the engineering RF propagation model
+    * itself after SignalBus delivery. Such receivers must not also receive
+    * the legacy SignalBus terrain/knife-edge attenuation or the same obstacle
+    * is charged twice.
+    */
+   default boolean usesDetailedPropagationModel() {
+      return false;
+   }
+
    void onReceive(SignalPacket var1, double var2);
 }

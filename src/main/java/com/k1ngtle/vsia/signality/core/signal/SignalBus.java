@@ -73,8 +73,19 @@ public final class SignalBus {
 
                double freeSpace = PathLossModel.freeSpacePower(packet.transmitPowerWatts(), packet.antennaGain(), rx.antennaGain(), packet.frequencyHz(), range);
                if (!(freeSpace < rx.sensitivityWatts())) {
-                  double blockedFraction = sampleBlockedFraction(level, occlusion, from, to);
-                  double terrainAtt = PathLossModel.terrainAttenuationFromBlockedFraction(blockedFraction);
+                  /*
+                   * Engineering receivers apply MaterialAttenuationModel and
+                   * RfChannelEnvironment in onReceive(). Applying legacy
+                   * knife-edge terrain loss here too double-counts obstacles.
+                   */
+                  double terrainAtt;
+                  if (rx.usesDetailedPropagationModel()) {
+                     terrainAtt = 1.0;
+                  } else {
+                     double blockedFraction = sampleBlockedFraction(level, occlusion, from, to);
+                     terrainAtt = PathLossModel.terrainAttenuationFromBlockedFraction(blockedFraction);
+                  }
+
                   double received = freeSpace * terrainAtt;
                   if (!(received < rx.sensitivityWatts())) {
                      try {

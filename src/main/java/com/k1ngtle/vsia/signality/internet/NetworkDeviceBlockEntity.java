@@ -3885,6 +3885,11 @@ private final WifiPhyController wifiPhy =
     }
 
     @Override
+    public boolean usesDetailedPropagationModel() {
+        return true;
+    }
+
+    @Override
     public void onReceive(
             SignalPacket signal,
             double receivedPowerWatts
