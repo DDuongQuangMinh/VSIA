@@ -1,0 +1,36 @@
+package com.k1ngtle.vsia.signality.engineering.wifi.integration.w1221;
+
+public record W1221RoamingSnapshot(
+        W1221RoamingStage stage,
+        W1221RoamingFailure failure,
+        boolean finished,
+        boolean passed,
+        String detail,
+        long elapsedTicks,
+        String stationState,
+        String securityState,
+        String stationIp,
+        String selectedSsid,
+        String selectedBssid,
+        String ap1Bssid,
+        String ap2Bssid,
+        double ap1SnrDb,
+        double ap2SnrDb,
+        String candidateBssid,
+        double candidateSnrDb,
+        boolean backgroundRoamingEnabled,
+        String workflowState,
+        String workflowDetail,
+        long stationTraceEvents,
+        long ap1TraceEvents,
+        long ap2TraceEvents,
+        long retries,
+        long ackRx,
+        long ap1DsTx,
+        long ap1DsRx,
+        long ap2DsTx,
+        long ap2DsRx,
+        String ap1BridgeStatus,
+        String ap2BridgeStatus
+) {
+}
