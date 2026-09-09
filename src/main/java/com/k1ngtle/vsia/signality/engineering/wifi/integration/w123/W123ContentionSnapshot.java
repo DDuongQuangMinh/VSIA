@@ -1,0 +1,36 @@
+package com.k1ngtle.vsia.signality.engineering.wifi.integration.w123;
+
+public record W123ContentionSnapshot(
+        W123ClosureStage stage,
+        W123ClosureFailure failure,
+        boolean finished,
+        boolean passed,
+        String detail,
+        long elapsedTicks,
+        String stationState,
+        String securityState,
+        String selectedBssid,
+        int pendingData,
+        int acceptedModerate,
+        int acceptedSaturation,
+        int queueDepth,
+        int queueCapacity,
+        int queuePeak,
+        long enqueued,
+        long attempts,
+        long successes,
+        long retries,
+        long drops,
+        long deferrals,
+        int cwVoice,
+        int cwVideo,
+        int cwBestEffort,
+        int cwBackground,
+        double receivedPowerDbm,
+        double snrDb,
+        double correctedSinrDb,
+        boolean detailedPropagation,
+        long stationTraceEvents,
+        long apTraceEvents
+) {
+}
