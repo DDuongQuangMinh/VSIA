@@ -41,6 +41,7 @@ import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmRunResult;
 import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmScheduler;
 import com.k1ngtle.vsia.signality.engineering.phy.PhyResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.*;
+import com.k1ngtle.vsia.signality.engineering.wifi.qos.WifiQosClassifier;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiChannelWidth;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiGuardInterval;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiPhyConfiguration;
@@ -3150,6 +3151,163 @@ private final WifiPhyController wifiPhy =
                 targetMac,
                 body,
                 WifiAccessCategory.BEST_EFFORT,
+                wifiSender()
+        );
+    }
+
+    public boolean sendWifiEngineeringQosData(
+            int requestedBytes,
+            WifiAccessCategory category
+    ) {
+        if (!isWifiProfile()
+                || wifiMac.mode()
+                == WifiMode.LEGACY_DIRECT) {
+            return false;
+        }
+
+        int dataBytes =
+                Math.max(
+                        64,
+                        Math.min(
+                                4096,
+                                requestedBytes
+                        )
+                );
+
+        String targetMac;
+
+        if (wifiMac.mode()
+                == WifiMode.STATION) {
+            if (!wifiMac.isAssociated()) {
+                return false;
+            }
+
+            targetMac =
+                    WifiMacController.BROADCAST;
+        } else {
+            targetMac =
+                    wifiMac.associatedStations()
+                            .stream()
+                            .findFirst()
+                            .orElse(
+                                    ""
+                            );
+
+            if (targetMac.isBlank()) {
+                return false;
+            }
+        }
+
+        CompoundTag body =
+                new CompoundTag();
+
+        body.putString(
+                "wifi_engineering_control",
+                "W1.24_QOS_DATA"
+        );
+
+        body.putInt(
+                "wifi_engineering_length",
+                dataBytes
+        );
+
+        byte[] payload =
+                new byte[
+                        dataBytes
+                ];
+
+        byte[] signature =
+                "VSIA-W1.8-ASSOCIATED-DATA"
+                        .getBytes(
+                                java.nio.charset.StandardCharsets.UTF_8
+                        );
+
+        System.arraycopy(
+                signature,
+                0,
+                payload,
+                0,
+                Math.min(
+                        signature.length,
+                        payload.length
+                )
+        );
+
+        for (int i = signature.length;
+             i < payload.length;
+             i++) {
+            payload[i] =
+                    (byte) (
+                            i * 17
+                                    + wifiEngineeringTestSequence
+                    );
+        }
+
+        body.putByteArray(
+                "wifi_engineering_payload",
+                payload
+        );
+
+        OSINetworkPacket bridgePacket =
+                new OSINetworkPacket();
+
+        bridgePacket.sourceMac =
+                macAddress;
+
+        bridgePacket.targetMac =
+                targetMac;
+
+        bridgePacket.sourceIp =
+                ipAddress == null
+                        || ipAddress.isBlank()
+                        ? "0.0.0.0"
+                        : ipAddress;
+
+        bridgePacket.targetIp =
+                "255.255.255.255";
+
+        bridgePacket.sourcePort =
+                49152;
+
+        bridgePacket.targetPort =
+                9;
+
+        bridgePacket.ipProtocol =
+                17;
+
+        bridgePacket.applicationProtocol =
+                "W1.19_ENGINEERING_DATA";
+
+        bridgePacket.ttl =
+                64;
+
+        bridgePacket.payload.putString(
+                "type",
+                "W1.19_ENGINEERING_DATA"
+        );
+
+        bridgePacket.payload.putInt(
+                "length",
+                dataBytes
+        );
+
+        bridgePacket.payload.putByteArray(
+                "data",
+                payload
+        );
+
+        body.put(
+                "osi_packet",
+                bridgePacket.serializeNBT()
+        );
+
+        return wifiMac.sendData(
+                macAddress,
+                targetMac,
+                body,
+                category == null
+                        ? WifiAccessCategory.BEST_EFFORT
+                        : category,
                 wifiSender()
         );
     }
@@ -9357,28 +9515,9 @@ private final WifiPhyController wifiPhy =
     private WifiAccessCategory classifyAccessCategory(
             OSINetworkPacket packet
     ) {
-        int port =
-                packet.targetPort;
-
-        if (port == 5060
-                || port == 5061
-                || (port >= 16384
-                && port <= 32767)) {
-            return WifiAccessCategory.VOICE;
-        }
-
-        if (port == 554
-                || port == 1935) {
-            return WifiAccessCategory.VIDEO;
-        }
-
-        if (port == 20
-                || port == 21
-                || port == 25) {
-            return WifiAccessCategory.BACKGROUND;
-        }
-
-        return WifiAccessCategory.BEST_EFFORT;
+        return WifiQosClassifier.classify(
+                packet
+        );
     }
 
     private void transmitProtocolVmFrame(

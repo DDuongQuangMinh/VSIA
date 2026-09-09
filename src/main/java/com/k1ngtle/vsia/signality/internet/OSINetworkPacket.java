@@ -15,6 +15,9 @@ public class OSINetworkPacket {
     public int ipPacketLength = 0;
     public boolean dontFragment;
 
+    public int dscp = 0;
+    public int ecn = 0;
+
     public int sourcePort = 0;
     public int targetPort = 0;
     public int transportChecksum = 0;
@@ -26,6 +29,31 @@ public class OSINetworkPacket {
     public CompoundTag payload = new CompoundTag();
 
     public OSINetworkPacket() {
+    }
+
+    public int dscpEcnByte() {
+        int normalizedDscp =
+                Math.max(
+                        0,
+                        Math.min(
+                                63,
+                                dscp
+                        )
+                );
+
+        int normalizedEcn =
+                Math.max(
+                        0,
+                        Math.min(
+                                3,
+                                ecn
+                        )
+                );
+
+        return (
+                normalizedDscp << 2
+        )
+                | normalizedEcn;
     }
 
     public CompoundTag serializeNBT() {
@@ -75,6 +103,28 @@ public class OSINetworkPacket {
         tag.putBoolean(
                 "dontFragment",
                 dontFragment
+        );
+
+        tag.putInt(
+                "dscp",
+                Math.max(
+                        0,
+                        Math.min(
+                                63,
+                                dscp
+                        )
+                )
+        );
+
+        tag.putInt(
+                "ecn",
+                Math.max(
+                        0,
+                        Math.min(
+                                3,
+                                ecn
+                        )
+                )
         );
 
         tag.putInt(
@@ -169,6 +219,36 @@ public class OSINetworkPacket {
                 tag.getBoolean(
                         "dontFragment"
                 );
+
+        packet.dscp =
+                tag.contains(
+                        "dscp"
+                )
+                        ? Math.max(
+                        0,
+                        Math.min(
+                                63,
+                                tag.getInt(
+                                        "dscp"
+                                )
+                        )
+                )
+                        : 0;
+
+        packet.ecn =
+                tag.contains(
+                        "ecn"
+                )
+                        ? Math.max(
+                        0,
+                        Math.min(
+                                3,
+                                tag.getInt(
+                                        "ecn"
+                                )
+                        )
+                )
+                        : 0;
 
         packet.sourcePort =
                 tag.getInt(

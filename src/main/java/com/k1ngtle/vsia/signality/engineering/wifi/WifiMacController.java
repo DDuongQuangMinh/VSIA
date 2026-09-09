@@ -1,5 +1,8 @@
 package com.k1ngtle.vsia.signality.engineering.wifi;
 
+import com.k1ngtle.vsia.signality.engineering.wifi.qos.WifiQosClassifier;
+import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
+
 import com.k1ngtle.vsia.signality.engineering.wifi.security.WifiHandshakeMicMaterial;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
@@ -2921,7 +2924,9 @@ public final class WifiMacController {
                         apMac,
                         originalSource,
                         protectedBody,
-                        WifiAccessCategory.BEST_EFFORT,
+                        relayAccessCategory(
+                        data
+                ),
                         sender
                 );
 
@@ -2932,6 +2937,29 @@ public final class WifiMacController {
 
         return queued;
     }
+    private WifiAccessCategory relayAccessCategory(
+            CompoundTag data
+    ) {
+        if (data == null
+                || !data.contains(
+                "osi_packet"
+        )) {
+            return WifiAccessCategory.BEST_EFFORT;
+        }
+
+        try {
+            return WifiQosClassifier.classify(
+                    OSINetworkPacket.deserializeNBT(
+                            data.getCompound(
+                                    "osi_packet"
+                            )
+                    )
+            );
+        } catch (Exception ignored) {
+            return WifiAccessCategory.BEST_EFFORT;
+        }
+    }
+
     private CompoundTag protectStationData(
             CompoundTag data
     ) {
