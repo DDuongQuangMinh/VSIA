@@ -28,7 +28,7 @@ public final class W126IntegrationSession {
     public static final String SSID = "VSIA-W126";
     public static final String PASSPHRASE = "vsia-w126-wpa2";
 
-    private static final long SCAN_TIMEOUT = 300L;
+    private static final long SCAN_TIMEOUT = 700L;
     private static final long ASSOC_TIMEOUT = 360L;
     private static final long ACK_TIMEOUT = 220L;
     private static final long SERVICE_TIMEOUT = 1500L;
@@ -63,6 +63,12 @@ public final class W126IntegrationSession {
     private boolean postRoamHttpStarted;
     private boolean qosQueued;
     private boolean providerDomainMatches;
+
+    private boolean sta2ScanStarted;
+    private int sta1ScanAttempts;
+    private int sta2ScanAttempts;
+    private long sta1LastScanStartTick = -1L;
+    private long sta2LastScanStartTick = -1L;
 
     public W126IntegrationSession(
             ServerLevel level,
@@ -240,14 +246,22 @@ public final class W126IntegrationSession {
         sta2.setWifiBackgroundRoamingEnabled(false);
 
         ap1.sendWifiBeacon();
-        ap2.sendWifiBeacon();
 
-        if (!sta1.scanWifi() || !sta2.scanWifi()) {
-            fail(W126Failure.SCAN_START_FAILED, "One or both scans failed to start");
+        if (!sta1.scanWifi()) {
+            fail(W126Failure.SCAN_START_FAILED, "STA1 scan failed to start");
             return;
         }
 
-        transition(W126Stage.SCANNING, "Two WPA2 stations scanning a two-BSS W1.26 ESS");
+        sta1ScanAttempts = 1;
+        sta1LastScanStartTick = level.getGameTime();
+        sta2ScanStarted = false;
+        sta2ScanAttempts = 0;
+        sta2LastScanStartTick = -1L;
+
+        transition(
+                W126Stage.SCANNING,
+                "STA1 scan started; STA2 will start 3 ticks later. AP beacons are interleaved to avoid synchronized co-channel scan loss."
+        );
     }
 
     private void scanning(
@@ -256,30 +270,164 @@ public final class W126IntegrationSession {
             NetworkDeviceBlockEntity ap1,
             NetworkDeviceBlockEntity ap2
     ) {
-        if (elapsedStage() % 20L == 0L) {
+        long elapsed =
+                elapsedStage();
+
+        /*
+         * Both W1.26 APs intentionally share the same Wi-Fi 5 channel.
+         * Do not inject both engineering beacons on the same server tick:
+         * alternate them so a station's 120 ms scan dwell sees a beacon
+         * without the test harness creating artificial synchronized
+         * co-channel collisions.
+         */
+        if ((elapsed & 1L) == 0L) {
             ap1.sendWifiBeacon();
+        } else {
             ap2.sendWifiBeacon();
         }
 
-        WifiNetworkRecord sta1Ap1 = discovered(sta1, ap1);
-        WifiNetworkRecord sta2Ap2 = discovered(sta2, ap2);
-
-        boolean scansDone = sta1.wifiSecurityDiagnostic().startsWith("SCAN_COMPLETE_APS_")
-                && sta2.wifiSecurityDiagnostic().startsWith("SCAN_COMPLETE_APS_");
-
-        if (sta1Ap1 != null && sta2Ap2 != null && scansDone) {
-            if (!sta1.connectWifiBssid(sta1Ap1.ssid(), sta1Ap1.bssid())
-                    || !sta2.connectWifiBssid(sta2Ap2.ssid(), sta2Ap2.bssid())) {
-                fail(W126Failure.CONNECT_START_FAILED, "Exact-BSSID connection start failed");
+        /*
+         * Stagger the second station's scan by three ticks.  The eventual
+         * scale test is still concurrent at DATA/DHCP/HTTP/QoS; this merely
+         * prevents the scan harness from phase-locking both receivers.
+         */
+        if (!sta2ScanStarted
+                && elapsed >= 3L) {
+            if (!sta2.scanWifi()) {
+                fail(
+                        W126Failure.SCAN_START_FAILED,
+                        "STA2 staggered scan failed to start"
+                );
                 return;
             }
 
-            transition(W126Stage.ASSOCIATING, "STA1 -> AP1 and STA2 -> AP2 association started");
+            sta2ScanStarted =
+                    true;
+
+            sta2ScanAttempts =
+                    1;
+
+            sta2LastScanStartTick =
+                    level.getGameTime();
+        }
+
+        WifiNetworkRecord sta1Ap1 =
+                discovered(
+                        sta1,
+                        ap1
+                );
+
+        WifiNetworkRecord sta2Ap2 =
+                discovered(
+                        sta2,
+                        ap2
+                );
+
+        boolean sta1Complete =
+                sta1.wifiSecurityDiagnostic()
+                        .startsWith(
+                                "SCAN_COMPLETE_APS_"
+                        );
+
+        boolean sta2Complete =
+                sta2ScanStarted
+                        && sta2.wifiSecurityDiagnostic()
+                        .startsWith(
+                                "SCAN_COMPLETE_APS_"
+                        );
+
+        /*
+         * A completed scan with no required BSSID is retried a bounded
+         * number of times.  This handles stochastic RF loss while still
+         * failing cleanly if the BSS is genuinely unreachable.
+         */
+        if (sta1Complete
+                && sta1Ap1 == null
+                && sta1ScanAttempts < 4
+                && level.getGameTime()
+                - sta1LastScanStartTick >= 8L) {
+            if (sta1.scanWifi()) {
+                sta1ScanAttempts++;
+
+                sta1LastScanStartTick =
+                        level.getGameTime();
+
+                detail =
+                        "STA1 retry scan "
+                                + sta1ScanAttempts
+                                + "/4; AP beacons remain interleaved";
+            }
+        }
+
+        if (sta2Complete
+                && sta2Ap2 == null
+                && sta2ScanAttempts < 4
+                && level.getGameTime()
+                - sta2LastScanStartTick >= 8L) {
+            if (sta2.scanWifi()) {
+                sta2ScanAttempts++;
+
+                sta2LastScanStartTick =
+                        level.getGameTime();
+
+                detail =
+                        "STA2 retry scan "
+                                + sta2ScanAttempts
+                                + "/4; AP beacons remain interleaved";
+            }
+        }
+
+        if (sta1Ap1 != null
+                && sta2Ap2 != null
+                && sta1Complete
+                && sta2Complete) {
+            if (!sta1.connectWifiBssid(
+                    sta1Ap1.ssid(),
+                    sta1Ap1.bssid()
+            )
+                    || !sta2.connectWifiBssid(
+                    sta2Ap2.ssid(),
+                    sta2Ap2.bssid()
+            )) {
+                fail(
+                        W126Failure.CONNECT_START_FAILED,
+                        "Exact-BSSID connection start failed"
+                );
+                return;
+            }
+
+            transition(
+                    W126Stage.ASSOCIATING,
+                    "Both staggered scans completed | STA1 AP1 attempts="
+                            + sta1ScanAttempts
+                            + " | STA2 AP2 attempts="
+                            + sta2ScanAttempts
+                            + " | association started"
+            );
             return;
         }
 
-        if (elapsedStage() > SCAN_TIMEOUT) {
-            fail(W126Failure.SCAN_TIMEOUT, "Two-station scan timeout");
+        if (elapsed > SCAN_TIMEOUT) {
+            fail(
+                    W126Failure.SCAN_TIMEOUT,
+                    "Two-station scan timeout"
+                            + " | STA1 target="
+                            + (sta1Ap1 != null)
+                            + " complete="
+                            + sta1Complete
+                            + " attempts="
+                            + sta1ScanAttempts
+                            + " diag="
+                            + sta1.wifiSecurityDiagnostic()
+                            + " | STA2 target="
+                            + (sta2Ap2 != null)
+                            + " complete="
+                            + sta2Complete
+                            + " attempts="
+                            + sta2ScanAttempts
+                            + " diag="
+                            + sta2.wifiSecurityDiagnostic()
+            );
         }
     }
 
