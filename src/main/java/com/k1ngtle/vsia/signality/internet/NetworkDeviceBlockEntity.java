@@ -41,6 +41,8 @@ import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmRunResult;
 import com.k1ngtle.vsia.signality.engineering.vm.ProtocolVmScheduler;
 import com.k1ngtle.vsia.signality.engineering.phy.PhyResult;
 import com.k1ngtle.vsia.signality.engineering.wifi.*;
+import com.k1ngtle.vsia.signality.engineering.wifi.smartconnect.WifiSmartConnectDecision;
+import com.k1ngtle.vsia.signality.engineering.wifi.smartconnect.WifiSmartConnectPolicy;
 import com.k1ngtle.vsia.signality.engineering.wifi.qos.WifiQosClassifier;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiChannelWidth;
 import com.k1ngtle.vsia.signality.engineering.wifi.phy.WifiGuardInterval;
@@ -1106,6 +1108,39 @@ private final WifiPhyController wifiPhy =
     ) {
         return wifiMac.discoveredNetworkSnrDb(
                 bssid
+        );
+    }
+
+    public WifiSmartConnectDecision wifiSmartConnectDecision(
+            String ssid
+    ) {
+        return WifiSmartConnectPolicy.DEFAULT.select(
+                ssid,
+                wifiMac.selectedBssid(),
+                wifiMac.discoveredNetworks(),
+                network ->
+                        wifiMac.discoveredNetworkSnrDb(
+                                network.bssid()
+                        )
+        );
+    }
+
+    public boolean smartConnectWifi(
+            String ssid
+    ) {
+        WifiSmartConnectDecision decision =
+                wifiSmartConnectDecision(
+                        ssid
+                );
+
+        if (!decision.available()
+                || decision.network() == null) {
+            return false;
+        }
+
+        return connectWifiBssid(
+                decision.network().ssid(),
+                decision.network().bssid()
         );
     }
 
