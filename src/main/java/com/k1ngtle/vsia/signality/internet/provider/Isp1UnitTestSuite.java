@@ -69,6 +69,25 @@ public final class Isp1UnitTestSuite {
                 300
         );
 
+
+        InternetRegistryResult srv = data.addDnsRecord(
+                owner,
+                "owner-example.net",
+                "_minecraft._tcp",
+                "SRV",
+                "10 5 25565 www.owner-example.net",
+                300
+        );
+
+        InternetRegistryResult wildcard = data.addDnsRecord(
+                owner,
+                "owner-example.net",
+                "*",
+                "A",
+                "192.0.2.20",
+                300
+        );
+
         return List.of(
                 result(
                         "isp1-domain-normalization",
@@ -132,6 +151,22 @@ public final class Isp1UnitTestSuite {
                         "isp1-cname-exclusivity",
                         cname.success() && !cnameConflict.success(),
                         "CNAME cannot coexist with an A RRset at the same owner"
+                ),
+                result(
+                        "isp1-srv-underscore-owner",
+                        srv.success(),
+                        srv.message()
+                ),
+                result(
+                        "isp1-wildcard-owner",
+                        wildcard.success(),
+                        wildcard.message()
+                ),
+                result(
+                        "isp1-host-target-remains-strict",
+                        !InternetRegistryValidators.validHostname("_minecraft._tcp.owner-example.net")
+                                && InternetRegistryValidators.validDnsOwnerName("_minecraft._tcp.owner-example.net"),
+                        "DNS owner names allow service underscores while host targets remain strict"
                 )
         );
     }

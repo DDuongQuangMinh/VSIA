@@ -16,6 +16,9 @@ public final class InternetRegistryValidators {
     private static final Pattern LABEL =
             Pattern.compile("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$");
 
+    private static final Pattern DNS_OWNER_LABEL =
+            Pattern.compile("^[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?$");
+
     private static final Set<String> COMMON_TLDS = Set.of(
             "com", "net", "org", "info", "biz", "name",
             "io", "dev", "app", "me", "tv", "ai", "tech",
@@ -67,6 +70,30 @@ public final class InternetRegistryValidators {
 
         for (String label : labels) {
             if (label.length() > 63 || !LABEL.matcher(label).matches()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public static boolean validDnsOwnerName(String value) {
+        String normalized = normalizeDomain(value);
+
+        if (normalized.isBlank() || normalized.length() > 253) {
+            return false;
+        }
+
+        String[] labels = normalized.split("\\.");
+
+        for (int index = 0; index < labels.length; index++) {
+            String label = labels[index];
+
+            if (index == 0 && "*".equals(label)) {
+                continue;
+            }
+
+            if (label.length() > 63 || !DNS_OWNER_LABEL.matcher(label).matches()) {
                 return false;
             }
         }

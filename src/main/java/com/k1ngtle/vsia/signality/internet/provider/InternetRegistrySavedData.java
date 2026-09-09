@@ -536,7 +536,7 @@ public final class InternetRegistrySavedData extends SavedData {
 
         String fqdn = InternetRegistryValidators.fqdn(zone, owner);
 
-        if (!InternetRegistryValidators.validHostname(fqdn)
+        if (!InternetRegistryValidators.validDnsOwnerName(fqdn)
                 || !fqdn.equals(zone) && !fqdn.endsWith("." + zone)) {
             return InternetRegistryResult.fail(
                     "DNS owner name must remain inside the registered zone."
