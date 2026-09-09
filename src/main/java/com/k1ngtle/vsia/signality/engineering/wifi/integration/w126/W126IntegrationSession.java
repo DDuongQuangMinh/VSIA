@@ -29,7 +29,7 @@ public final class W126IntegrationSession {
     public static final String PASSPHRASE = "vsia-w126-wpa2";
 
     private static final long SCAN_TIMEOUT = 700L;
-    private static final long ASSOC_TIMEOUT = 360L;
+    private static final long ASSOC_TIMEOUT = 900L;
     private static final long ACK_TIMEOUT = 220L;
     private static final long SERVICE_TIMEOUT = 1500L;
     private static final long QOS_TIMEOUT = 600L;
@@ -69,6 +69,13 @@ public final class W126IntegrationSession {
     private int sta2ScanAttempts;
     private long sta1LastScanStartTick = -1L;
     private long sta2LastScanStartTick = -1L;
+
+    private boolean sta1ConnectStarted;
+    private boolean sta2ConnectStarted;
+    private long sta1ConnectStartTick = -1L;
+    private long sta2ConnectStartTick = -1L;
+    private String sta2TargetSsid = "";
+    private String sta2TargetBssid = "";
 
     public W126IntegrationSession(
             ServerLevel level,
@@ -381,20 +388,34 @@ public final class W126IntegrationSession {
                 && sta2Ap2 != null
                 && sta1Complete
                 && sta2Complete) {
+            sta2TargetSsid =
+                    sta2Ap2.ssid();
+
+            sta2TargetBssid =
+                    sta2Ap2.bssid();
+
             if (!sta1.connectWifiBssid(
                     sta1Ap1.ssid(),
                     sta1Ap1.bssid()
-            )
-                    || !sta2.connectWifiBssid(
-                    sta2Ap2.ssid(),
-                    sta2Ap2.bssid()
             )) {
                 fail(
                         W126Failure.CONNECT_START_FAILED,
-                        "Exact-BSSID connection start failed"
+                        "STA1 exact-BSSID connection start failed"
                 );
                 return;
             }
+
+            sta1ConnectStarted =
+                    true;
+
+            sta2ConnectStarted =
+                    false;
+
+            sta1ConnectStartTick =
+                    level.getGameTime();
+
+            sta2ConnectStartTick =
+                    -1L;
 
             transition(
                     W126Stage.ASSOCIATING,
@@ -402,7 +423,7 @@ public final class W126IntegrationSession {
                             + sta1ScanAttempts
                             + " | STA2 AP2 attempts="
                             + sta2ScanAttempts
-                            + " | association started"
+                            + " | STA1 WPA2 association started first; STA2 waits for STA1 SECURED + management queue drain"
             );
             return;
         }
@@ -437,41 +458,206 @@ public final class W126IntegrationSession {
             NetworkDeviceBlockEntity ap1,
             NetworkDeviceBlockEntity ap2
     ) {
-        if (sta1.wifiSecurityState() == WifiSecurityState.FAILED
-                || sta2.wifiSecurityState() == WifiSecurityState.FAILED) {
+        if (!sta1ConnectStarted) {
             fail(
-                    W126Failure.SECURITY_FAILED,
-                    "Security failure | STA1=" + sta1.wifiSecurityDiagnostic() + " | STA2=" + sta2.wifiSecurityDiagnostic()
+                    W126Failure.INTERNAL_ERROR,
+                    "ASSOCIATING entered before STA1 connection was started"
             );
             return;
         }
 
-        boolean associated = sta1.wifiStationState() == WifiStationState.ASSOCIATED
-                && sta2.wifiStationState() == WifiStationState.ASSOCIATED
-                && W119Mac.equals(sta1.wifiSelectedBssid(), ap1.wifiMacAddress())
-                && W119Mac.equals(sta2.wifiSelectedBssid(), ap2.wifiMacAddress())
-                && contains(ap1, sta1)
-                && contains(ap2, sta2);
-
-        if (associated) {
-            sta1AckBaseline = ackCount(sta1);
-            sta2AckBaseline = ackCount(sta2);
-
-            if (!sta1.sendWifiEngineeringAssociatedData(512)
-                    || !sta2.sendWifiEngineeringAssociatedData(512)) {
-                fail(W126Failure.LINK_ACK_TIMEOUT, "Initial associated DATA could not be queued");
-                return;
-            }
-
-            transition(W126Stage.LINK_ACK, "Both stations secured; waiting for independent DATA/ACK");
+        if (sta1.wifiSecurityState()
+                == WifiSecurityState.FAILED) {
+            fail(
+                    W126Failure.SECURITY_FAILED,
+                    "STA1 security failure | "
+                            + sta1.wifiSecurityDiagnostic()
+            );
             return;
         }
 
-        if (elapsedStage() > ASSOC_TIMEOUT) {
+        /*
+         * W1.26 scale begins after link establishment.  The original
+         * closure harness launched both AUTH exchanges on the same tick,
+         * on the same 5 GHz channel, which can phase-lock two independent
+         * management exchanges.  Complete STA1's WPA2 management/security
+         * exchange first, then start STA2.  DATA/DHCP/HTTP/QoS remain
+         * concurrent later in the test.
+         */
+        boolean sta1Ready =
+                sta1.wifiStationState()
+                        == WifiStationState.ASSOCIATED
+                        && sta1.wifiSecurityState()
+                        == WifiSecurityState.SECURED
+                        && W119Mac.equals(
+                        sta1.wifiSelectedBssid(),
+                        ap1.wifiMacAddress()
+                )
+                        && contains(
+                        ap1,
+                        sta1
+                )
+                        && sta1.wifiPendingDataTransmissions()
+                        == 0;
+
+        if (!sta2ConnectStarted) {
+            if (sta1Ready) {
+                WifiNetworkRecord target =
+                        discovered(
+                                sta2,
+                                ap2
+                        );
+
+                String targetSsid =
+                        target != null
+                                ? target.ssid()
+                                : sta2TargetSsid;
+
+                String targetBssid =
+                        target != null
+                                ? target.bssid()
+                                : sta2TargetBssid;
+
+                if (targetSsid == null
+                        || targetSsid.isBlank()
+                        || targetBssid == null
+                        || targetBssid.isBlank()) {
+                    fail(
+                            W126Failure.CONNECT_START_FAILED,
+                            "STA2 AP2 scan record disappeared before its serialized association could start"
+                    );
+                    return;
+                }
+
+                if (!sta2.connectWifiBssid(
+                        targetSsid,
+                        targetBssid
+                )) {
+                    fail(
+                            W126Failure.CONNECT_START_FAILED,
+                            "STA2 exact-BSSID connection start failed after STA1 became SECURED"
+                    );
+                    return;
+                }
+
+                sta2ConnectStarted =
+                        true;
+
+                sta2ConnectStartTick =
+                        level.getGameTime();
+
+                detail =
+                        "STA1 ASSOCIATED/SECURED on AP1; STA2 WPA2 association now started on AP2";
+
+                return;
+            }
+
+            if (level.getGameTime()
+                    - sta1ConnectStartTick > 420L) {
+                fail(
+                        W126Failure.ASSOCIATION_TIMEOUT,
+                        "STA1 serialized association timeout"
+                                + " | state="
+                                + sta1.wifiStationState()
+                                + "/"
+                                + sta1.wifiSecurityState()
+                                + " | selectedSecurity="
+                                + sta1.wifiSelectedSecurity()
+                                + " | diagnostic="
+                                + sta1.wifiSecurityDiagnostic()
+                                + " | pending="
+                                + sta1.wifiPendingDataTransmissions()
+                );
+            }
+
+            return;
+        }
+
+        if (sta2.wifiSecurityState()
+                == WifiSecurityState.FAILED) {
+            fail(
+                    W126Failure.SECURITY_FAILED,
+                    "STA2 security failure | "
+                            + sta2.wifiSecurityDiagnostic()
+            );
+            return;
+        }
+
+        boolean sta2Ready =
+                sta2.wifiStationState()
+                        == WifiStationState.ASSOCIATED
+                        && sta2.wifiSecurityState()
+                        == WifiSecurityState.SECURED
+                        && W119Mac.equals(
+                        sta2.wifiSelectedBssid(),
+                        ap2.wifiMacAddress()
+                )
+                        && contains(
+                        ap2,
+                        sta2
+                )
+                        && sta2.wifiPendingDataTransmissions()
+                        == 0;
+
+        if (sta1Ready
+                && sta2Ready) {
+            sta1AckBaseline =
+                    ackCount(
+                            sta1
+                    );
+
+            sta2AckBaseline =
+                    ackCount(
+                            sta2
+                    );
+
+            if (!sta1.sendWifiEngineeringAssociatedData(
+                    512
+            )
+                    || !sta2.sendWifiEngineeringAssociatedData(
+                    512
+            )) {
+                fail(
+                        W126Failure.LINK_ACK_TIMEOUT,
+                        "Initial associated DATA could not be queued"
+                );
+                return;
+            }
+
+            transition(
+                    W126Stage.LINK_ACK,
+                    "Both serialized WPA2 associations are ASSOCIATED/SECURED; concurrent DATA/ACK started"
+            );
+            return;
+        }
+
+        if (level.getGameTime()
+                - sta2ConnectStartTick > 420L
+                || elapsedStage()
+                > ASSOC_TIMEOUT) {
             fail(
                     W126Failure.ASSOCIATION_TIMEOUT,
-                    "Association timeout | STA1=" + sta1.wifiStationState() + "/" + sta1.wifiSecurityState()
-                            + " STA2=" + sta2.wifiStationState() + "/" + sta2.wifiSecurityState()
+                    "Serialized association timeout"
+                            + " | STA1="
+                            + sta1.wifiStationState()
+                            + "/"
+                            + sta1.wifiSecurityState()
+                            + " security="
+                            + sta1.wifiSelectedSecurity()
+                            + " diag="
+                            + sta1.wifiSecurityDiagnostic()
+                            + " pending="
+                            + sta1.wifiPendingDataTransmissions()
+                            + " | STA2="
+                            + sta2.wifiStationState()
+                            + "/"
+                            + sta2.wifiSecurityState()
+                            + " security="
+                            + sta2.wifiSelectedSecurity()
+                            + " diag="
+                            + sta2.wifiSecurityDiagnostic()
+                            + " pending="
+                            + sta2.wifiPendingDataTransmissions()
             );
         }
     }
