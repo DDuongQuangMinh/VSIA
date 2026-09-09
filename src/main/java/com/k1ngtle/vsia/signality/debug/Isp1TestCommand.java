@@ -7,6 +7,9 @@ import com.k1ngtle.vsia.signality.internet.provider.InternetRegistrySavedData;
 import com.k1ngtle.vsia.signality.internet.provider.Isp1UnitTestSuite;
 import com.k1ngtle.vsia.signality.internet.server.ServerRackBlockEntity;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.workflow.WifiRawIpWorkflowSnapshot;
+import com.k1ngtle.vsia.signality.engineering.wifi.WifiSecurityState;
+import com.k1ngtle.vsia.signality.engineering.wifi.WifiStationState;
+import com.k1ngtle.vsia.signality.engineering.wifi.ip.routing.Ipv4Prefix;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.workflow.WifiRawIpWorkflowState;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -56,6 +59,24 @@ public final class Isp1TestCommand {
                                                         )
                                                         .executes(
                                                                 context -> live(
+                                                                        context.getSource(),
+                                                                        StringArgumentType.getString(
+                                                                                context,
+                                                                                "coords"
+                                                                        )
+                                                                )
+                                                        )
+                                        )
+                        )
+                        .then(
+                                Commands.literal("preflight")
+                                        .then(
+                                                Commands.argument(
+                                                                "coords",
+                                                                StringArgumentType.greedyString()
+                                                        )
+                                                        .executes(
+                                                                context -> preflight(
                                                                         context.getSource(),
                                                                         StringArgumentType.getString(
                                                                                 context,
@@ -238,13 +259,72 @@ public final class Isp1TestCommand {
             return 0;
         }
 
-        if (!sta.startWifiRawHttpWorkflow(host, "/")) {
+        if (sta.wifiStationState() != WifiStationState.ASSOCIATED
+                || sta.wifiSecurityState() != WifiSecurityState.SECURED) {
             source.sendFailure(
                     Component.literal(
-                            "STA RAW HTTP workflow could not start. "
-                                    + "Make sure it is already associated/secured."
+                            "STA is not ready for ISP1 live traffic | state="
+                                    + sta.wifiStationState()
+                                    + " security="
+                                    + sta.wifiSecurityState()
+                                    + " ip="
+                                    + sta.wifiIpAddress()
+                                    + " bssid="
+                                    + sta.wifiSelectedBssid()
                     )
             );
+
+            line(
+                    source,
+                    "Reconnect the STA first, then rerun /isp1test live. "
+                            + "Use /isp1test preflight <STA x y z> to inspect it."
+            );
+
+            return 0;
+        }
+
+        boolean reusedLease =
+                Ipv4Prefix.isUsableUnicast(
+                        sta.wifiIpAddress()
+                );
+
+        boolean workflowStarted =
+                reusedLease
+                        && sta.startWifiRawHttpWorkflowWithExistingLease(
+                        host,
+                        "/"
+                );
+
+        if (!workflowStarted) {
+            reusedLease =
+                    false;
+
+            workflowStarted =
+                    sta.startWifiRawHttpWorkflow(
+                            host,
+                            "/"
+                    );
+        }
+
+        if (!workflowStarted) {
+            WifiRawIpWorkflowSnapshot failedWorkflow =
+                    sta.wifiRawIpWorkflowSnapshot();
+
+            source.sendFailure(
+                    Component.literal(
+                            "STA RAW HTTP workflow could not start | state="
+                                    + sta.wifiStationState()
+                                    + " security="
+                                    + sta.wifiSecurityState()
+                                    + " ip="
+                                    + sta.wifiIpAddress()
+                                    + " workflow="
+                                    + failedWorkflow.state()
+                                    + " detail="
+                                    + failedWorkflow.detail()
+                    )
+            );
+
             return 0;
         }
 
@@ -253,14 +333,164 @@ public final class Isp1TestCommand {
         liveExpectedIp = server.ipAddress();
         liveStartedTick = source.getLevel().getGameTime();
 
+        boolean finalReusedLease =
+                reusedLease;
+
         source.sendSuccess(
                 () -> Component.literal(
-                        "ISP1 live test started: " + host + " -> " + server.ipAddress()
+                        "ISP1 live test started: "
+                                + host
+                                + " -> "
+                                + server.ipAddress()
+                                + " | network-start="
+                                + (
+                                finalReusedLease
+                                        ? "EXISTING_LEASE"
+                                        : "DHCP"
+                        )
                 ).withStyle(ChatFormatting.GREEN),
                 false
         );
 
         return 1;
+    }
+
+    private static int preflight(
+            CommandSourceStack source,
+            String raw
+    ) {
+        String[] parts =
+                raw == null
+                        ? new String[0]
+                        : raw.trim()
+                        .split("\\s+");
+
+        if (parts.length != 3) {
+            source.sendFailure(
+                    Component.literal(
+                            "Usage: /isp1test preflight <STA x y z>"
+                    )
+            );
+            return 0;
+        }
+
+        BlockPos staPos;
+
+        try {
+            staPos =
+                    new BlockPos(
+                            Integer.parseInt(
+                                    parts[0]
+                            ),
+                            Integer.parseInt(
+                                    parts[1]
+                            ),
+                            Integer.parseInt(
+                                    parts[2]
+                            )
+                    );
+        } catch (NumberFormatException exception) {
+            source.sendFailure(
+                    Component.literal(
+                            "Coordinates must be integers."
+                    )
+            );
+            return 0;
+        }
+
+        BlockEntity entity =
+                source.getLevel()
+                        .getBlockEntity(
+                                staPos
+                        );
+
+        if (!(entity instanceof NetworkDeviceBlockEntity sta)) {
+            source.sendFailure(
+                    Component.literal(
+                            "STA position is not a NetworkDeviceBlockEntity."
+                    )
+            );
+            return 0;
+        }
+
+        WifiRawIpWorkflowSnapshot workflow =
+                sta.wifiRawIpWorkflowSnapshot();
+
+        boolean linkReady =
+                sta.wifiStationState()
+                        == WifiStationState.ASSOCIATED
+                        && sta.wifiSecurityState()
+                        == WifiSecurityState.SECURED;
+
+        boolean leaseReady =
+                Ipv4Prefix.isUsableUnicast(
+                        sta.wifiIpAddress()
+                );
+
+        source.sendSuccess(
+                () ->
+                        Component.literal(
+                                "[ISP1 PREFLIGHT] "
+                                        + (
+                                        linkReady
+                                                ? "LINK READY"
+                                                : "LINK NOT READY"
+                                )
+                        ).withStyle(
+                                linkReady
+                                        ? ChatFormatting.GREEN
+                                        : ChatFormatting.RED
+                        ),
+                false
+        );
+
+        line(
+                source,
+                "STA state="
+                        + sta.wifiStationState()
+                        + " security="
+                        + sta.wifiSecurityState()
+        );
+
+        line(
+                source,
+                "BSSID="
+                        + sta.wifiSelectedBssid()
+                        + " IPv4="
+                        + sta.wifiIpAddress()
+                        + " leaseReady="
+                        + leaseReady
+        );
+
+        line(
+                source,
+                "RAW workflow="
+                        + workflow.state()
+                        + " | "
+                        + workflow.detail()
+        );
+
+        if (!linkReady) {
+            line(
+                    source,
+                    "ISP1 does not create the Wi-Fi link itself. "
+                            + "Associate/secure this STA to a working AP first."
+            );
+        } else if (leaseReady) {
+            line(
+                    source,
+                    "Live ISP1 will reuse the existing IPv4 lease and start at DNS/ARP."
+            );
+        } else {
+            line(
+                    source,
+                    "Live ISP1 will obtain IPv4 by DHCP before DNS/TCP/HTTP."
+            );
+        }
+
+        return linkReady
+                ? 1
+                : 0;
     }
 
     private static int status(CommandSourceStack source) {
@@ -305,6 +535,15 @@ public final class Isp1TestCommand {
         );
 
         line(source, "Host: " + liveHost + " -> " + liveExpectedIp);
+        line(
+                source,
+                "STA: state="
+                        + sta.wifiStationState()
+                        + " security="
+                        + sta.wifiSecurityState()
+                        + " bssid="
+                        + sta.wifiSelectedBssid()
+        );
         line(source, "STA IPv4: " + sta.wifiIpAddress());
         line(source, "Workflow: " + workflow.state() + " | " + workflow.detail());
         line(
