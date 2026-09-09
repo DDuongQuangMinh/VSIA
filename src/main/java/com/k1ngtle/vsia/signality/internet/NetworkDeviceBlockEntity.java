@@ -629,6 +629,37 @@ private final WifiPhyController wifiPhy =
         return networkProfileId;
     }
 
+    public boolean configureNetworkProfile(
+            ResourceLocation profileId
+    ) {
+        if (profileId == null) {
+            return false;
+        }
+
+        NetworkProfile profile =
+                NetworkProfileRegistry.get(
+                        profileId
+                ).orElse(
+                        null
+                );
+
+        if (profile == null) {
+            return false;
+        }
+
+        networkProfileId =
+                profile.id();
+
+        activeFrequencyHz =
+                profile.defaultFrequencyHz();
+
+        normalizeNetworkProfile();
+
+        setChanged();
+
+        return true;
+    }
+
     public double activeFrequencyHz() {
         return activeFrequencyHz;
     }
