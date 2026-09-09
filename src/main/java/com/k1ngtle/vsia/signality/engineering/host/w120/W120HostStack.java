@@ -43,6 +43,43 @@ public final class W120HostStack {
         return out;
     }
 
+    public List<OSINetworkPacket> sendIpv4(
+            OSINetworkPacket packet,
+            long now
+    ) {
+        if (packet == null) {
+            return List.of();
+        }
+
+        List<OSINetworkPacket> out =
+                endpoint.sendIpv4(
+                        packet,
+                        now
+                );
+
+        account(out);
+
+        if (out.isEmpty()) {
+            lastEvent =
+                    "IPV4_PENDING_ARP target="
+                            + packet.targetIp;
+        } else if (W117ArpFrame.isArp(
+                out.get(0)
+        )) {
+            lastEvent =
+                    "ARP_TX nextHop="
+                            + W117ArpFrame.targetIp(
+                            out.get(0)
+                    );
+        } else {
+            lastEvent =
+                    "IPV4_TX target="
+                            + packet.targetIp;
+        }
+
+        return out;
+    }
+
     public List<OSINetworkPacket> receive(OSINetworkPacket p,long now){
         if(p==null)return List.of();
         boolean arp=W117ArpFrame.isArp(p);

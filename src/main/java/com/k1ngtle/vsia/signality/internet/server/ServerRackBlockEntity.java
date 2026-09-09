@@ -102,7 +102,16 @@ public final class ServerRackBlockEntity extends NetworkDeviceBlockEntity implem
     public String displayName(){return displayName;} public String ipAddress(){return ipAddress;}
     public String physicalDnsMacAddress(){return macAddress;}
     public OSINetworkPacket physicalDnsResponse(OSINetworkPacket query){return response(query,53,"DNS");}
-    public void physicalDnsTransmit(OSINetworkPacket packet){transmitPacket(packet);}
+    public void physicalDnsTransmit(OSINetworkPacket packet){
+        if(packet==null)return;
+        w120ConfigureHost();
+        java.util.List<OSINetworkPacket> frames=
+                w120Host.sendIpv4(
+                        packet,
+                        System.currentTimeMillis()
+                );
+        w120EmitFrames(frames);
+    }
     public int rackId(){return getPersistentData().contains("RackId")?getPersistentData().getInt("RackId"):-1;}
     public void assignAutomaticId(int id){if(getPersistentData().contains("RackId"))return;getPersistentData().putInt("RackId",id);displayName="Server"+id;setChanged();}
     public String subnetMask(){return subnetMask;} public String gatewayIp(){return gatewayIp;}
@@ -237,6 +246,16 @@ public final class ServerRackBlockEntity extends NetworkDeviceBlockEntity implem
         }
 
         w120ConfigureHost();
+
+        boolean physicalDns =
+                packet.payload != null
+                        && packet.payload.getBoolean(
+                        "physical_dns"
+                );
+
+        if (physicalDns) {
+            return false;
+        }
 
         boolean arp =
                 "ARP".equalsIgnoreCase(
