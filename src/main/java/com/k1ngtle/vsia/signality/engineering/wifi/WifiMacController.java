@@ -4,6 +4,7 @@ import com.k1ngtle.vsia.signality.engineering.wifi.qos.WifiQosClassifier;
 import com.k1ngtle.vsia.signality.internet.OSINetworkPacket;
 
 import com.k1ngtle.vsia.signality.engineering.wifi.security.WifiHandshakeMicMaterial;
+import com.k1ngtle.vsia.signality.engineering.wifi.security.protocol.WifiSecurityProtocolRegistry;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
 
@@ -732,9 +733,11 @@ public final class WifiMacController {
                 "AP_CONFIGURED";
         apSsid = ssid;
         apSecurity =
-                security == null || security.isBlank()
-                        ? "signality:open"
-                        : security;
+                WifiSecurityProtocolRegistry.canonicalId(
+                        security == null || security.isBlank()
+                                ? "signality:open"
+                                : security
+                );
 
         apPassphrase =
                 passphrase == null
@@ -3342,20 +3345,13 @@ public final class WifiMacController {
     private static boolean isOpenSecurity(
             String security
     ) {
-        if (security == null) {
-            return true;
+        try {
+            return WifiSecurityProtocolRegistry.resolve(
+                    security
+            ).isOpen();
+        } catch (IllegalArgumentException ignored) {
+            return false;
         }
-
-        String value =
-                security.toLowerCase();
-
-        return value.isBlank()
-                || value.contains(
-                "open"
-        )
-                || value.contains(
-                "none"
-        );
     }
 
     private static byte[] encode(
