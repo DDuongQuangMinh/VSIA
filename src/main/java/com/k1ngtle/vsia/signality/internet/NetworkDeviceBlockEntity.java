@@ -269,6 +269,14 @@ private final WifiPhyController wifiPhy =
 
     private long nextWifiRoamScanMicros;
 
+    /*
+     * Normal Wi-Fi behavior keeps background roaming enabled.
+     * W1.23 engineering workflow can disable it to make manual
+     * roam tests deterministic per station.
+     */
+    private boolean wifiBackgroundRoamingEnabled =
+            true;
+
     private long wifiLastRoamAttemptMicros =
             -1L;
 
@@ -1193,6 +1201,30 @@ private final WifiPhyController wifiPhy =
 
     public double wifiRoamHysteresisDb() {
         return WIFI_ROAM_HYSTERESIS_DB;
+    }
+
+    public boolean wifiBackgroundRoamingEnabled() {
+        return wifiBackgroundRoamingEnabled;
+    }
+
+    public void setWifiBackgroundRoamingEnabled(
+            boolean enabled
+    ) {
+        wifiBackgroundRoamingEnabled =
+                enabled;
+
+        if (!enabled) {
+            nextWifiRoamScanMicros =
+                    0L;
+
+            if (wifiSinglePlayerScanActive
+                    && wifiSinglePlayerScanAutoRoam) {
+                wifiSinglePlayerScanAutoRoam =
+                        false;
+            }
+        }
+
+        setChanged();
     }
 
     public WifiNetworkRecord bestWifiRoamCandidate() {
@@ -9561,6 +9593,12 @@ private final WifiPhyController wifiPhy =
         }
 
         if (!wifiMac.isAssociated()) {
+            nextWifiRoamScanMicros =
+                    0L;
+            return;
+        }
+
+        if (!wifiBackgroundRoamingEnabled) {
             nextWifiRoamScanMicros =
                     0L;
             return;

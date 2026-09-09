@@ -186,9 +186,15 @@ public final class WifiEngineeringWorkflowService {
                         ""
                 );
 
-        return configured
-                ? "STATION configured; press Scan to discover APs"
-                : "Station configuration rejected: target is not a Wi-Fi profile";
+        if (!configured) {
+            return "Station configuration rejected: target is not a Wi-Fi profile";
+        }
+
+        device.setWifiBackgroundRoamingEnabled(
+                false
+        );
+
+        return "STATION configured in MANUAL-ROAM lab mode; press Scan to discover APs";
     }
 
     private static String roamBest(
