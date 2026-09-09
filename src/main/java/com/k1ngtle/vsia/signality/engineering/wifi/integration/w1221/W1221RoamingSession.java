@@ -40,6 +40,9 @@ public final class W1221RoamingSession {
     private static final long ROAM_SCAN_TIMEOUT_TICKS =
             300L;
 
+    private static final long ROAM_SCAN_START_GRACE_TICKS =
+            240L;
+
     private static final long ROAM_CONNECT_TIMEOUT_TICKS =
             240L;
 
@@ -85,6 +88,9 @@ public final class W1221RoamingSession {
             "";
 
     private long ap2SeenBeforeRoamScan =
+            -1L;
+
+    private long baselineHttpCompleteTick =
             -1L;
 
     private long postRoamAckBaseline =
@@ -574,8 +580,15 @@ public final class W1221RoamingSession {
                         ap2
                 );
 
+        boolean scanComplete =
+                station.wifiSecurityDiagnostic()
+                        .startsWith(
+                                "SCAN_COMPLETE_APS_"
+                        );
+
         if (ap1Record != null
-                && ap2Record != null) {
+                && ap2Record != null
+                && scanComplete) {
             boolean started =
                     station.connectWifiBssid(
                             ap1Record.ssid(),
@@ -717,40 +730,99 @@ public final class W1221RoamingSession {
                 return;
             }
 
-            baselineIp =
-                    safe(
-                            station.wifiIpAddress()
-                    );
+            if (baselineHttpCompleteTick < 0L) {
+                baselineHttpCompleteTick =
+                        level.getGameTime();
 
-            if (!usableIpv4(
-                    baselineIp
-            )) {
-                fail(
-                        W1221RoamingFailure.BASELINE_HTTP_FAILED,
-                        "Baseline HTTP completed without a usable station IPv4 address"
-                );
-                return;
+                baselineIp =
+                        safe(
+                                station.wifiIpAddress()
+                        );
+
+                if (!usableIpv4(
+                        baselineIp
+                )) {
+                    fail(
+                            W1221RoamingFailure.BASELINE_HTTP_FAILED,
+                            "Baseline HTTP completed without a usable station IPv4 address"
+                    );
+                    return;
+                }
+
+                WifiNetworkRecord ap2Record =
+                        discovered(
+                                station,
+                                ap2
+                        );
+
+                ap2SeenBeforeRoamScan =
+                        ap2Record == null
+                                ? -1L
+                                : ap2Record.lastSeenNanos();
             }
 
-            WifiNetworkRecord ap2Record =
-                    discovered(
-                            station,
-                            ap2
+            int pendingData =
+                    station.wifiPendingDataTransmissions();
+
+            long drainElapsed =
+                    Math.max(
+                            0L,
+                            level.getGameTime()
+                                    - baselineHttpCompleteTick
                     );
 
-            ap2SeenBeforeRoamScan =
-                    ap2Record == null
-                            ? -1L
-                            : ap2Record.lastSeenNanos();
+            if (pendingData > 0) {
+                detail =
+                        "Baseline HTTP 200 complete; waiting for Wi-Fi MAC TX queue to drain before roam scan"
+                                + " | pendingData="
+                                + pendingData
+                                + " | waited="
+                                + drainElapsed
+                                + " ticks";
+
+                if (drainElapsed
+                        > ROAM_SCAN_START_GRACE_TICKS) {
+                    fail(
+                            W1221RoamingFailure.ROAM_SCAN_START_FAILED,
+                            "Associated roaming scan remained blocked because pending Wi-Fi DATA did not drain"
+                                    + " | pendingData="
+                                    + pendingData
+                                    + " | diagnostic="
+                                    + station.wifiSecurityDiagnostic()
+                    );
+                }
+
+                return;
+            }
 
             roamScanStarted =
                     station.scanWifi();
 
             if (!roamScanStarted) {
-                fail(
-                        W1221RoamingFailure.ROAM_SCAN_START_FAILED,
-                        "Associated roaming scan could not start"
-                );
+                detail =
+                        "Baseline HTTP 200 complete; roam scan start deferred and will retry"
+                                + " | pendingData="
+                                + station.wifiPendingDataTransmissions()
+                                + " | diagnostic="
+                                + station.wifiSecurityDiagnostic()
+                                + " | waited="
+                                + drainElapsed
+                                + " ticks";
+
+                if (drainElapsed
+                        > ROAM_SCAN_START_GRACE_TICKS) {
+                    fail(
+                            W1221RoamingFailure.ROAM_SCAN_START_FAILED,
+                            "Associated roaming scan could not start after grace period"
+                                    + " | pendingData="
+                                    + station.wifiPendingDataTransmissions()
+                                    + " | state="
+                                    + station.wifiStationState()
+                                    + " | diagnostic="
+                                    + station.wifiSecurityDiagnostic()
+                    );
+                }
+
                 return;
             }
 
@@ -758,7 +830,7 @@ public final class W1221RoamingSession {
                     W1221RoamingStage.ROAM_SCAN,
                     "Baseline HTTP 200 passed on AP1 with IP "
                             + baselineIp
-                            + "; associated scan started while preserving AP1 link"
+                            + "; MAC TX queue drained; associated scan started while preserving AP1 link"
             );
             return;
         }
