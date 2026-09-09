@@ -2798,6 +2798,43 @@ private final WifiPhyController wifiPhy =
         );
     }
 
+    public boolean startWifiRawHttpWorkflowWithExistingLease(
+            String hostname,
+            String path
+    ) {
+        if (!wifiIpReady()) {
+            wifiIpApplication.setStatus(
+                    "RAW HTTP lease-reuse rejected: Wi-Fi IPv4 is not ready"
+            );
+            return false;
+        }
+
+        if (!Ipv4Prefix.isUsableUnicast(
+                wifiDhcpDnsServerIp
+        )) {
+            wifiIpApplication.setStatus(
+                    "RAW HTTP lease-reuse rejected: DHCP DNS resolver is unavailable"
+            );
+            return false;
+        }
+
+        long nowMicros =
+                level instanceof ServerLevel serverLevel
+                        ? NetworkTimebase.nowMicros(
+                        serverLevel
+                )
+                        : 0L;
+
+        return wifiRawIpWorkflow.startWithExistingLease(
+                hostname,
+                path,
+                ipAddress,
+                wifiDhcpDnsServerIp,
+                nowMicros,
+                wifiRawIpWorkflowActions
+        );
+    }
+
     public void clearWifiRawIpWorkflow() {
         wifiRawIpWorkflow.clear(
                 wifiRawIpWorkflowActions

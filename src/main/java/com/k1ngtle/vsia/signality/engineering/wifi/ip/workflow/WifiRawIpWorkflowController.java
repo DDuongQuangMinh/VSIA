@@ -79,6 +79,97 @@ public final class WifiRawIpWorkflowController {
         return true;
     }
 
+    public boolean startWithExistingLease(
+            String requestedHostname,
+            String requestedPath,
+            String existingIp,
+            String resolverIp,
+            long nowMicros,
+            WifiRawIpWorkflowActions actions
+    ) {
+        if (actions == null) {
+            throw new IllegalArgumentException(
+                    "actions"
+            );
+        }
+
+        String normalizedHost =
+                normalizeHost(
+                        requestedHostname
+                );
+
+        if (normalizedHost.isBlank()) {
+            fail(
+                    "RAW lease-reuse workflow rejected: hostname is empty",
+                    actions
+            );
+            return false;
+        }
+
+        if (!usableIpv4(
+                existingIp
+        )) {
+            fail(
+                    "RAW lease-reuse workflow rejected: existing IPv4 lease is invalid",
+                    actions
+            );
+            return false;
+        }
+
+        if (!usableIpv4(
+                resolverIp
+        )) {
+            fail(
+                    "RAW lease-reuse workflow rejected: DNS resolver is invalid",
+                    actions
+            );
+            return false;
+        }
+
+        reset();
+
+        hostname =
+                normalizedHost;
+
+        path =
+                normalizePath(
+                        requestedPath
+                );
+
+        assignedIp =
+                existingIp;
+
+        dnsServerIp =
+                resolverIp;
+
+        state =
+                WifiRawIpWorkflowState.DNS_ARP;
+
+        arm(
+                nowMicros
+        );
+
+        if (!actions.arp(
+                dnsServerIp
+        )) {
+            fail(
+                    "RAW lease-reuse workflow failed: DNS-server ARP could not start",
+                    actions
+            );
+            return false;
+        }
+
+        announce(
+                "RAW HTTP lease reuse: "
+                        + assignedIp
+                        + " | DNS ARP: "
+                        + dnsServerIp,
+                actions
+        );
+
+        return true;
+    }
+
     public void onDhcpAck(
             String leasedIp,
             String resolverIp,
