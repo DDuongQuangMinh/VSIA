@@ -9,6 +9,7 @@ import com.k1ngtle.vsia.signality.internet.server.ServerRackBlockEntity;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.workflow.WifiRawIpWorkflowSnapshot;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiSecurityState;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiStationState;
+import com.k1ngtle.vsia.signality.engineering.wifi.dhcp.DhcpClientState;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.routing.Ipv4Prefix;
 import com.k1ngtle.vsia.signality.engineering.wifi.ip.workflow.WifiRawIpWorkflowState;
 import com.mojang.brigadier.CommandDispatcher;
@@ -284,7 +285,9 @@ public final class Isp1TestCommand {
         }
 
         boolean reusedLease =
-                Ipv4Prefix.isUsableUnicast(
+                sta.wifiDhcpClientState()
+                        == DhcpClientState.BOUND
+                        && Ipv4Prefix.isUsableUnicast(
                         sta.wifiIpAddress()
                 );
 
@@ -422,10 +425,16 @@ public final class Isp1TestCommand {
                         && sta.wifiSecurityState()
                         == WifiSecurityState.SECURED;
 
-        boolean leaseReady =
-                Ipv4Prefix.isUsableUnicast(
+        boolean leaseBound =
+                sta.wifiDhcpClientState()
+                        == DhcpClientState.BOUND
+                        && Ipv4Prefix.isUsableUnicast(
                         sta.wifiIpAddress()
                 );
+
+        boolean leaseReady =
+                linkReady
+                        && leaseBound;
 
         source.sendSuccess(
                 () ->
@@ -458,7 +467,15 @@ public final class Isp1TestCommand {
                         + sta.wifiSelectedBssid()
                         + " IPv4="
                         + sta.wifiIpAddress()
-                        + " leaseReady="
+        );
+
+        line(
+                source,
+                "DHCP="
+                        + sta.wifiDhcpClientState()
+                        + " leaseBound="
+                        + leaseBound
+                        + " reusableLease="
                         + leaseReady
         );
 
@@ -474,12 +491,13 @@ public final class Isp1TestCommand {
             line(
                     source,
                     "ISP1 does not create the Wi-Fi link itself. "
-                            + "Associate/secure this STA to a working AP first."
+                            + "Associate/secure this STA to a working AP first. "
+                            + "A retained IPv4/DHCP lease alone is not a usable link."
             );
         } else if (leaseReady) {
             line(
                     source,
-                    "Live ISP1 will reuse the existing IPv4 lease and start at DNS/ARP."
+                    "Live ISP1 will reuse the DHCP BOUND lease and start at DNS/ARP."
             );
         } else {
             line(

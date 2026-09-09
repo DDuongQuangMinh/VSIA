@@ -1619,6 +1619,10 @@ private final WifiPhyController wifiPhy =
         return ipAddress;
     }
 
+    public DhcpClientState wifiDhcpClientState() {
+        return wifiDhcpClientState;
+    }
+
     public String wifiDefaultGatewayMac() {
         return defaultGatewayMac;
     }
