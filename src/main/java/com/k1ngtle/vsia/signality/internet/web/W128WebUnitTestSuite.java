@@ -33,6 +33,64 @@ public final class W128WebUnitTestSuite {
             require(W128MimeTypes.forPath("/a.html").startsWith("text/html"), "html MIME mismatch");
         });
 
+        run(results, "w128-ide-languages", () -> {
+            require(
+                    W128IdeLanguage.detect("/main.py") == W128IdeLanguage.PYTHON,
+                    "python detection mismatch"
+            );
+            require(
+                    W128IdeLanguage.detect("/main.c") == W128IdeLanguage.C,
+                    "C detection mismatch"
+            );
+            require(
+                    W128IdeLanguage.detect("/Program.cs") == W128IdeLanguage.CSHARP,
+                    "C# detection mismatch"
+            );
+            require(
+                    W128IdeLanguage.detect("/main.cpp") == W128IdeLanguage.CPP,
+                    "C++ detection mismatch"
+            );
+            require(
+                    W128IdeLanguage.detect("/boot.asm") == W128IdeLanguage.ASSEMBLY,
+                    "assembly detection mismatch"
+            );
+            require(
+                    W128IdeLanguage.detect("/Main.java") == W128IdeLanguage.JAVA,
+                    "Java detection mismatch"
+            );
+            require(
+                    W128IdeLanguage.detect("/src/App.jsx") == W128IdeLanguage.JSX,
+                    "JSX detection mismatch"
+            );
+        });
+
+        run(results, "w128-source-mime", () -> {
+            require(
+                    W128MimeTypes.forPath("/main.py").startsWith("text/x-python"),
+                    "python MIME mismatch"
+            );
+            require(
+                    W128MimeTypes.forPath("/main.c").startsWith("text/x-c"),
+                    "C MIME mismatch"
+            );
+            require(
+                    W128MimeTypes.forPath("/Program.cs").startsWith("text/x-csharp"),
+                    "C# MIME mismatch"
+            );
+            require(
+                    W128MimeTypes.forPath("/main.cpp").startsWith("text/x-c++"),
+                    "C++ MIME mismatch"
+            );
+            require(
+                    W128MimeTypes.forPath("/boot.asm").startsWith("text/x-asm"),
+                    "assembly MIME mismatch"
+            );
+            require(
+                    W128MimeTypes.forPath("/Main.java").startsWith("text/x-java-source"),
+                    "Java MIME mismatch"
+            );
+        });
+
         run(results, "w128-jsx-basic", () -> {
             String output = W128JsxCompiler.compile(
                     "function App(){return <main><h1>Hello</h1><p>World</p></main>;}"

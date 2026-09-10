@@ -1,6 +1,8 @@
 package com.k1ngtle.vsia.network;
 
 import com.k1ngtle.vsia.Vsia;
+import com.k1ngtle.vsia.network.web.W128IdeRequestPacket;
+import com.k1ngtle.vsia.network.web.W128IdeSnapshotPacket;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringModePacket;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringSnapshotPacket;
 import com.k1ngtle.vsia.network.wifi.WifiEngineeringSnapshotRequestPacket;
@@ -240,6 +242,26 @@ public class VsiaNetwork {
                 .decoder(WifiMultiEngineeringOpenPacket::new)
                 .encoder(WifiMultiEngineeringOpenPacket::toBytes)
                 .consumerMainThread(WifiMultiEngineeringOpenPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        W128IdeRequestPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
+                .decoder(W128IdeRequestPacket::new)
+                .encoder(W128IdeRequestPacket::toBytes)
+                .consumerMainThread(W128IdeRequestPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        W128IdeSnapshotPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_CLIENT
+                )
+                .decoder(W128IdeSnapshotPacket::new)
+                .encoder(W128IdeSnapshotPacket::toBytes)
+                .consumerMainThread(W128IdeSnapshotPacket::handle)
                 .add();
     }
 

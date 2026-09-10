@@ -5,6 +5,7 @@ import com.k1ngtle.vsia.signality.internet.provider.InternetDnsRecord;
 import com.k1ngtle.vsia.signality.internet.provider.InternetRegistryResult;
 import com.k1ngtle.vsia.signality.internet.provider.InternetRegistrySavedData;
 import com.k1ngtle.vsia.signality.internet.web.W128WebBuildResult;
+import com.k1ngtle.vsia.signality.internet.web.W128IdeServer;
 import com.k1ngtle.vsia.signality.internet.web.W128WebFile;
 import com.k1ngtle.vsia.signality.internet.web.W128WebMode;
 import com.k1ngtle.vsia.signality.internet.web.W128WebProject;
@@ -69,6 +70,16 @@ public final class W128WebCommand {
                         .then(
                                 Commands.literal("my")
                                         .executes(context -> my(context.getSource()))
+                        )
+                        .then(
+                                Commands.literal("ide")
+                                        .then(
+                                                Commands.argument("host", StringArgumentType.word())
+                                                        .executes(context -> ide(
+                                                                context.getSource(),
+                                                                StringArgumentType.getString(context, "host")
+                                                        ))
+                                        )
                         )
                         .then(
                                 Commands.literal("info")
@@ -185,6 +196,7 @@ public final class W128WebCommand {
         source.sendSuccess(() -> Component.literal("/web bind <host> <server-rack-ip> [ttl]"), false);
         source.sendSuccess(() -> Component.literal("/web file set <host> <path> <content>"), false);
         source.sendSuccess(() -> Component.literal("/web file book <host> <path>"), false);
+        source.sendSuccess(() -> Component.literal("/web ide <host>"), false);
         source.sendSuccess(() -> Component.literal("/web build <host>"), false);
         source.sendSuccess(() -> Component.literal("/web publish <host>"), false);
         source.sendSuccess(() -> Component.literal("/web info <host> | /web my | /web dns <host>"), false);
@@ -247,6 +259,22 @@ public final class W128WebCommand {
             );
         }
         return projects.size();
+    }
+
+    private static int ide(
+            CommandSourceStack source,
+            String host
+    ) throws CommandSyntaxException {
+        ServerPlayer player =
+                source.getPlayerOrException();
+
+        return result(
+                source,
+                W128IdeServer.open(
+                        player,
+                        host
+                )
+        );
     }
 
     private static int info(CommandSourceStack source, String host) {
