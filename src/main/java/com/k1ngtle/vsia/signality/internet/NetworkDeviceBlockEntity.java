@@ -3035,6 +3035,20 @@ private final WifiPhyController wifiPhy =
             String targetIp,
             String path
     ) {
+        return startWifiTcpHttpGet(
+                targetMac,
+                targetIp,
+                targetIp,
+                path
+        );
+    }
+
+    public boolean startWifiTcpHttpGet(
+            String targetMac,
+            String targetIp,
+            String hostname,
+            String path
+    ) {
         if (!wifiIpReady()) {
             wifiIpApplication.setStatus(
                     "TCP HTTP rejected: Wi-Fi is not associated/secured"
@@ -3065,6 +3079,7 @@ private final WifiPhyController wifiPhy =
                         ipAddress,
                         targetMac,
                         targetIp,
+                        hostname,
                         path,
                         nowMicros
                 );
@@ -3078,7 +3093,8 @@ private final WifiPhyController wifiPhy =
 
         if (started) {
             wifiIpApplication.setStatus(
-                    "TCP HTTP connection started"
+                    "TCP HTTP connection started for "
+                            + (hostname == null || hostname.isBlank() ? targetIp : hostname)
             );
         }
 

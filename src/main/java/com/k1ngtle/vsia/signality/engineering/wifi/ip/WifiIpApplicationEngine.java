@@ -485,6 +485,26 @@ public final class WifiIpApplicationEngine {
             String path,
             long nowMicros
     ) {
+        return createHttpGet(
+                localMac,
+                localIp,
+                targetMac,
+                targetIp,
+                targetIp,
+                path,
+                nowMicros
+        );
+    }
+
+    public OSINetworkPacket createHttpGet(
+            String localMac,
+            String localIp,
+            String targetMac,
+            String targetIp,
+            String host,
+            String path,
+            long nowMicros
+    ) {
         int sourcePort =
                 50000
                         + (
@@ -508,18 +528,28 @@ public final class WifiIpApplicationEngine {
         packet.ipProtocol =
                 6;
 
+        String requestHost =
+                host == null
+                        || host.isBlank()
+                        ? targetIp
+                        : host.trim()
+                        .toLowerCase(
+                                java.util.Locale.ROOT
+                        );
+
+        String requestPath =
+                path == null
+                        || path.isBlank()
+                        ? "/"
+                        : path;
+
         byte[] requestBytes =
                 (
                         "GET "
-                                + (
-                                path == null
-                                        || path.isBlank()
-                                ? "/"
-                                : path
-                        )
-                                + " HTTP/1.1\\r\\nHost: "
-                                + targetIp
-                                + "\\r\\nConnection: close\\r\\n\\r\\n"
+                                + requestPath
+                                + " HTTP/1.1\r\nHost: "
+                                + requestHost
+                                + "\r\nConnection: close\r\n\r\n"
                 ).getBytes(
                         java.nio.charset.StandardCharsets.US_ASCII
                 );
@@ -544,10 +574,12 @@ public final class WifiIpApplicationEngine {
 
         packet.payload.putString(
                 "path",
-                path == null
-                        || path.isBlank()
-                        ? "/"
-                        : path
+                requestPath
+        );
+
+        packet.payload.putString(
+                "host",
+                requestHost
         );
 
         packet.payload.putLong(
@@ -574,7 +606,10 @@ public final class WifiIpApplicationEngine {
 
         lastStatus =
                 "HTTP GET queued for "
-                        + targetIp;
+                        + requestHost
+                        + " ["
+                        + targetIp
+                        + "]";
 
         return packet;
     }

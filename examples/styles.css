@@ -1,0 +1,16 @@
+body {
+  font-family: sans-serif;
+  background: #101419;
+  color: #eef2f6;
+  margin: 0;
+  padding: 32px;
+}
+
+main {
+  max-width: 720px;
+  margin: auto;
+}
+
+button {
+  padding: 8px 14px;
+}

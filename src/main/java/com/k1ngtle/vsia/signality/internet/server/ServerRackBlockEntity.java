@@ -633,7 +633,63 @@ processLayer2(packet);}
         OSINetworkPacket r=new OSINetworkPacket(); r.sourceMac=macAddress;r.targetMac=q.sourceMac;r.sourceIp=ipAddress;
         r.targetIp=q.sourceIp;r.sourcePort=port;r.targetPort=q.sourcePort;r.applicationProtocol=protocol;r.isResponse=true;r.sessionId=q.sessionId;return r;
     }
-    @Override protected void handleWebRequest(OSINetworkPacket q){if(httpEnabled&&!q.isResponse&&"HTTP".equalsIgnoreCase(q.applicationProtocol))serveFile(q,"HTTP",httpPort,false);}
+    @Override protected void handleWebRequest(OSINetworkPacket q) {
+        if (!httpEnabled
+                || q == null
+                || q.isResponse
+                || !"HTTP".equalsIgnoreCase(q.applicationProtocol)) {
+            return;
+        }
+
+        if (level instanceof ServerLevel serverLevel) {
+            com.k1ngtle.vsia.signality.internet.web.W128HttpResponse hosted =
+                    com.k1ngtle.vsia.signality.internet.web.W128WebHostService.serve(
+                            serverLevel,
+                            ipAddress,
+                            q
+                    );
+
+            if (hosted != null) {
+                OSINetworkPacket r =
+                        response(
+                                q,
+                                httpPort,
+                                "HTTP"
+                        );
+
+                r.ipProtocol = 6;
+                r.payload.putInt("status", hosted.status());
+                r.payload.putString("reason", hosted.reason());
+                r.payload.putString("content_type", hosted.contentType());
+                r.payload.putString("content", hosted.body());
+                r.payload.putString(
+                        "host",
+                        com.k1ngtle.vsia.signality.internet.web.W128WebHostService.extractHost(q)
+                );
+                r.payload.putByteArray(
+                        "response_wire",
+                        com.k1ngtle.vsia.signality.internet.web.W128WebHostService.responseWire(hosted)
+                );
+
+                String etag = hosted.headers().get("ETag");
+                if (etag != null) {
+                    r.payload.putString("etag", etag);
+                }
+
+                if (q.payload.contains("w1_request_id")) {
+                    r.payload.putLong(
+                            "w1_request_id",
+                            q.payload.getLong("w1_request_id")
+                    );
+                }
+
+                transmitPacket(r);
+                return;
+            }
+        }
+
+        serveFile(q, "HTTP", httpPort, false);
+    }
     @Override
     protected void handleIncomingData(OSINetworkPacket q) {
         if (q == null || q.isResponse) {
