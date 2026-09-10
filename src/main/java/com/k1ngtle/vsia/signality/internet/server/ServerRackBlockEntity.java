@@ -104,6 +104,12 @@ public final class ServerRackBlockEntity extends NetworkDeviceBlockEntity implem
     public OSINetworkPacket physicalDnsResponse(OSINetworkPacket query){return response(query,53,"DNS");}
     public void physicalDnsTransmit(OSINetworkPacket packet){
         if(packet==null)return;
+        if(com.k1ngtle.vsia.signality.engineering.wifi.integration.w127.W127FaultController.intercept(this,packet))return;
+        w127PhysicalDnsTransmitImmediate(packet);
+    }
+
+    public void w127PhysicalDnsTransmitImmediate(OSINetworkPacket packet){
+        if(packet==null)return;
         w120ConfigureHost();
         java.util.List<OSINetworkPacket> frames=
                 w120Host.sendIpv4(

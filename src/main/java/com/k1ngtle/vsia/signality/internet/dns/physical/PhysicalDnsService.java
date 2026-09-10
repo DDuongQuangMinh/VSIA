@@ -323,6 +323,36 @@ public final class PhysicalDnsService {
         );
     }
 
+    public static int w127CancelTransfers(
+            String secondaryIp
+    ) {
+        int before =
+                TRANSFERS.size();
+
+        TRANSFERS.entrySet()
+                .removeIf(
+                        entry ->
+                                entry.getValue()
+                                        .secondaryIp
+                                        .equalsIgnoreCase(
+                                                secondaryIp
+                                        )
+                );
+
+        int removed =
+                before
+                        - TRANSFERS.size();
+
+        LAST_TRANSFER.put(
+                secondaryIp,
+                "CANCELLED | W1.27 removed "
+                        + removed
+                        + " incomplete transfer session(s)"
+        );
+
+        return removed;
+    }
+
     @SubscribeEvent
     public static void onServerTick(
             TickEvent.ServerTickEvent event
