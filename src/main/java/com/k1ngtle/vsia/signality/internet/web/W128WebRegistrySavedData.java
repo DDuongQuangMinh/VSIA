@@ -305,9 +305,9 @@ public final class W128WebRegistrySavedData extends SavedData {
                 + "<script src=\"/react-runtime.js\"></script>"
                 + "<script src=\"/app.js\"></script></body></html>";
 
-        putGenerated(project, "/react-runtime.js", W128ReactRuntime.source(), nowMillis);
-        putGenerated(project, "/app.js", appJs, nowMillis);
-        putGenerated(project, "/index.html", indexHtml, nowMillis);
+        putGeneratedUnlessManual(project, "/react-runtime.js", W128ReactRuntime.source(), nowMillis);
+        putGeneratedUnlessManual(project, "/app.js", appJs, nowMillis);
+        putGeneratedUnlessManual(project, "/index.html", indexHtml, nowMillis);
         project.markBuilt(nowMillis);
         project.setPublished(false, nowMillis);
         setDirty();
@@ -514,6 +514,26 @@ public final class W128WebRegistrySavedData extends SavedData {
                     false
             ));
         }
+    }
+
+    private void putGeneratedUnlessManual(
+            W128WebProject project,
+            String path,
+            String content,
+            long nowMillis
+    ) {
+        W128WebFile existing = project.file(path);
+
+        if (existing != null && !existing.generated()) {
+            return;
+        }
+
+        putGenerated(
+                project,
+                path,
+                content,
+                nowMillis
+        );
     }
 
     private void putGenerated(

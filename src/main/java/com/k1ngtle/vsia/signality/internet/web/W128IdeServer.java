@@ -68,6 +68,7 @@ public final class W128IdeServer {
             );
             case UNPUBLISH -> data.unpublish(player.getUUID(), project.host(), now);
             case IMPORT_BOOK -> importBook(data, project, player, requestedPath, now);
+            case REGENERATE -> regenerate(data, project, player, requestedPath, now);
         };
 
         project = data.project(project.host()).orElse(project);
@@ -99,13 +100,6 @@ public final class W128IdeServer {
     ) {
         if (path.isBlank()) {
             return W128WebBuildResult.fail("Select or create a file first.");
-        }
-
-        W128WebFile current = project.file(path);
-        if (current != null && current.generated()) {
-            return W128WebBuildResult.fail(
-                    "Generated files are read-only. Edit the source file and rebuild."
-            );
         }
 
         return data.putFile(
@@ -156,13 +150,6 @@ public final class W128IdeServer {
             return W128WebBuildResult.fail("Select a file first.");
         }
 
-        W128WebFile current = project.file(path);
-        if (current != null && current.generated()) {
-            return W128WebBuildResult.fail(
-                    "Generated files are managed by the build. Edit source and rebuild instead."
-            );
-        }
-
         return data.removeFile(
                 player.getUUID(),
                 project.host(),
@@ -184,11 +171,6 @@ public final class W128IdeServer {
             );
         }
 
-        W128WebFile current = project.file(path);
-        if (current != null && current.generated()) {
-            return W128WebBuildResult.fail("Generated files are read-only.");
-        }
-
         String content = bookText(player);
         if (content == null) {
             return W128WebBuildResult.fail(
@@ -203,6 +185,64 @@ public final class W128IdeServer {
                 content,
                 now
         );
+    }
+
+    private static W128WebBuildResult regenerate(
+            W128WebRegistrySavedData data,
+            W128WebProject project,
+            ServerPlayer player,
+            String path,
+            long now
+    ) {
+        if (project.mode() != W128WebMode.REACT) {
+            return W128WebBuildResult.fail(
+                    "Regenerate is only available for React build outputs."
+            );
+        }
+
+        if (!managedOutput(path)) {
+            return W128WebBuildResult.fail(
+                    "This file is not managed by the React build."
+            );
+        }
+
+        W128WebFile previous = project.file(path);
+
+        if (previous != null) {
+            project.removeFile(path, now);
+        }
+
+        W128WebBuildResult result = data.build(
+                player.getUUID(),
+                project.host(),
+                now
+        );
+
+        if (!result.success()) {
+            if (previous != null) {
+                project.putFile(previous);
+            }
+
+            return W128WebBuildResult.fail(
+                    "Regenerate failed: " + result.message()
+            );
+        }
+
+        W128WebProject refreshed = data.project(project.host()).orElse(project);
+
+        return W128WebBuildResult.ok(
+                "Regenerated "
+                        + path
+                        + " | revision="
+                        + refreshed.buildRevision()
+                        + " | publish required"
+        );
+    }
+
+    private static boolean managedOutput(String path) {
+        return "/app.js".equals(path)
+                || "/index.html".equals(path)
+                || "/react-runtime.js".equals(path);
     }
 
     private static void send(

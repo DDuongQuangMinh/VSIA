@@ -9,5 +9,6 @@ public enum W128IdeAction {
     BUILD,
     PUBLISH,
     UNPUBLISH,
-    IMPORT_BOOK
+    IMPORT_BOOK,
+    REGENERATE
 }

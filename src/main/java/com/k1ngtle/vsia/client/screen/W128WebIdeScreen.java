@@ -106,7 +106,7 @@ public final class W128WebIdeScreen extends Screen {
 
         editorBaseline = displayValue();
         editor.setValue(editorBaseline);
-        editor.setEditable(!activeGenerated);
+        editor.setEditable(true);
         addRenderableWidget(editor);
 
         addFileButtons();
@@ -136,6 +136,17 @@ public final class W128WebIdeScreen extends Screen {
                         : "Format",
                 this::formatOrToggle
         );
+
+        if (managedOutput(activePath)) {
+            x = button(
+                    x,
+                    toolbarY,
+                    84,
+                    "Regenerate",
+                    this::regenerate
+            );
+        }
+
         button(x, toolbarY, 62, "Delete", this::deleteFile);
 
         goLineField = new EditBox(
@@ -200,7 +211,9 @@ public final class W128WebIdeScreen extends Screen {
             }
 
             W128IdeSnapshotPacket.FileEntry entry = files.get(index);
-            String marker = entry.generated() ? "G " : "  ";
+            String marker = entry.generated()
+                    ? "G "
+                    : (managedOutput(entry.path()) ? "M " : "  ");
             String label = marker + trimLabel(entry.path(), 31);
 
             Button fileButton = Button.builder(
@@ -356,21 +369,31 @@ public final class W128WebIdeScreen extends Screen {
                 false
         );
 
+        String management =
+                activeGenerated
+                        ? " | GENERATED | EDITABLE | SAVE = MANUAL OVERRIDE"
+                        : (
+                        managedOutput(activePath)
+                                ? " | MANUAL OVERRIDE"
+                                : ""
+                );
+
+        String view =
+                activeGenerated
+                        && W128CodeFormatter.supports(activePath)
+                        ? (
+                        prettyGenerated
+                                ? " | PRETTY VIEW"
+                                : " | RAW VIEW"
+                )
+                        : "";
+
         String right =
                 language.displayName()
                         + " | "
                         + runtime
-                        + (
-                        activeGenerated
-                                ? " | GENERATED READ-ONLY"
-                                + (
-                                prettyGenerated
-                                        && W128CodeFormatter.supports(activePath)
-                                        ? " | PRETTY VIEW"
-                                        : " | RAW VIEW"
-                        )
-                                : ""
-                );
+                        + management
+                        + view;
 
         graphics.drawString(
                 font,
@@ -496,11 +519,8 @@ public final class W128WebIdeScreen extends Screen {
         init();
 
         if (preserveLocal && editor != null) {
-            editor.setEditable(!activeGenerated);
-            if (!activeGenerated) {
-                editor.replaceAll(localValue);
-                editorBaseline = serverContent;
-            }
+            editor.setEditable(true);
+            editor.replaceAll(localValue);
         }
     }
 
@@ -548,14 +568,6 @@ public final class W128WebIdeScreen extends Screen {
             return;
         }
 
-        if (activeGenerated) {
-            setLocalStatus(
-                    "Generated build artifacts are read-only. Edit /src/App.jsx or another source file.",
-                    false
-            );
-            return;
-        }
-
         if (activePath.isBlank()) {
             setLocalStatus(
                     "Create or select a file first.",
@@ -596,14 +608,6 @@ public final class W128WebIdeScreen extends Screen {
     private void deleteFile() {
         if (activePath.isBlank()) {
             setLocalStatus("Select a file first.", false);
-            return;
-        }
-
-        if (activeGenerated) {
-            setLocalStatus(
-                    "Generated files are managed by the React build.",
-                    false
-            );
             return;
         }
 
@@ -651,11 +655,6 @@ public final class W128WebIdeScreen extends Screen {
     }
 
     private void importBook() {
-        if (activeGenerated) {
-            setLocalStatus("Generated files are read-only.", false);
-            return;
-        }
-
         if (activePath.isBlank()) {
             setLocalStatus(
                     "Select or create a destination file first.",
@@ -668,11 +667,7 @@ public final class W128WebIdeScreen extends Screen {
     }
 
     private void pasteFull() {
-        if (editor == null || activeGenerated) {
-            setLocalStatus(
-                    "Paste Full is available only for editable source files.",
-                    false
-            );
+        if (editor == null) {
             return;
         }
 
@@ -730,15 +725,23 @@ public final class W128WebIdeScreen extends Screen {
         }
 
         if (activeGenerated) {
+            if (dirty()) {
+                setLocalStatus(
+                        "Save or Reload your edits before switching Pretty/Raw view.",
+                        false
+                );
+                return;
+            }
+
             prettyGenerated = !prettyGenerated;
             editorBaseline = displayValue();
             editor.setValue(editorBaseline);
-            editor.setEditable(false);
+            editor.setEditable(true);
 
             setLocalStatus(
                     prettyGenerated
-                            ? "Generated file switched to pretty view."
-                            : "Generated file switched to raw view.",
+                            ? "Pretty view active. Edit + Save creates a manual override."
+                            : "Raw view active. Edit + Save creates a manual override.",
                     true
             );
             return;
@@ -789,9 +792,43 @@ public final class W128WebIdeScreen extends Screen {
     }
 
     private boolean dirty() {
-        return !activeGenerated
-                && editor != null
+        return editor != null
                 && !editor.getValue().equals(editorBaseline);
+    }
+
+    private void regenerate() {
+        if (!managedOutput(activePath)) {
+            setLocalStatus(
+                    "This file is not a React-managed build output.",
+                    false
+            );
+            return;
+        }
+
+        if (dirty()) {
+            setLocalStatus(
+                    "Save your edit or Reload before regenerating this file.",
+                    false
+            );
+            return;
+        }
+
+        request(
+                W128IdeAction.REGENERATE,
+                activePath,
+                ""
+        );
+    }
+
+    private boolean managedOutput(String path) {
+        if (!"REACT".equalsIgnoreCase(mode)
+                || path == null) {
+            return false;
+        }
+
+        return "/app.js".equals(path)
+                || "/index.html".equals(path)
+                || "/react-runtime.js".equals(path);
     }
 
     private void request(
