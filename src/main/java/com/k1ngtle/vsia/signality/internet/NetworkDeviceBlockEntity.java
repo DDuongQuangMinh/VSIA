@@ -5472,6 +5472,30 @@ private final WifiPhyController wifiPhy =
             return;
         }
 
+        boolean physicalDns =
+                packet.payload != null
+                        && packet.payload.getBoolean(
+                        "physical_dns"
+                );
+
+        boolean physicalDnsProtocol =
+                "DNS".equalsIgnoreCase(
+                        packet.applicationProtocol
+                )
+                        || "DNS_XFR".equalsIgnoreCase(
+                        packet.applicationProtocol
+                );
+
+        if (physicalDns
+                && physicalDnsProtocol) {
+            handleDnsRequest(
+                    packet
+            );
+
+            setChanged();
+            return;
+        }
+
         if ("DNS".equalsIgnoreCase(
                 packet.applicationProtocol
         )
