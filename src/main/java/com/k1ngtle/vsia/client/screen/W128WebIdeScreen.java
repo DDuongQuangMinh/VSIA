@@ -1,15 +1,16 @@
 package com.k1ngtle.vsia.client.screen;
 
+import com.k1ngtle.vsia.client.web.W128CodeEditor;
 import com.k1ngtle.vsia.network.VsiaNetwork;
 import com.k1ngtle.vsia.network.web.W128IdeRequestPacket;
 import com.k1ngtle.vsia.network.web.W128IdeSnapshotPacket;
+import com.k1ngtle.vsia.signality.internet.web.W128CodeFormatter;
 import com.k1ngtle.vsia.signality.internet.web.W128IdeAction;
 import com.k1ngtle.vsia.signality.internet.web.W128IdeLanguage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.MultiLineEditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
@@ -18,16 +19,17 @@ import java.util.List;
 
 public final class W128WebIdeScreen extends Screen {
     private static final int MAX_FILE_CHARACTERS = 262_144;
-    private static final int EXPLORER_WIDTH = 196;
-    private static final int TOP = 46;
-    private static final int BOTTOM = 54;
-    private static final int FILE_ROWS = 12;
+    private static final int EXPLORER_WIDTH = 230;
+    private static final int TOP = 52;
+    private static final int BOTTOM = 60;
+    private static final int FILE_ROWS = 13;
 
     private String host;
     private String mode;
     private String boundServerIp;
     private boolean published;
     private long buildRevision;
+
     private String activePath;
     private String serverContent;
     private boolean activeGenerated;
@@ -36,11 +38,13 @@ public final class W128WebIdeScreen extends Screen {
     private String status;
     private boolean statusSuccess;
 
-    private MultiLineEditBox editor;
+    private W128CodeEditor editor;
     private EditBox pathField;
+    private EditBox goLineField;
 
     private int filePage;
-    private boolean loadingValue;
+    private boolean prettyGenerated = true;
+    private String editorBaseline = "";
 
     public W128WebIdeScreen(W128IdeSnapshotPacket packet) {
         super(Component.literal("VS:IA Web IDE"));
@@ -58,8 +62,8 @@ public final class W128WebIdeScreen extends Screen {
 
         int editorX = EXPLORER_WIDTH + 12;
         int editorY = TOP;
-        int editorWidth = Math.max(120, width - editorX - 10);
-        int editorHeight = Math.max(80, height - TOP - BOTTOM);
+        int editorWidth = Math.max(160, width - editorX - 10);
+        int editorHeight = Math.max(90, height - TOP - BOTTOM);
 
         pathField = new EditBox(
                 font,
@@ -91,43 +95,74 @@ public final class W128WebIdeScreen extends Screen {
                         .build()
         );
 
-        editor = new MultiLineEditBox(
+        editor = new W128CodeEditor(
                 font,
                 editorX,
                 editorY,
                 editorWidth,
                 editorHeight,
-                Component.literal("Paste or type code here"),
-                Component.literal("VSIA Web IDE Editor")
+                MAX_FILE_CHARACTERS
         );
-        editor.setCharacterLimit(MAX_FILE_CHARACTERS);
 
-        loadingValue = true;
-        editor.setValue(serverContent);
-        loadingValue = false;
-
-        editor.active = !activeGenerated;
+        editorBaseline = displayValue();
+        editor.setValue(editorBaseline);
+        editor.setEditable(!activeGenerated);
         addRenderableWidget(editor);
 
         addFileButtons();
 
-        int toolbarY = height - 45;
+        int toolbarY = height - 49;
         int x = 10;
 
-        x = button(x, toolbarY, 58, "Save", this::save);
-        x = button(x, toolbarY, 58, "Build", this::build);
+        x = button(x, toolbarY, 56, "Save", this::save);
+        x = button(x, toolbarY, 56, "Build", this::build);
         x = button(
                 x,
                 toolbarY,
-                68,
+                76,
                 published ? "Unpublish" : "Publish",
                 published ? this::unpublish : this::publish
         );
-        x = button(x, toolbarY, 70, "Reload", this::refresh);
-        x = button(x, toolbarY, 86, "Book -> File", this::importBook);
-        x = button(x, toolbarY, 82, "Paste Full", this::pasteFull);
-        x = button(x, toolbarY, 72, "Copy All", this::copyAll);
-        button(x, toolbarY, 64, "Delete", this::deleteFile);
+        x = button(x, toolbarY, 62, "Reload", this::refresh);
+        x = button(x, toolbarY, 82, "Book -> File", this::importBook);
+        x = button(x, toolbarY, 78, "Paste Full", this::pasteFull);
+        x = button(x, toolbarY, 70, "Copy All", this::copyAll);
+        x = button(
+                x,
+                toolbarY,
+                74,
+                activeGenerated
+                        ? (prettyGenerated ? "Raw View" : "Pretty")
+                        : "Format",
+                this::formatOrToggle
+        );
+        button(x, toolbarY, 62, "Delete", this::deleteFile);
+
+        goLineField = new EditBox(
+                font,
+                Math.max(EXPLORER_WIDTH + 12, width - 150),
+                29,
+                58,
+                18,
+                Component.literal("Line")
+        );
+        goLineField.setMaxLength(7);
+        goLineField.setFilter(value -> value.isEmpty() || value.matches("\\d+"));
+        addRenderableWidget(goLineField);
+
+        addRenderableWidget(
+                Button.builder(
+                                Component.literal("Go line"),
+                                button -> goToLine()
+                        )
+                        .bounds(
+                                Math.max(EXPLORER_WIDTH + 74, width - 88),
+                                29,
+                                78,
+                                18
+                        )
+                        .build()
+        );
     }
 
     private int button(
@@ -150,7 +185,6 @@ public final class W128WebIdeScreen extends Screen {
                         )
                         .build()
         );
-
         return x + buttonWidth + 4;
     }
 
@@ -166,9 +200,8 @@ public final class W128WebIdeScreen extends Screen {
             }
 
             W128IdeSnapshotPacket.FileEntry entry = files.get(index);
-
             String marker = entry.generated() ? "G " : "  ";
-            String label = marker + trimLabel(entry.path(), 27);
+            String label = marker + trimLabel(entry.path(), 31);
 
             Button fileButton = Button.builder(
                             Component.literal(label),
@@ -206,13 +239,9 @@ public final class W128WebIdeScreen extends Screen {
                             }
                         }
                 )
-                .bounds(
-                        10,
-                        pageY,
-                        24,
-                        18
-                )
+                .bounds(10, pageY, 28, 18)
                 .build();
+
         previous.active = filePage > 0;
         addRenderableWidget(previous);
 
@@ -225,13 +254,9 @@ public final class W128WebIdeScreen extends Screen {
                             }
                         }
                 )
-                .bounds(
-                        EXPLORER_WIDTH - 34,
-                        pageY,
-                        24,
-                        18
-                )
+                .bounds(EXPLORER_WIDTH - 38, pageY, 28, 18)
                 .build();
+
         next.active = filePage + 1 < pages;
         addRenderableWidget(next);
     }
@@ -245,27 +270,13 @@ public final class W128WebIdeScreen extends Screen {
     ) {
         renderBackground(graphics);
 
-        graphics.fill(
-                0,
-                0,
-                width,
-                36,
-                0xEE11161D
-        );
-
-        graphics.fill(
-                0,
-                36,
-                EXPLORER_WIDTH,
-                height - BOTTOM + 18,
-                0xEE151B23
-        );
-
+        graphics.fill(0, 0, width, 26, 0xEE11161D);
+        graphics.fill(0, 26, EXPLORER_WIDTH, height - BOTTOM + 20, 0xEE151B23);
         graphics.fill(
                 EXPLORER_WIDTH,
-                36,
+                26,
                 EXPLORER_WIDTH + 1,
-                height - BOTTOM + 18,
+                height - BOTTOM + 20,
                 0xFF3B4654
         );
 
@@ -273,7 +284,7 @@ public final class W128WebIdeScreen extends Screen {
                 font,
                 "VS:IA WEB IDE",
                 10,
-                9,
+                8,
                 0x6FD7FF,
                 false
         );
@@ -284,14 +295,14 @@ public final class W128WebIdeScreen extends Screen {
         graphics.drawString(
                 font,
                 host
-                        + "  |  "
+                        + " | "
                         + mode
-                        + "  |  "
+                        + " | "
                         + state
-                        + "  |  revision "
+                        + " | revision "
                         + buildRevision,
-                104,
-                9,
+                112,
+                8,
                 stateColor,
                 false
         );
@@ -305,7 +316,7 @@ public final class W128WebIdeScreen extends Screen {
                                 : boundServerIp
                 ),
                 10,
-                23,
+                29,
                 0xA7B4C3,
                 false
         );
@@ -314,7 +325,7 @@ public final class W128WebIdeScreen extends Screen {
                 font,
                 "EXPLORER",
                 10,
-                38,
+                41,
                 0xC7D0DB,
                 false
         );
@@ -329,13 +340,16 @@ public final class W128WebIdeScreen extends Screen {
                         ? "web-runtime"
                         : "source-only";
 
-        graphics.drawString(
-                font,
+        String fileTitle =
                 activePath.isBlank()
                         ? "No file selected"
-                        : activePath,
+                        : activePath;
+
+        graphics.drawString(
+                font,
+                fileTitle,
                 editorX,
-                38,
+                29,
                 activeGenerated
                         ? 0xFFD166
                         : 0xE8F3FF,
@@ -349,6 +363,12 @@ public final class W128WebIdeScreen extends Screen {
                         + (
                         activeGenerated
                                 ? " | GENERATED READ-ONLY"
+                                + (
+                                prettyGenerated
+                                        && W128CodeFormatter.supports(activePath)
+                                        ? " | PRETTY VIEW"
+                                        : " | RAW VIEW"
+                        )
                                 : ""
                 );
 
@@ -357,25 +377,34 @@ public final class W128WebIdeScreen extends Screen {
                 right,
                 Math.max(
                         editorX,
-                        width - font.width(right) - 10
+                        width - font.width(right) - 160
                 ),
-                38,
-                activeGenerated
-                        ? 0xFFD166
-                        : 0x8FA9BD,
+                29,
+                activeGenerated ? 0xFFD166 : 0x8FA9BD,
                 false
         );
 
-        int statusY = height - 20;
+        int statusY = height - 21;
+
+        String cursorStatus =
+                editor == null
+                        ? ""
+                        : "Ln "
+                        + editor.cursorLine()
+                        + ", Col "
+                        + editor.cursorColumn()
+                        + " | "
+                        + editor.lineCount()
+                        + " lines";
+
+        String dirtyText =
+                dirty()
+                        ? " | UNSAVED"
+                        : "";
 
         graphics.drawString(
                 font,
-                status
-                        + (
-                        dirty()
-                                ? " | UNSAVED"
-                                : ""
-                ),
+                status + dirtyText,
                 10,
                 statusY,
                 statusSuccess
@@ -388,15 +417,18 @@ public final class W128WebIdeScreen extends Screen {
                 false
         );
 
-        String shortcut =
-                "Ctrl+S Save | Ctrl+V paste works in editor";
+        String help =
+                cursorStatus
+                        + " | Click line to place caret"
+                        + " | Shift+wheel horizontal"
+                        + " | Ctrl+S Save";
 
         graphics.drawString(
                 font,
-                shortcut,
+                help,
                 Math.max(
                         10,
-                        width - font.width(shortcut) - 10
+                        width - font.width(help) - 10
                 ),
                 statusY,
                 0x74879A,
@@ -428,11 +460,14 @@ public final class W128WebIdeScreen extends Screen {
             return true;
         }
 
-        return super.keyPressed(
-                keyCode,
-                scanCode,
-                modifiers
-        );
+        if (keyCode == GLFW.GLFW_KEY_F
+                && Screen.hasControlDown()
+                && Screen.hasShiftDown()) {
+            formatOrToggle();
+            return true;
+        }
+
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
@@ -441,11 +476,7 @@ public final class W128WebIdeScreen extends Screen {
     }
 
     public void acceptSnapshot(W128IdeSnapshotPacket packet) {
-        String localValue =
-                editor == null
-                        ? null
-                        : editor.getValue();
-
+        String localValue = editor == null ? null : editor.getValue();
         String previousPath = activePath;
 
         boolean preserveLocal =
@@ -454,6 +485,7 @@ public final class W128WebIdeScreen extends Screen {
                         && previousPath.equals(packet.activePath());
 
         applySnapshot(packet);
+        prettyGenerated = true;
 
         int pages = Math.max(
                 1,
@@ -464,7 +496,11 @@ public final class W128WebIdeScreen extends Screen {
         init();
 
         if (preserveLocal && editor != null) {
-            editor.setValue(localValue);
+            editor.setEditable(!activeGenerated);
+            if (!activeGenerated) {
+                editor.replaceAll(localValue);
+                editorBaseline = serverContent;
+            }
         }
     }
 
@@ -482,20 +518,29 @@ public final class W128WebIdeScreen extends Screen {
         statusSuccess = packet.success();
     }
 
+    private String displayValue() {
+        if (activeGenerated
+                && prettyGenerated
+                && W128CodeFormatter.supports(activePath)) {
+            return W128CodeFormatter.format(
+                    activePath,
+                    serverContent
+            );
+        }
+
+        return serverContent == null ? "" : serverContent;
+    }
+
     private void openFile(String path) {
         if (dirty()) {
             setLocalStatus(
-                    "Save the current file before opening another file.",
+                    "Save the current source file before opening another file.",
                     false
             );
             return;
         }
 
-        request(
-                W128IdeAction.OPEN,
-                path,
-                ""
-        );
+        request(W128IdeAction.OPEN, path, "");
     }
 
     private void save() {
@@ -505,7 +550,7 @@ public final class W128WebIdeScreen extends Screen {
 
         if (activeGenerated) {
             setLocalStatus(
-                    "Generated files are read-only. Edit source and rebuild.",
+                    "Generated build artifacts are read-only. Edit /src/App.jsx or another source file.",
                     false
             );
             return;
@@ -519,6 +564,11 @@ public final class W128WebIdeScreen extends Screen {
             return;
         }
 
+        if (!dirty()) {
+            setLocalStatus("No source changes to save.", true);
+            return;
+        }
+
         request(
                 W128IdeAction.SAVE,
                 activePath,
@@ -529,7 +579,7 @@ public final class W128WebIdeScreen extends Screen {
     private void createFile() {
         if (dirty()) {
             setLocalStatus(
-                    "Save the current file before creating another file.",
+                    "Save the current source file before creating another file.",
                     false
             );
             return;
@@ -540,51 +590,36 @@ public final class W128WebIdeScreen extends Screen {
                         ? ""
                         : pathField.getValue();
 
-        request(
-                W128IdeAction.CREATE,
-                value,
-                ""
-        );
+        request(W128IdeAction.CREATE, value, "");
     }
 
     private void deleteFile() {
         if (activePath.isBlank()) {
-            setLocalStatus(
-                    "Select a file first.",
-                    false
-            );
+            setLocalStatus("Select a file first.", false);
             return;
         }
 
         if (activeGenerated) {
             setLocalStatus(
-                    "Generated files are removed/replaced by the build system.",
+                    "Generated files are managed by the React build.",
                     false
             );
             return;
         }
 
-        request(
-                W128IdeAction.DELETE,
-                activePath,
-                ""
-        );
+        request(W128IdeAction.DELETE, activePath, "");
     }
 
     private void build() {
         if (dirty()) {
             setLocalStatus(
-                    "Save before building so the server receives your latest code.",
+                    "Save the current source file before building.",
                     false
             );
             return;
         }
 
-        request(
-                W128IdeAction.BUILD,
-                activePath,
-                ""
-        );
+        request(W128IdeAction.BUILD, activePath, "");
     }
 
     private void publish() {
@@ -596,19 +631,11 @@ public final class W128WebIdeScreen extends Screen {
             return;
         }
 
-        request(
-                W128IdeAction.PUBLISH,
-                activePath,
-                ""
-        );
+        request(W128IdeAction.PUBLISH, activePath, "");
     }
 
     private void unpublish() {
-        request(
-                W128IdeAction.UNPUBLISH,
-                activePath,
-                ""
-        );
+        request(W128IdeAction.UNPUBLISH, activePath, "");
     }
 
     private void refresh() {
@@ -620,19 +647,12 @@ public final class W128WebIdeScreen extends Screen {
             return;
         }
 
-        request(
-                W128IdeAction.REFRESH,
-                activePath,
-                ""
-        );
+        request(W128IdeAction.REFRESH, activePath, "");
     }
 
     private void importBook() {
         if (activeGenerated) {
-            setLocalStatus(
-                    "Generated files are read-only.",
-                    false
-            );
+            setLocalStatus("Generated files are read-only.", false);
             return;
         }
 
@@ -644,44 +664,41 @@ public final class W128WebIdeScreen extends Screen {
             return;
         }
 
-        request(
-                W128IdeAction.IMPORT_BOOK,
-                activePath,
-                ""
-        );
+        request(W128IdeAction.IMPORT_BOOK, activePath, "");
     }
 
     private void pasteFull() {
         if (editor == null || activeGenerated) {
+            setLocalStatus(
+                    "Paste Full is available only for editable source files.",
+                    false
+            );
             return;
         }
 
-        Minecraft minecraft = Minecraft.getInstance();
         String clipboard =
-                minecraft.keyboardHandler.getClipboard();
+                Minecraft.getInstance()
+                        .keyboardHandler
+                        .getClipboard();
 
         if (clipboard == null) {
             clipboard = "";
         }
 
         if (clipboard.length() > MAX_FILE_CHARACTERS) {
-            clipboard = clipboard.substring(
-                    0,
-                    MAX_FILE_CHARACTERS
-            );
-
+            clipboard = clipboard.substring(0, MAX_FILE_CHARACTERS);
             setLocalStatus(
                     "Clipboard truncated to the W1.28 per-file limit.",
                     false
             );
         } else {
             setLocalStatus(
-                    "Clipboard imported into the editor. Press Save.",
+                    "Clipboard replaced the source buffer. Press Save.",
                     true
             );
         }
 
-        editor.setValue(clipboard);
+        editor.replaceAll(clipboard);
     }
 
     private void copyAll() {
@@ -689,20 +706,92 @@ public final class W128WebIdeScreen extends Screen {
             return;
         }
 
-        Minecraft.getInstance()
-                .keyboardHandler
-                .setClipboard(editor.getValue());
+        editor.copySelectionOrAll();
 
         setLocalStatus(
-                "Current file copied to system clipboard.",
+                editor.hasSelection()
+                        ? "Selection copied to system clipboard."
+                        : "Current file copied to system clipboard.",
                 true
         );
     }
 
+    private void formatOrToggle() {
+        if (editor == null) {
+            return;
+        }
+
+        if (!W128CodeFormatter.supports(activePath)) {
+            setLocalStatus(
+                    "No formatter is registered for this file type.",
+                    false
+            );
+            return;
+        }
+
+        if (activeGenerated) {
+            prettyGenerated = !prettyGenerated;
+            editorBaseline = displayValue();
+            editor.setValue(editorBaseline);
+            editor.setEditable(false);
+
+            setLocalStatus(
+                    prettyGenerated
+                            ? "Generated file switched to pretty view."
+                            : "Generated file switched to raw view.",
+                    true
+            );
+            return;
+        }
+
+        String formatted =
+                W128CodeFormatter.format(
+                        activePath,
+                        editor.getValue()
+                );
+
+        if (formatted.equals(editor.getValue())) {
+            setLocalStatus("Formatting produced no changes.", true);
+            return;
+        }
+
+        editor.replaceAll(formatted);
+        setLocalStatus(
+                "Source formatted locally. Review it, then Save.",
+                true
+        );
+    }
+
+    private void goToLine() {
+        if (editor == null || goLineField == null) {
+            return;
+        }
+
+        String value = goLineField.getValue();
+
+        if (value.isBlank()) {
+            setLocalStatus("Enter a line number.", false);
+            return;
+        }
+
+        try {
+            int line = Integer.parseInt(value);
+            editor.goToLine(line);
+            setLocalStatus(
+                    "Moved caret to line "
+                            + editor.cursorLine()
+                            + ".",
+                    true
+            );
+        } catch (NumberFormatException exception) {
+            setLocalStatus("Invalid line number.", false);
+        }
+    }
+
     private boolean dirty() {
-        return !loadingValue
+        return !activeGenerated
                 && editor != null
-                && !editor.getValue().equals(serverContent);
+                && !editor.getValue().equals(editorBaseline);
     }
 
     private void request(
@@ -733,10 +822,7 @@ public final class W128WebIdeScreen extends Screen {
         statusSuccess = success;
     }
 
-    private static String trimLabel(
-            String value,
-            int max
-    ) {
+    private static String trimLabel(String value, int max) {
         if (value == null) {
             return "";
         }
