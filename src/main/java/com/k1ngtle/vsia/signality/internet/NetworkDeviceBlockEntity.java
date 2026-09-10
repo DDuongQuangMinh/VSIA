@@ -374,6 +374,7 @@ private final WifiPhyController wifiPhy =
                     return startWifiTcpHttpGet(
                             targetMac,
                             targetIp,
+                            hostname,
                             path
                     );
                 }
