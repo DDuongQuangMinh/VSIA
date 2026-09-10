@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.client.web;
 
+import com.k1ngtle.vsia.signality.internet.web.W128IdeLanguage;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -35,6 +36,7 @@ public final class W128CodeEditor extends AbstractWidget {
 
     private boolean editable = true;
     private boolean dragging;
+    private W128IdeLanguage language = W128IdeLanguage.TEXT;
 
     private final Deque<State> undo = new ArrayDeque<>();
     private final Deque<State> redo = new ArrayDeque<>();
@@ -90,6 +92,16 @@ public final class W128CodeEditor extends AbstractWidget {
 
     public boolean isEditable() {
         return editable;
+    }
+
+    public void setLanguage(W128IdeLanguage language) {
+        this.language = language == null
+                ? W128IdeLanguage.TEXT
+                : language;
+    }
+
+    public W128IdeLanguage language() {
+        return language;
     }
 
     public int cursorLine() {
@@ -201,13 +213,11 @@ public final class W128CodeEditor extends AbstractWidget {
 
             drawSelectionForLine(graphics, lineIndex, line, y);
 
-            graphics.drawString(
-                    font,
+            drawHighlightedLine(
+                    graphics,
                     line.text(),
                     textStartX() - horizontalScrollPixels,
-                    y,
-                    editable ? 0xE7EDF5 : 0xC3CBD5,
-                    false
+                    y
             );
         }
 
@@ -219,6 +229,36 @@ public final class W128CodeEditor extends AbstractWidget {
         graphics.fill(left, bottom - 1, right, bottom, border);
         graphics.fill(left, top, left + 1, bottom, border);
         graphics.fill(right - 1, top, right, bottom, border);
+    }
+
+    private void drawHighlightedLine(
+            GuiGraphics graphics,
+            String text,
+            int x,
+            int y
+    ) {
+        int drawX = x;
+
+        for (W129SyntaxHighlighter.Span span
+                : W129SyntaxHighlighter.highlight(
+                language,
+                text
+        )) {
+            graphics.drawString(
+                    font,
+                    span.text(),
+                    drawX,
+                    y,
+                    editable
+                            ? span.color()
+                            : 0xC3CBD5,
+                    false
+            );
+
+            drawX += font.width(
+                    span.text()
+            );
+        }
     }
 
     private void drawSelectionForLine(
@@ -496,7 +536,7 @@ public final class W128CodeEditor extends AbstractWidget {
             }
             case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
                 if (editable) {
-                    insertText("\n");
+                    insertNewlineWithIndent();
                 }
                 return true;
             }
@@ -520,6 +560,48 @@ public final class W128CodeEditor extends AbstractWidget {
 
         insertText(Character.toString(codePoint));
         return true;
+    }
+
+    private void insertNewlineWithIndent() {
+        Line line = lines.get(
+                lineIndexFor(cursor)
+        );
+
+        int column = Math.min(
+                Math.max(0, cursor - line.start()),
+                line.text().length()
+        );
+
+        String before =
+                line.text().substring(
+                        0,
+                        column
+                );
+
+        int spaces = 0;
+
+        while (spaces < before.length()
+                && before.charAt(spaces) == ' ') {
+            spaces++;
+        }
+
+        String trimmed =
+                before.trim();
+
+        if (trimmed.endsWith("{")
+                || (
+                language == W128IdeLanguage.PYTHON
+                        && trimmed.endsWith(":")
+        )) {
+            spaces += 4;
+        }
+
+        insertText(
+                "\n"
+                        + " ".repeat(
+                        Math.max(0, spaces)
+                )
+        );
     }
 
     private void insertText(String text) {

@@ -6,9 +6,14 @@ public enum W128IdeAction {
     SAVE,
     CREATE,
     DELETE,
+    RENAME,
     BUILD,
     PUBLISH,
     UNPUBLISH,
     IMPORT_BOOK,
-    REGENERATE
+    REGENERATE,
+    SEARCH,
+    RUN,
+    VALIDATE,
+    TERMINAL
 }

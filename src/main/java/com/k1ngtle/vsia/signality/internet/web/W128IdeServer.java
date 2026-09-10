@@ -59,6 +59,14 @@ public final class W128IdeServer {
             case SAVE -> save(data, project, player, requestedPath, request.content(), now);
             case CREATE -> create(data, project, player, request.path(), now);
             case DELETE -> delete(data, project, player, requestedPath, now);
+            case RENAME -> rename(
+                    data,
+                    project,
+                    player,
+                    requestedPath,
+                    request.content(),
+                    now
+            );
             case BUILD -> data.build(player.getUUID(), project.host(), now);
             case PUBLISH -> data.publish(
                     player.serverLevel(),
@@ -69,6 +77,17 @@ public final class W128IdeServer {
             case UNPUBLISH -> data.unpublish(player.getUUID(), project.host(), now);
             case IMPORT_BOOK -> importBook(data, project, player, requestedPath, now);
             case REGENERATE -> regenerate(data, project, player, requestedPath, now);
+            case SEARCH -> search(project, player, request.content());
+            case RUN -> run(project, player, requestedPath);
+            case VALIDATE -> validate(project, player, requestedPath);
+            case TERMINAL -> terminal(
+                    data,
+                    project,
+                    player,
+                    requestedPath,
+                    request.content(),
+                    now
+            );
         };
 
         project = data.project(project.host()).orElse(project);
@@ -79,6 +98,9 @@ public final class W128IdeServer {
                     : requestedPath;
             case DELETE -> operation.success()
                     ? defaultPath(project)
+                    : requestedPath;
+            case RENAME -> operation.success()
+                    ? normalizeSelectablePath(project, request.content())
                     : requestedPath;
             default -> requestedPath;
         };
@@ -184,6 +206,613 @@ public final class W128IdeServer {
                 path,
                 content,
                 now
+        );
+    }
+
+    private static W128WebBuildResult rename(
+            W128WebRegistrySavedData data,
+            W128WebProject project,
+            ServerPlayer player,
+            String oldPath,
+            String requestedNewPath,
+            long now
+    ) {
+        if (oldPath == null || oldPath.isBlank()) {
+            return W128WebBuildResult.fail("Select a file first.");
+        }
+
+        String newPath;
+
+        try {
+            newPath = W128WebRegistrySavedData.normalizePath(
+                    requestedNewPath
+            );
+        } catch (IllegalArgumentException exception) {
+            return W128WebBuildResult.fail(
+                    exception.getMessage()
+            );
+        }
+
+        if (oldPath.equals(newPath)) {
+            return W128WebBuildResult.fail(
+                    "New path is the same as the current path."
+            );
+        }
+
+        W128WebFile source = project.file(oldPath);
+
+        if (source == null) {
+            return W128WebBuildResult.fail(
+                    "File not found: " + oldPath
+            );
+        }
+
+        if (project.file(newPath) != null) {
+            return W128WebBuildResult.fail(
+                    "Destination already exists: " + newPath
+            );
+        }
+
+        W128WebBuildResult saveResult = data.putFile(
+                player.getUUID(),
+                project.host(),
+                newPath,
+                source.content(),
+                now
+        );
+
+        if (!saveResult.success()) {
+            return saveResult;
+        }
+
+        W128WebBuildResult removeResult = data.removeFile(
+                player.getUUID(),
+                project.host(),
+                oldPath,
+                now
+        );
+
+        if (!removeResult.success()) {
+            return W128WebBuildResult.fail(
+                    "Rename wrote the destination but could not remove the old path: "
+                            + removeResult.message()
+            );
+        }
+
+        return W128WebBuildResult.ok(
+                "Renamed " + oldPath + " -> " + newPath
+                        + " | publish required"
+        );
+    }
+
+    private static W128WebBuildResult search(
+            W128WebProject project,
+            ServerPlayer player,
+            String rawQuery
+    ) {
+        String query = rawQuery == null
+                ? ""
+                : rawQuery.trim();
+
+        if (query.isEmpty()) {
+            sendEvent(
+                    player,
+                    "SEARCH",
+                    false,
+                    "Search",
+                    "Enter a search query."
+            );
+            return W128WebBuildResult.fail(
+                    "Search query is empty."
+            );
+        }
+
+        String lowerQuery = query.toLowerCase();
+        StringBuilder payload = new StringBuilder();
+        int matches = 0;
+
+        for (W128WebFile file : project.files().values()) {
+            String[] lines = file.content()
+                    .replace("\r\n", "\n")
+                    .replace('\r', '\n')
+                    .split("\n", -1);
+
+            for (int i = 0; i < lines.length; i++) {
+                String line = lines[i];
+
+                if (!line.toLowerCase().contains(lowerQuery)) {
+                    continue;
+                }
+
+                if (matches >= 100) {
+                    payload.append("\n... search capped at 100 matches");
+                    break;
+                }
+
+                if (!payload.isEmpty()) {
+                    payload.append('\n');
+                }
+
+                String preview = line.trim();
+                if (preview.length() > 120) {
+                    preview = preview.substring(0, 117) + "...";
+                }
+
+                payload.append(file.path())
+                        .append('|')
+                        .append(i + 1)
+                        .append('|')
+                        .append(preview.replace("|", "/"));
+
+                matches++;
+            }
+
+            if (matches >= 100) {
+                break;
+            }
+        }
+
+        sendEvent(
+                player,
+                "SEARCH",
+                true,
+                "Search: " + query,
+                payload.toString()
+        );
+
+        return W128WebBuildResult.ok(
+                "Search complete: " + matches + " match(es)"
+        );
+    }
+
+    private static W128WebBuildResult run(
+            W128WebProject project,
+            ServerPlayer player,
+            String path
+    ) {
+        W128WebFile file = project.file(path);
+
+        if (file == null) {
+            return W128WebBuildResult.fail(
+                    "File not found: " + path
+            );
+        }
+
+        W129RunResult result = W129ComputeEngine.run(
+                path,
+                file.content()
+        );
+
+        sendEvent(
+                player,
+                "TERMINAL",
+                result.success(),
+                "Run " + path,
+                result.terminalText(
+                        path,
+                        W129ComputeEngine.runtimeName(path)
+                )
+        );
+
+        sendProblems(
+                player,
+                result.diagnostics()
+        );
+
+        return result.success()
+                ? W128WebBuildResult.ok(
+                "Run complete: " + path
+        )
+                : W128WebBuildResult.fail(
+                "Run failed: " + path
+        );
+    }
+
+    private static W128WebBuildResult validate(
+            W128WebProject project,
+            ServerPlayer player,
+            String path
+    ) {
+        W128WebFile file = project.file(path);
+
+        if (file == null) {
+            return W128WebBuildResult.fail(
+                    "File not found: " + path
+            );
+        }
+
+        java.util.List<W129Diagnostic> diagnostics =
+                W129ComputeEngine.validate(
+                        path,
+                        file.content()
+                );
+
+        sendProblems(
+                player,
+                diagnostics
+        );
+
+        long errors = diagnostics.stream()
+                .filter(
+                        diagnostic ->
+                                diagnostic.severity()
+                                        == W129Diagnostic.Severity.ERROR
+                )
+                .count();
+
+        long warnings = diagnostics.stream()
+                .filter(
+                        diagnostic ->
+                                diagnostic.severity()
+                                        == W129Diagnostic.Severity.WARNING
+                )
+                .count();
+
+        String summary =
+                errors
+                        + " error(s), "
+                        + warnings
+                        + " warning(s), "
+                        + diagnostics.size()
+                        + " diagnostic(s)";
+
+        sendEvent(
+                player,
+                "OUTPUT",
+                errors == 0L,
+                "Validation " + path,
+                summary
+        );
+
+        return errors == 0L
+                ? W128WebBuildResult.ok(
+                "Validation passed: " + summary
+        )
+                : W128WebBuildResult.fail(
+                "Validation failed: " + summary
+        );
+    }
+
+    private static W128WebBuildResult terminal(
+            W128WebRegistrySavedData data,
+            W128WebProject project,
+            ServerPlayer player,
+            String activePath,
+            String rawCommand,
+            long now
+    ) {
+        String command = rawCommand == null
+                ? ""
+                : rawCommand.trim();
+
+        if (command.isEmpty()) {
+            return W128WebBuildResult.ok(
+                    "Terminal ready."
+            );
+        }
+
+        String[] parts = command.split("\\s+", 2);
+        String verb = parts[0].toLowerCase();
+        String argument = parts.length > 1
+                ? parts[1].trim()
+                : "";
+
+        switch (verb) {
+            case "clear" -> {
+                sendEvent(
+                        player,
+                        "TERMINAL_CLEAR",
+                        true,
+                        "Terminal",
+                        ""
+                );
+                return W128WebBuildResult.ok(
+                        "Terminal cleared."
+                );
+            }
+
+            case "help" -> {
+                sendEvent(
+                        player,
+                        "TERMINAL",
+                        true,
+                        "Terminal Help",
+                        """
+                        W1.29 terminal commands:
+                          help
+                          clear
+                          pwd
+                          ls
+                          cat <path>
+                          run [path]
+                          check [path]
+                          build
+                          publish
+                          unpublish
+                          status
+                          selftest
+                        """
+                );
+                return W128WebBuildResult.ok(
+                        "Terminal help."
+                );
+            }
+
+            case "pwd" -> {
+                sendEvent(
+                        player,
+                        "TERMINAL",
+                        true,
+                        "pwd",
+                        "/" + project.host()
+                );
+                return W128WebBuildResult.ok("pwd");
+            }
+
+            case "ls" -> {
+                String listing = project.files()
+                        .keySet()
+                        .stream()
+                        .sorted()
+                        .collect(
+                                java.util.stream.Collectors.joining("\n")
+                        );
+
+                sendEvent(
+                        player,
+                        "TERMINAL",
+                        true,
+                        "ls",
+                        listing
+                );
+
+                return W128WebBuildResult.ok("ls");
+            }
+
+            case "cat" -> {
+                String path = argument.isBlank()
+                        ? activePath
+                        : normalizeSelectablePath(
+                                project,
+                                argument
+                        );
+
+                W128WebFile file = project.file(path);
+
+                if (file == null) {
+                    sendEvent(
+                            player,
+                            "TERMINAL",
+                            false,
+                            "cat",
+                            "File not found: " + path
+                    );
+                    return W128WebBuildResult.fail(
+                            "File not found: " + path
+                    );
+                }
+
+                String content = file.content();
+
+                if (content.length() > 16_000) {
+                    content = content.substring(0, 16_000)
+                            + "\n... output truncated";
+                }
+
+                sendEvent(
+                        player,
+                        "TERMINAL",
+                        true,
+                        "cat " + path,
+                        content
+                );
+
+                return W128WebBuildResult.ok(
+                        "cat " + path
+                );
+            }
+
+            case "run" -> {
+                String path = argument.isBlank()
+                        ? activePath
+                        : normalizeSelectablePath(
+                                project,
+                                argument
+                        );
+
+                return run(
+                        project,
+                        player,
+                        path
+                );
+            }
+
+            case "check", "validate" -> {
+                String path = argument.isBlank()
+                        ? activePath
+                        : normalizeSelectablePath(
+                                project,
+                                argument
+                        );
+
+                return validate(
+                        project,
+                        player,
+                        path
+                );
+            }
+
+            case "build" -> {
+                W128WebBuildResult result = data.build(
+                        player.getUUID(),
+                        project.host(),
+                        now
+                );
+
+                sendEvent(
+                        player,
+                        "OUTPUT",
+                        result.success(),
+                        "Build",
+                        result.message()
+                );
+
+                return result;
+            }
+
+            case "publish" -> {
+                W128WebBuildResult result = data.publish(
+                        player.serverLevel(),
+                        player.getUUID(),
+                        project.host(),
+                        now
+                );
+
+                sendEvent(
+                        player,
+                        "OUTPUT",
+                        result.success(),
+                        "Publish",
+                        result.message()
+                );
+
+                return result;
+            }
+
+            case "unpublish" -> {
+                W128WebBuildResult result = data.unpublish(
+                        player.getUUID(),
+                        project.host(),
+                        now
+                );
+
+                sendEvent(
+                        player,
+                        "OUTPUT",
+                        result.success(),
+                        "Unpublish",
+                        result.message()
+                );
+
+                return result;
+            }
+
+            case "status" -> {
+                String payload =
+                        "Host: "
+                                + project.host()
+                                + "\nMode: "
+                                + project.mode()
+                                + "\nServer: "
+                                + (
+                                project.boundServerIp().isBlank()
+                                        ? "UNBOUND"
+                                        : project.boundServerIp()
+                        )
+                                + "\nPublished: "
+                                + project.published()
+                                + "\nRevision: "
+                                + project.buildRevision()
+                                + "\nFiles: "
+                                + project.files().size()
+                                + "\nCharacters: "
+                                + project.totalCharacters();
+
+                sendEvent(
+                        player,
+                        "TERMINAL",
+                        true,
+                        "status",
+                        payload
+                );
+
+                return W128WebBuildResult.ok(
+                        "Status printed."
+                );
+            }
+
+            case "selftest" -> {
+                String payload =
+                        W129SelfTest.run();
+
+                boolean success =
+                        !payload.contains("[FAIL]");
+
+                sendEvent(
+                        player,
+                        "TERMINAL",
+                        success,
+                        "W1.29 self-test",
+                        payload
+                );
+
+                return success
+                        ? W128WebBuildResult.ok(
+                        "W1.29 self-test passed."
+                )
+                        : W128WebBuildResult.fail(
+                        "W1.29 self-test failed."
+                );
+            }
+
+            default -> {
+                sendEvent(
+                        player,
+                        "TERMINAL",
+                        false,
+                        "Terminal",
+                        "Unknown command: "
+                                + verb
+                                + "\nType 'help' for commands."
+                );
+
+                return W128WebBuildResult.fail(
+                        "Unknown terminal command: "
+                                + verb
+                );
+            }
+        }
+    }
+
+    private static void sendProblems(
+            ServerPlayer player,
+            java.util.List<W129Diagnostic> diagnostics
+    ) {
+        String payload = diagnostics.stream()
+                .map(W129Diagnostic::toWire)
+                .collect(
+                        java.util.stream.Collectors.joining("\n")
+                );
+
+        sendEvent(
+                player,
+                "PROBLEMS",
+                diagnostics.stream()
+                        .noneMatch(
+                                diagnostic ->
+                                        diagnostic.severity()
+                                                == W129Diagnostic.Severity.ERROR
+                        ),
+                "Problems",
+                payload
+        );
+    }
+
+    private static void sendEvent(
+            ServerPlayer player,
+            String kind,
+            boolean success,
+            String title,
+            String payload
+    ) {
+        VsiaNetwork.sendToPlayer(
+                player,
+                new com.k1ngtle.vsia.network.web.W129IdeEventPacket(
+                        kind,
+                        success,
+                        title,
+                        payload
+                )
         );
     }
 
