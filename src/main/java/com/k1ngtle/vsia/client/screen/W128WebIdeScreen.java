@@ -1131,34 +1131,6 @@ public final class W128WebIdeScreen extends Screen {
 
         renderStatusBar(graphics);
 
-        if (paletteVisible) {
-            int left =
-                    Math.max(
-                            70,
-                            width / 2 - 240
-                    );
-
-            graphics.fill(
-                    left - 6,
-                    52,
-                    Math.min(
-                            width - 8,
-                            left + 520
-                    ),
-                    86,
-                    0xF01B222C
-            );
-
-            graphics.drawString(
-                    font,
-                    "COMMAND PALETTE",
-                    left,
-                    54,
-                    0xC7D0DB,
-                    false
-            );
-        }
-
         super.render(
                 graphics,
                 mouseX,
@@ -1167,12 +1139,21 @@ public final class W128WebIdeScreen extends Screen {
         );
 
         if (paletteVisible) {
+            graphics.pose().pushPose();
+            graphics.pose().translate(
+                    0.0F,
+                    0.0F,
+                    1000.0F
+            );
+
             renderCommandPaletteOverlay(
                     graphics,
                     mouseX,
                     mouseY,
                     partialTick
             );
+
+            graphics.pose().popPose();
         }
     }
 
@@ -1300,7 +1281,7 @@ public final class W128WebIdeScreen extends Screen {
                 26,
                 width,
                 height - STATUS_HEIGHT,
-                0xD9000000
+                0xFF070D13
         );
 
         graphics.fill(
@@ -1980,16 +1961,36 @@ public final class W128WebIdeScreen extends Screen {
             int scanCode,
             int modifiers
     ) {
-        if (paletteVisible
-                && paletteField != null
-                && paletteField.isFocused()
-                && (
-                keyCode == GLFW.GLFW_KEY_ENTER
-                        || keyCode
-                        == GLFW.GLFW_KEY_KP_ENTER
-        )) {
-            executePalette();
-            return true;
+        if (paletteVisible) {
+            if (
+                    keyCode == GLFW.GLFW_KEY_ESCAPE
+                            || (
+                            keyCode == GLFW.GLFW_KEY_P
+                                    && Screen.hasControlDown()
+                                    && Screen.hasShiftDown()
+                    )
+            ) {
+                hidePalette();
+                return true;
+            }
+
+            if (
+                    paletteField != null
+                            && (
+                            keyCode == GLFW.GLFW_KEY_ENTER
+                                    || keyCode
+                                    == GLFW.GLFW_KEY_KP_ENTER
+                    )
+            ) {
+                executePalette();
+                return true;
+            }
+
+            return super.keyPressed(
+                    keyCode,
+                    scanCode,
+                    modifiers
+            );
         }
 
         if (terminalField != null
@@ -2127,11 +2128,61 @@ public final class W128WebIdeScreen extends Screen {
     }
 
     @Override
+    public boolean mouseClicked(
+            double mouseX,
+            double mouseY,
+            int button
+    ) {
+        if (paletteVisible) {
+            if (
+                    paletteField != null
+                            && paletteField.visible
+                            && paletteField.mouseClicked(
+                            mouseX,
+                            mouseY,
+                            button
+                    )
+            ) {
+                setInitialFocus(paletteField);
+                return true;
+            }
+
+            if (
+                    paletteRunButton != null
+                            && paletteRunButton.visible
+                            && paletteRunButton.mouseClicked(
+                            mouseX,
+                            mouseY,
+                            button
+                    )
+            ) {
+                return true;
+            }
+
+            if (paletteField != null) {
+                setInitialFocus(paletteField);
+            }
+
+            return true;
+        }
+
+        return super.mouseClicked(
+                mouseX,
+                mouseY,
+                button
+        );
+    }
+
+    @Override
     public boolean mouseScrolled(
             double mouseX,
             double mouseY,
             double delta
     ) {
+        if (paletteVisible) {
+            return true;
+        }
+
         if (bottomPanelVisible) {
             int left = ACTIVITY_WIDTH + SIDEBAR_WIDTH;
             int top = height - STATUS_HEIGHT - BOTTOM_PANEL_HEIGHT;
