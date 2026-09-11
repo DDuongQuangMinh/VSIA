@@ -1,6 +1,9 @@
 package com.k1ngtle.vsia.client.screen;
 
 import com.k1ngtle.vsia.client.web.W128CodeEditor;
+import com.k1ngtle.vsia.client.web.W129IdeButton;
+import com.k1ngtle.vsia.client.web.W129IdeEditBox;
+import com.k1ngtle.vsia.client.web.W129IdeTheme;
 import com.k1ngtle.vsia.network.VsiaNetwork;
 import com.k1ngtle.vsia.network.web.W128IdeRequestPacket;
 import com.k1ngtle.vsia.network.web.W128IdeSnapshotPacket;
@@ -93,7 +96,7 @@ public final class W128WebIdeScreen extends Screen {
 
         int sidebarX = ACTIVITY_WIDTH;
         int editorX = ACTIVITY_WIDTH + SIDEBAR_WIDTH + 8;
-        int editorTop = TOP;
+        int editorTop = TOP + 16;
         int bottomPanelTop = bottomPanelVisible
                 ? height - STATUS_HEIGHT - BOTTOM_PANEL_HEIGHT
                 : height - STATUS_HEIGHT;
@@ -132,7 +135,7 @@ public final class W128WebIdeScreen extends Screen {
             addBottomPanel(bottomPanelTop);
         }
 
-        goLineField = new EditBox(
+        goLineField = new W129IdeEditBox(
                 font,
                 Math.max(editorX + 20, width - 154),
                 29,
@@ -149,7 +152,7 @@ public final class W128WebIdeScreen extends Screen {
         addRenderableWidget(goLineField);
 
         addRenderableWidget(
-                Button.builder(
+                W129IdeButton.themedBuilder(
                                 Component.literal("Go line"),
                                 button -> goToLine()
                         )
@@ -162,36 +165,63 @@ public final class W128WebIdeScreen extends Screen {
                         .build()
         );
 
-        paletteField = new EditBox(
+        int paletteWidth =
+                Math.min(
+                        540,
+                        width - 60
+                );
+
+        int paletteX =
+                Math.max(
+                        ACTIVITY_WIDTH + 12,
+                        (width - paletteWidth) / 2
+                );
+
+        int paletteY =
+                Math.max(
+                        78,
+                        height / 2 - 120
+                );
+
+        paletteField = new W129IdeEditBox(
                 font,
-                Math.max(80, width / 2 - 230),
-                58,
-                390,
-                20,
+                paletteX + 16,
+                paletteY + 38,
+                Math.max(
+                        170,
+                        paletteWidth - 144
+                ),
+                22,
                 Component.literal("Command Palette")
         );
+
         paletteField.setMaxLength(128);
         paletteField.setHint(
                 Component.literal(
-                        "Type command: run, save, build, search, terminal..."
+                        "Type a command or search..."
                 )
         );
-        paletteField.visible = paletteVisible;
+        paletteField.visible =
+                paletteVisible;
         addRenderableWidget(paletteField);
 
-        paletteRunButton = Button.builder(
+        paletteRunButton = W129IdeButton.themedBuilder(
                         Component.literal("Run Command"),
                         button -> executePalette()
                 )
                 .bounds(
-                        Math.max(474, width / 2 + 164),
-                        58,
-                        110,
-                        20
+                        paletteX + paletteWidth - 118,
+                        paletteY + 38,
+                        102,
+                        22
                 )
                 .build();
-        paletteRunButton.visible = paletteVisible;
-        addRenderableWidget(paletteRunButton);
+
+        paletteRunButton.visible =
+                paletteVisible;
+        addRenderableWidget(
+                paletteRunButton
+        );
 
         if (paletteVisible) {
             setInitialFocus(paletteField);
@@ -251,7 +281,7 @@ public final class W128WebIdeScreen extends Screen {
             String tooltip,
             SideMode target
     ) {
-        Button button = Button.builder(
+        Button button = W129IdeButton.themedBuilder(
                         Component.literal(label),
                         ignored -> switchSide(target)
                 )
@@ -293,7 +323,7 @@ public final class W128WebIdeScreen extends Screen {
     }
 
     private void addExplorer(int sidebarX) {
-        pathField = new EditBox(
+        pathField = new W129IdeEditBox(
                 font,
                 sidebarX + 8,
                 TOP,
@@ -310,7 +340,7 @@ public final class W128WebIdeScreen extends Screen {
         addRenderableWidget(pathField);
 
         addRenderableWidget(
-                Button.builder(
+                W129IdeButton.themedBuilder(
                                 Component.literal("New"),
                                 ignored -> createFile()
                         )
@@ -324,7 +354,7 @@ public final class W128WebIdeScreen extends Screen {
         );
 
         addRenderableWidget(
-                Button.builder(
+                W129IdeButton.themedBuilder(
                                 Component.literal("Ren"),
                                 ignored -> renameFile()
                         )
@@ -362,7 +392,7 @@ public final class W128WebIdeScreen extends Screen {
                             : "  "
             );
 
-            Button fileButton = Button.builder(
+            Button fileButton = W129IdeButton.themedBuilder(
                             Component.literal(
                                     marker
                                             + trimLabel(
@@ -402,7 +432,7 @@ public final class W128WebIdeScreen extends Screen {
                         + FILE_ROWS * 20
                         + 2;
 
-        Button previous = Button.builder(
+        Button previous = W129IdeButton.themedBuilder(
                         Component.literal("<"),
                         ignored -> {
                             if (filePage > 0) {
@@ -422,7 +452,7 @@ public final class W128WebIdeScreen extends Screen {
         previous.active = filePage > 0;
         addRenderableWidget(previous);
 
-        Button next = Button.builder(
+        Button next = W129IdeButton.themedBuilder(
                         Component.literal(">"),
                         ignored -> {
                             if (filePage + 1 < pages) {
@@ -446,7 +476,7 @@ public final class W128WebIdeScreen extends Screen {
     }
 
     private void addSearch(int sidebarX) {
-        searchField = new EditBox(
+        searchField = new W129IdeEditBox(
                 font,
                 sidebarX + 8,
                 TOP,
@@ -458,7 +488,7 @@ public final class W128WebIdeScreen extends Screen {
         addRenderableWidget(searchField);
 
         addRenderableWidget(
-                Button.builder(
+                W129IdeButton.themedBuilder(
                                 Component.literal("Go"),
                                 ignored -> searchWorkspace()
                         )
@@ -490,7 +520,7 @@ public final class W128WebIdeScreen extends Screen {
                             + result.line();
 
             addRenderableWidget(
-                    Button.builder(
+                    W129IdeButton.themedBuilder(
                                     Component.literal(label),
                                     ignored -> {
                                         pendingGoLine =
@@ -518,7 +548,7 @@ public final class W128WebIdeScreen extends Screen {
         int y = TOP;
 
         addRenderableWidget(
-                Button.builder(
+                W129IdeButton.themedBuilder(
                                 Component.literal("Run Current"),
                                 ignored -> runCurrent()
                         )
@@ -534,7 +564,7 @@ public final class W128WebIdeScreen extends Screen {
         y += 24;
 
         addRenderableWidget(
-                Button.builder(
+                W129IdeButton.themedBuilder(
                                 Component.literal("Check / Validate"),
                                 ignored -> validateCurrent()
                         )
@@ -550,7 +580,7 @@ public final class W128WebIdeScreen extends Screen {
         y += 24;
 
         addRenderableWidget(
-                Button.builder(
+                W129IdeButton.themedBuilder(
                                 Component.literal("W1.29 Self Test"),
                                 ignored -> sendTerminal(
                                         "selftest"
@@ -568,7 +598,7 @@ public final class W128WebIdeScreen extends Screen {
         y += 24;
 
         addRenderableWidget(
-                Button.builder(
+                W129IdeButton.themedBuilder(
                                 Component.literal("Open Terminal"),
                                 ignored -> {
                                     bottomMode =
@@ -590,7 +620,7 @@ public final class W128WebIdeScreen extends Screen {
 
     private void addSourceControl(int sidebarX) {
         addRenderableWidget(
-                Button.builder(
+                W129IdeButton.themedBuilder(
                                 Component.literal("Build Project"),
                                 ignored -> build()
                         )
@@ -604,7 +634,7 @@ public final class W128WebIdeScreen extends Screen {
         );
 
         addRenderableWidget(
-                Button.builder(
+                W129IdeButton.themedBuilder(
                                 Component.literal(
                                         published
                                                 ? "Unpublish"
@@ -630,7 +660,7 @@ public final class W128WebIdeScreen extends Screen {
 
     private void addExtensions(int sidebarX) {
         addRenderableWidget(
-                Button.builder(
+                W129IdeButton.themedBuilder(
                                 Component.literal("Refresh Capabilities"),
                                 ignored -> setLocalStatus(
                                         "Built-in W1.29 language capabilities refreshed.",
@@ -649,7 +679,7 @@ public final class W128WebIdeScreen extends Screen {
 
     private void addSettings(int sidebarX) {
         addRenderableWidget(
-                Button.builder(
+                W129IdeButton.themedBuilder(
                                 Component.literal(
                                         bottomPanelVisible
                                                 ? "Hide Bottom Panel"
@@ -671,7 +701,7 @@ public final class W128WebIdeScreen extends Screen {
         );
 
         addRenderableWidget(
-                Button.builder(
+                W129IdeButton.themedBuilder(
                                 Component.literal(
                                         prettyGenerated
                                                 ? "Generated: Pretty"
@@ -733,7 +763,7 @@ public final class W128WebIdeScreen extends Screen {
                 break;
             }
 
-            Button tab = Button.builder(
+            Button tab = W129IdeButton.themedBuilder(
                             Component.literal(
                                     baseName(path)
                                             + (
@@ -859,7 +889,7 @@ public final class W128WebIdeScreen extends Screen {
             Runnable action
     ) {
         addRenderableWidget(
-                Button.builder(
+                W129IdeButton.themedBuilder(
                                 Component.literal(label),
                                 ignored -> action.run()
                         )
@@ -916,7 +946,7 @@ public final class W128WebIdeScreen extends Screen {
         );
 
         addRenderableWidget(
-                Button.builder(
+                W129IdeButton.themedBuilder(
                                 Component.literal("X"),
                                 ignored -> {
                                     bottomPanelVisible =
@@ -934,7 +964,7 @@ public final class W128WebIdeScreen extends Screen {
         );
 
         if (bottomMode == BottomMode.TERMINAL) {
-            terminalField = new EditBox(
+            terminalField = new W129IdeEditBox(
                     font,
                     ACTIVITY_WIDTH
                             + SIDEBAR_WIDTH
@@ -961,7 +991,7 @@ public final class W128WebIdeScreen extends Screen {
             addRenderableWidget(terminalField);
 
             addRenderableWidget(
-                    Button.builder(
+                    W129IdeButton.themedBuilder(
                                     Component.literal("Enter"),
                                     ignored -> executeTerminalField()
                             )
@@ -985,7 +1015,7 @@ public final class W128WebIdeScreen extends Screen {
             String label,
             BottomMode target
     ) {
-        Button button = Button.builder(
+        Button button = W129IdeButton.themedBuilder(
                         Component.literal(label),
                         ignored -> {
                             bottomMode = target;
@@ -1014,6 +1044,7 @@ public final class W128WebIdeScreen extends Screen {
             float partialTick
     ) {
         renderBackground(graphics);
+        renderW129Chrome(graphics);
 
         graphics.fill(
                 0,
@@ -1061,7 +1092,7 @@ public final class W128WebIdeScreen extends Screen {
         graphics.drawString(
                 font,
                 "VS:IA CODE",
-                8,
+                27,
                 8,
                 0x6FD7FF,
                 false
@@ -1134,6 +1165,303 @@ public final class W128WebIdeScreen extends Screen {
                 mouseY,
                 partialTick
         );
+
+        if (paletteVisible) {
+            renderCommandPaletteOverlay(
+                    graphics,
+                    mouseX,
+                    mouseY,
+                    partialTick
+            );
+        }
+    }
+
+    private void renderW129Chrome(
+            GuiGraphics graphics
+    ) {
+        int editorLeft =
+                ACTIVITY_WIDTH
+                        + SIDEBAR_WIDTH;
+
+        int bottomTop =
+                bottomPanelVisible
+                        ? height
+                        - STATUS_HEIGHT
+                        - BOTTOM_PANEL_HEIGHT
+                        : height - STATUS_HEIGHT;
+
+        int toolbarTop =
+                bottomTop
+                        - TOOLBAR_HEIGHT;
+
+        graphics.fill(
+                0,
+                0,
+                width,
+                2,
+                W129IdeTheme.ACCENT_DARK
+        );
+
+        graphics.fill(
+                6,
+                5,
+                21,
+                20,
+                W129IdeTheme.ACCENT_DARK
+        );
+
+        graphics.fill(
+                8,
+                7,
+                19,
+                18,
+                W129IdeTheme.SUCCESS
+        );
+
+        graphics.fill(
+                10,
+                9,
+                17,
+                16,
+                0xFF3B7B45
+        );
+
+        graphics.fill(
+                editorLeft,
+                26,
+                editorLeft + 1,
+                height - STATUS_HEIGHT,
+                W129IdeTheme.BORDER
+        );
+
+        graphics.fill(
+                editorLeft,
+                50,
+                width,
+                51,
+                W129IdeTheme.BORDER_SOFT
+        );
+
+        graphics.fill(
+                editorLeft,
+                toolbarTop,
+                width,
+                toolbarTop + 1,
+                W129IdeTheme.BORDER
+        );
+
+        if (bottomPanelVisible) {
+            graphics.fill(
+                    editorLeft,
+                    bottomTop,
+                    width,
+                    bottomTop + 1,
+                    W129IdeTheme.ACCENT_DARK
+            );
+        }
+
+        graphics.fill(
+                0,
+                height - STATUS_HEIGHT,
+                width,
+                height - STATUS_HEIGHT + 1,
+                W129IdeTheme.BORDER
+        );
+    }
+
+    private void renderCommandPaletteOverlay(
+            GuiGraphics graphics,
+            int mouseX,
+            int mouseY,
+            float partialTick
+    ) {
+        int paletteWidth =
+                Math.min(
+                        540,
+                        width - 60
+                );
+
+        int paletteHeight = 176;
+
+        int paletteX =
+                Math.max(
+                        ACTIVITY_WIDTH + 12,
+                        (width - paletteWidth) / 2
+                );
+
+        int paletteY =
+                Math.max(
+                        78,
+                        height / 2 - 120
+                );
+
+        graphics.fill(
+                0,
+                26,
+                width,
+                height - STATUS_HEIGHT,
+                0x66000000
+        );
+
+        graphics.fill(
+                paletteX - 2,
+                paletteY - 2,
+                paletteX + paletteWidth + 2,
+                paletteY + paletteHeight + 2,
+                W129IdeTheme.ACCENT
+        );
+
+        graphics.fill(
+                paletteX,
+                paletteY,
+                paletteX + paletteWidth,
+                paletteY + paletteHeight,
+                W129IdeTheme.PANEL
+        );
+
+        graphics.fill(
+                paletteX,
+                paletteY,
+                paletteX + paletteWidth,
+                paletteY + 28,
+                W129IdeTheme.HEADER_ALT
+        );
+
+        graphics.drawString(
+                font,
+                ">_  Run Command",
+                paletteX + 14,
+                paletteY + 10,
+                W129IdeTheme.ACCENT,
+                false
+        );
+
+        String shortcut =
+                "Ctrl+Shift+P";
+
+        graphics.drawString(
+                font,
+                shortcut,
+                paletteX
+                        + paletteWidth
+                        - font.width(shortcut)
+                        - 14,
+                paletteY + 10,
+                W129IdeTheme.TEXT_DIM,
+                false
+        );
+
+        graphics.drawString(
+                font,
+                "RECENT COMMANDS",
+                paletteX + 16,
+                paletteY + 72,
+                W129IdeTheme.TEXT_DIM,
+                false
+        );
+
+        drawPaletteSuggestion(
+                graphics,
+                paletteX,
+                paletteY + 88,
+                paletteWidth,
+                "selftest",
+                "Run system self-test",
+                true
+        );
+
+        drawPaletteSuggestion(
+                graphics,
+                paletteX,
+                paletteY + 106,
+                paletteWidth,
+                "build",
+                "Build the project",
+                false
+        );
+
+        drawPaletteSuggestion(
+                graphics,
+                paletteX,
+                paletteY + 124,
+                paletteWidth,
+                "run",
+                "Run current file/project",
+                false
+        );
+
+        drawPaletteSuggestion(
+                graphics,
+                paletteX,
+                paletteY + 142,
+                paletteWidth,
+                "publish",
+                "Publish to Server Rack",
+                false
+        );
+
+        if (paletteField != null) {
+            paletteField.render(
+                    graphics,
+                    mouseX,
+                    mouseY,
+                    partialTick
+            );
+        }
+
+        if (paletteRunButton != null) {
+            paletteRunButton.render(
+                    graphics,
+                    mouseX,
+                    mouseY,
+                    partialTick
+            );
+        }
+    }
+
+    private void drawPaletteSuggestion(
+            GuiGraphics graphics,
+            int paletteX,
+            int y,
+            int paletteWidth,
+            String command,
+            String description,
+            boolean selected
+    ) {
+        if (selected) {
+            graphics.fill(
+                    paletteX + 12,
+                    y - 3,
+                    paletteX + paletteWidth - 12,
+                    y + 13,
+                    W129IdeTheme.SELECTION
+            );
+        }
+
+        graphics.drawString(
+                font,
+                "> " + command,
+                paletteX + 20,
+                y,
+                selected
+                        ? 0xFFFFFFFF
+                        : W129IdeTheme.TEXT,
+                false
+        );
+
+        if (paletteWidth >= 430) {
+            graphics.drawString(
+                    font,
+                    description,
+                    paletteX
+                            + paletteWidth
+                            - font.width(description)
+                            - 20,
+                    y,
+                    W129IdeTheme.TEXT_DIM,
+                    false
+            );
+        }
     }
 
     private void renderSidePanelText(
