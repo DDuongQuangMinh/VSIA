@@ -28,10 +28,15 @@ public final class W128IdeServer {
             return W128WebBuildResult.fail("You do not own this web project.");
         }
 
-        String selected = defaultPath(project);
-        send(player, project, selected, "VS:IA Web IDE ready.", true);
+        long now = System.currentTimeMillis();
+        W130IdePlatform.initialize(data, project, now);
+        project = data.project(project.host()).orElse(project);
 
-        return W128WebBuildResult.ok("Opened Web IDE for " + project.host());
+        String selected = defaultPath(project);
+        send(player, project, selected, "VS:IA W1.30 Development Platform ready.", true);
+        W130IdePlatform.sendInitialState(player, project);
+
+        return W128WebBuildResult.ok("Opened VS:IA W1.30 IDE for " + project.host());
     }
 
     public static void handle(ServerPlayer player, W128IdeRequestPacket request) {
@@ -88,6 +93,14 @@ public final class W128IdeServer {
                     request.content(),
                     now
             );
+            case W130 -> W130IdePlatform.handle(
+                    data,
+                    project,
+                    player,
+                    requestedPath,
+                    request.content(),
+                    now
+            );
         };
 
         project = data.project(project.host()).orElse(project);
@@ -122,6 +135,13 @@ public final class W128IdeServer {
     ) {
         if (path.isBlank()) {
             return W128WebBuildResult.fail("Select or create a file first.");
+        }
+
+        if (W130Workspace.internalPath(path)) {
+            W130Workspace.writeInternal(data, project, path, content, now);
+            return W128WebBuildResult.ok(
+                    "Saved workspace file " + path + " | website publication unchanged"
+            );
         }
 
         return data.putFile(
@@ -531,6 +551,13 @@ public final class W128IdeServer {
                           unpublish
                           status
                           selftest
+                          w130 help
+                          w130 selftest
+                          debug start|continue|pause|next|step|out|restart|stop
+                          break <line>
+                          watch add|remove <expression>
+                          task list|run <label>
+                          scm status|stage|unstage|commit|diff|log|revert
                         """
                 );
                 return W128WebBuildResult.ok(
@@ -755,6 +782,20 @@ public final class W128IdeServer {
                 );
             }
 
+            case "w130", "debug", "break", "watch", "task", "scm", "workspace" -> {
+                String forwarded = "w130".equals(verb)
+                        ? argument
+                        : command;
+                return W130IdePlatform.handle(
+                        data,
+                        project,
+                        player,
+                        activePath,
+                        forwarded,
+                        now
+                );
+            }
+
             default -> {
                 sendEvent(
                         player,
@@ -919,6 +960,7 @@ public final class W128IdeServer {
         return project.files()
                 .keySet()
                 .stream()
+                .filter(path -> !W130Workspace.internalPath(path))
                 .sorted(Comparator.naturalOrder())
                 .findFirst()
                 .orElse("");

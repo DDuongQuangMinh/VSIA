@@ -4,6 +4,8 @@ import com.k1ngtle.vsia.client.web.W128CodeEditor;
 import com.k1ngtle.vsia.client.web.W129IdeButton;
 import com.k1ngtle.vsia.client.web.W129IdeEditBox;
 import com.k1ngtle.vsia.client.web.W129IdeTheme;
+import com.k1ngtle.vsia.client.web.W130CommandRegistry;
+import com.k1ngtle.vsia.client.web.W130WorkspaceTree;
 import com.k1ngtle.vsia.network.VsiaNetwork;
 import com.k1ngtle.vsia.network.web.W128IdeRequestPacket;
 import com.k1ngtle.vsia.network.web.W128IdeSnapshotPacket;
@@ -12,6 +14,9 @@ import com.k1ngtle.vsia.signality.internet.web.W128CodeFormatter;
 import com.k1ngtle.vsia.signality.internet.web.W128IdeAction;
 import com.k1ngtle.vsia.signality.internet.web.W128IdeLanguage;
 import com.k1ngtle.vsia.signality.internet.web.W129ComputeEngine;
+import com.k1ngtle.vsia.signality.internet.web.W130DebugSnapshot;
+import com.k1ngtle.vsia.signality.internet.web.W130ScmSnapshot;
+import com.k1ngtle.vsia.signality.internet.web.W130Workspace;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -21,8 +26,10 @@ import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 public final class W128WebIdeScreen extends Screen {
     private static final int MAX_FILE_CHARACTERS = 262_144;
@@ -57,12 +64,23 @@ public final class W128WebIdeScreen extends Screen {
     private EditBox searchField;
     private EditBox terminalField;
     private EditBox paletteField;
+    private EditBox commitMessageField;
     private Button paletteRunButton;
+
+    private W130DebugSnapshot debugSnapshot = W130DebugSnapshot.idle();
+    private W130ScmSnapshot scmSnapshot = W130ScmSnapshot.empty();
+    private List<W130CommandRegistry.Command> paletteMatches = List.of();
+    private int paletteSelection;
+
+    private final Set<String> expandedFolders = new HashSet<>(Set.of(
+            "/src", "/tools", "/native", "/java", "/dotnet", "/asm", "/.vsia"
+    ));
 
     private final List<String> openTabs = new ArrayList<>();
     private final List<SearchResult> searchResults = new ArrayList<>();
     private final List<String> terminalLines = new ArrayList<>();
     private final List<String> problemLines = new ArrayList<>();
+    private final List<ProblemTarget> problemTargets = new ArrayList<>();
     private final List<String> outputLines = new ArrayList<>();
 
     private SideMode sideMode = SideMode.EXPLORER;
@@ -127,6 +145,7 @@ public final class W128WebIdeScreen extends Screen {
         editor.setLanguage(
                 W128IdeLanguage.detect(activePath)
         );
+        applyDebugDecorations();
         addRenderableWidget(editor);
 
         addToolbar(toolbarY);
@@ -167,7 +186,7 @@ public final class W128WebIdeScreen extends Screen {
 
         int paletteWidth =
                 Math.min(
-                        540,
+                        620,
                         width - 60
                 );
 
@@ -179,8 +198,8 @@ public final class W128WebIdeScreen extends Screen {
 
         int paletteY =
                 Math.max(
-                        78,
-                        height / 2 - 120
+                        62,
+                        height / 2 - 135
                 );
 
         paletteField = new W129IdeEditBox(
@@ -201,6 +220,11 @@ public final class W128WebIdeScreen extends Screen {
                         "Type a command or search..."
                 )
         );
+        paletteField.setResponder(value -> {
+            paletteMatches = W130CommandRegistry.search(value, 6);
+            paletteSelection = 0;
+        });
+        paletteMatches = W130CommandRegistry.search("", 6);
         paletteField.visible =
                 paletteVisible;
         addRenderableWidget(paletteField);
@@ -371,66 +395,69 @@ public final class W128WebIdeScreen extends Screen {
     }
 
     private void addFileButtons(int sidebarX) {
+        List<W130WorkspaceTree.Row> rows = W130WorkspaceTree.rows(
+                files.stream().map(W128IdeSnapshotPacket.FileEntry::path).toList(),
+                expandedFolders
+        );
+
         int start = filePage * FILE_ROWS;
         int y = TOP + 24;
 
         for (int i = 0; i < FILE_ROWS; i++) {
             int index = start + i;
-
-            if (index >= files.size()) {
+            if (index >= rows.size()) {
                 break;
             }
 
-            W128IdeSnapshotPacket.FileEntry entry =
-                    files.get(index);
+            W130WorkspaceTree.Row row = rows.get(index);
+            String indent = "  ".repeat(Math.min(6, row.depth()));
 
-            String marker = entry.generated()
-                    ? "G "
-                    : (
-                    managedOutput(entry.path())
-                            ? "M "
-                            : "  "
-            );
+            if (row.folder()) {
+                String label = indent
+                        + (expandedFolders.contains(row.path()) ? "v " : "> ")
+                        + trimLabel(row.label(), Math.max(12, 27 - row.depth() * 2));
 
-            Button fileButton = W129IdeButton.themedBuilder(
-                            Component.literal(
-                                    marker
-                                            + trimLabel(
-                                            entry.path(),
-                                            33
-                                    )
-                            ),
-                            ignored -> openFile(
-                                    entry.path()
-                            )
-                    )
-                    .bounds(
-                            sidebarX + 8,
-                            y,
-                            SIDEBAR_WIDTH - 16,
-                            18
-                    )
-                    .build();
+                addRenderableWidget(
+                        W129IdeButton.themedBuilder(
+                                        Component.literal(label),
+                                        ignored -> {
+                                            if (!expandedFolders.remove(row.path())) {
+                                                expandedFolders.add(row.path());
+                                            }
+                                            filePage = 0;
+                                            reinitPreservingEditor();
+                                        }
+                                )
+                                .bounds(sidebarX + 8, y, SIDEBAR_WIDTH - 16, 18)
+                                .build()
+                );
+            } else {
+                W128IdeSnapshotPacket.FileEntry entry = fileEntry(row.path());
+                String marker = entry != null && entry.generated()
+                        ? "G "
+                        : (managedOutput(row.path()) ? "M " : "  ");
 
-            if (entry.path().equals(activePath)) {
-                fileButton.active = false;
+                Button fileButton = W129IdeButton.themedBuilder(
+                                Component.literal(
+                                        indent + marker
+                                                + trimLabel(row.label(), Math.max(12, 29 - row.depth() * 2))
+                                ),
+                                ignored -> openFile(row.path())
+                        )
+                        .bounds(sidebarX + 8, y, SIDEBAR_WIDTH - 16, 18)
+                        .build();
+
+                if (row.path().equals(activePath)) {
+                    fileButton.active = false;
+                }
+                addRenderableWidget(fileButton);
             }
 
-            addRenderableWidget(fileButton);
             y += 20;
         }
 
-        int pages = Math.max(
-                1,
-                (files.size() + FILE_ROWS - 1)
-                        / FILE_ROWS
-        );
-
-        int pageY =
-                TOP
-                        + 24
-                        + FILE_ROWS * 20
-                        + 2;
+        int pages = Math.max(1, (rows.size() + FILE_ROWS - 1) / FILE_ROWS);
+        int pageY = TOP + 24 + FILE_ROWS * 20 + 2;
 
         Button previous = W129IdeButton.themedBuilder(
                         Component.literal("<"),
@@ -441,14 +468,8 @@ public final class W128WebIdeScreen extends Screen {
                             }
                         }
                 )
-                .bounds(
-                        sidebarX + 8,
-                        pageY,
-                        30,
-                        18
-                )
+                .bounds(sidebarX + 8, pageY, 30, 18)
                 .build();
-
         previous.active = filePage > 0;
         addRenderableWidget(previous);
 
@@ -461,18 +482,19 @@ public final class W128WebIdeScreen extends Screen {
                             }
                         }
                 )
-                .bounds(
-                        sidebarX + SIDEBAR_WIDTH - 38,
-                        pageY,
-                        30,
-                        18
-                )
+                .bounds(sidebarX + SIDEBAR_WIDTH - 38, pageY, 30, 18)
                 .build();
-
-        next.active =
-                filePage + 1 < pages;
-
+        next.active = filePage + 1 < pages;
         addRenderableWidget(next);
+    }
+
+    private W128IdeSnapshotPacket.FileEntry fileEntry(String path) {
+        for (W128IdeSnapshotPacket.FileEntry entry : files) {
+            if (entry.path().equals(path)) {
+                return entry;
+            }
+        }
+        return null;
     }
 
     private void addSearch(int sidebarX) {
@@ -546,116 +568,89 @@ public final class W128WebIdeScreen extends Screen {
 
     private void addRunPanel(int sidebarX) {
         int y = TOP;
+        y = runPanelButton(sidebarX, y, "Start Debugging (F5)", () -> requestW130("debug start"), true);
+        y = runPanelButton(sidebarX, y, "Run Without Debugging", this::runCurrent, true);
+        y = runPanelButton(sidebarX, y, "Continue", () -> requestW130("debug continue"), debugSnapshot.active());
+        y = runPanelButton(sidebarX, y, "Step Over (F10)", () -> requestW130("debug next"), debugSnapshot.paused());
+        y = runPanelButton(sidebarX, y, "Step Into (F11)", () -> requestW130("debug step"), debugSnapshot.paused());
+        y = runPanelButton(sidebarX, y, "Step Out (Shift+F11)", () -> requestW130("debug out"), debugSnapshot.paused());
+        y = runPanelButton(sidebarX, y, "Restart", () -> requestW130("debug restart"), debugSnapshot.active());
+        y = runPanelButton(sidebarX, y, "Stop (Shift+F5)", () -> requestW130("debug stop"), debugSnapshot.active());
+        y = runPanelButton(sidebarX, y, "Run Build Task", () -> requestW130("task run build"), true);
+        runPanelButton(sidebarX, y, "W1.30 Self Test", () -> requestW130("selftest"), true);
+    }
 
-        addRenderableWidget(
-                W129IdeButton.themedBuilder(
-                                Component.literal("Run Current"),
-                                ignored -> runCurrent()
-                        )
-                        .bounds(
-                                sidebarX + 8,
-                                y,
-                                SIDEBAR_WIDTH - 16,
-                                20
-                        )
-                        .build()
-        );
-
-        y += 24;
-
-        addRenderableWidget(
-                W129IdeButton.themedBuilder(
-                                Component.literal("Check / Validate"),
-                                ignored -> validateCurrent()
-                        )
-                        .bounds(
-                                sidebarX + 8,
-                                y,
-                                SIDEBAR_WIDTH - 16,
-                                20
-                        )
-                        .build()
-        );
-
-        y += 24;
-
-        addRenderableWidget(
-                W129IdeButton.themedBuilder(
-                                Component.literal("W1.29 Self Test"),
-                                ignored -> sendTerminal(
-                                        "selftest"
-                                )
-                        )
-                        .bounds(
-                                sidebarX + 8,
-                                y,
-                                SIDEBAR_WIDTH - 16,
-                                20
-                        )
-                        .build()
-        );
-
-        y += 24;
-
-        addRenderableWidget(
-                W129IdeButton.themedBuilder(
-                                Component.literal("Open Terminal"),
-                                ignored -> {
-                                    bottomMode =
-                                            BottomMode.TERMINAL;
-                                    bottomPanelVisible =
-                                            true;
-                                    reinitPreservingEditor();
-                                }
-                        )
-                        .bounds(
-                                sidebarX + 8,
-                                y,
-                                SIDEBAR_WIDTH - 16,
-                                20
-                        )
-                        .build()
-        );
+    private int runPanelButton(
+            int sidebarX,
+            int y,
+            String label,
+            Runnable action,
+            boolean enabled
+    ) {
+        Button button = W129IdeButton.themedBuilder(
+                        Component.literal(label),
+                        ignored -> action.run()
+                )
+                .bounds(sidebarX + 8, y, SIDEBAR_WIDTH - 16, 20)
+                .build();
+        button.active = enabled;
+        addRenderableWidget(button);
+        return y + 22;
     }
 
     private void addSourceControl(int sidebarX) {
-        addRenderableWidget(
-                W129IdeButton.themedBuilder(
-                                Component.literal("Build Project"),
-                                ignored -> build()
-                        )
-                        .bounds(
-                                sidebarX + 8,
-                                TOP,
-                                SIDEBAR_WIDTH - 16,
-                                20
-                        )
-                        .build()
-        );
+        int y = TOP;
+        y = runPanelButton(sidebarX, y, "Refresh", () -> requestW130("scm status"), true);
+        y = runPanelButton(sidebarX, y, "Stage All", () -> requestW130("scm stage *"), !scmSnapshot.changes().isEmpty());
+        y = runPanelButton(sidebarX, y, "Unstage All", () -> requestW130("scm unstage *"), scmSnapshot.stagedCount() > 0);
+        y = runPanelButton(sidebarX, y, "Diff Active", () -> requestW130("scm diff " + activePath), true);
+        y = runPanelButton(sidebarX, y, "Revert Active", () -> requestW130("scm revert " + activePath), true);
 
-        addRenderableWidget(
-                W129IdeButton.themedBuilder(
-                                Component.literal(
-                                        published
-                                                ? "Unpublish"
-                                                : "Publish"
-                                ),
-                                ignored -> {
-                                    if (published) {
-                                        unpublish();
-                                    } else {
-                                        publish();
-                                    }
-                                }
-                        )
-                        .bounds(
-                                sidebarX + 8,
-                                TOP + 24,
-                                SIDEBAR_WIDTH - 16,
-                                20
-                        )
-                        .build()
+        commitMessageField = new W129IdeEditBox(
+                font,
+                sidebarX + 8,
+                y,
+                SIDEBAR_WIDTH - 78,
+                20,
+                Component.literal("Commit message")
         );
+        commitMessageField.setMaxLength(120);
+        commitMessageField.setHint(Component.literal("Commit message"));
+        addRenderableWidget(commitMessageField);
+
+        Button commit = W129IdeButton.themedBuilder(
+                        Component.literal("Commit"),
+                        ignored -> {
+                            String message = commitMessageField == null ? "" : commitMessageField.getValue();
+                            requestW130("scm commit " + message);
+                        }
+                )
+                .bounds(sidebarX + SIDEBAR_WIDTH - 66, y, 58, 20)
+                .build();
+        commit.active = scmSnapshot.stagedCount() > 0;
+        addRenderableWidget(commit);
+        y += 24;
+
+        int shown = 0;
+        for (W130ScmSnapshot.Change change : scmSnapshot.changes()) {
+            if (shown >= 9) {
+                break;
+            }
+            String label = (change.staged() ? "S " : "  ")
+                    + change.state() + " " + trimLabel(change.path(), 27);
+            addRenderableWidget(
+                    W129IdeButton.themedBuilder(
+                                    Component.literal(label),
+                                    ignored -> requestW130(
+                                            (change.staged() ? "scm unstage " : "scm stage ") + change.path()
+                                    )
+                            )
+                            .bounds(sidebarX + 8, y, SIDEBAR_WIDTH - 16, 18)
+                            .build()
+            );
+            y += 20;
+            shown++;
+        }
     }
 
     private void addExtensions(int sidebarX) {
@@ -678,69 +673,42 @@ public final class W128WebIdeScreen extends Screen {
     }
 
     private void addSettings(int sidebarX) {
-        addRenderableWidget(
-                W129IdeButton.themedBuilder(
-                                Component.literal(
-                                        bottomPanelVisible
-                                                ? "Hide Bottom Panel"
-                                                : "Show Bottom Panel"
-                                ),
-                                ignored -> {
-                                    bottomPanelVisible =
-                                            !bottomPanelVisible;
-                                    reinitPreservingEditor();
-                                }
-                        )
-                        .bounds(
-                                sidebarX + 8,
-                                TOP,
-                                SIDEBAR_WIDTH - 16,
-                                20
-                        )
-                        .build()
+        int y = TOP;
+        y = runPanelButton(
+                sidebarX,
+                y,
+                bottomPanelVisible ? "Hide Bottom Panel" : "Show Bottom Panel",
+                () -> {
+                    bottomPanelVisible = !bottomPanelVisible;
+                    reinitPreservingEditor();
+                },
+                true
         );
 
-        addRenderableWidget(
-                W129IdeButton.themedBuilder(
-                                Component.literal(
-                                        prettyGenerated
-                                                ? "Generated: Pretty"
-                                                : "Generated: Raw"
-                                ),
-                                ignored -> {
-                                    if (dirty()) {
-                                        setLocalStatus(
-                                                "Save or Reload before changing generated-file display mode.",
-                                                false
-                                        );
-                                        return;
-                                    }
-
-                                    prettyGenerated =
-                                            !prettyGenerated;
-                                    reinitPreservingEditor();
-                                }
-                        )
-                        .bounds(
-                                sidebarX + 8,
-                                TOP + 24,
-                                SIDEBAR_WIDTH - 16,
-                                20
-                        )
-                        .build()
+        y = runPanelButton(
+                sidebarX,
+                y,
+                prettyGenerated ? "Generated: Pretty" : "Generated: Raw",
+                () -> {
+                    if (dirty()) {
+                        setLocalStatus("Save or Reload before changing generated-file display mode.", false);
+                        return;
+                    }
+                    prettyGenerated = !prettyGenerated;
+                    reinitPreservingEditor();
+                },
+                true
         );
+
+        y = runPanelButton(sidebarX, y, "Open settings.json", () -> openFile(W130Workspace.SETTINGS_PATH), true);
+        y = runPanelButton(sidebarX, y, "Open launch.json", () -> openFile(W130Workspace.LAUNCH_PATH), true);
+        y = runPanelButton(sidebarX, y, "Open tasks.json", () -> openFile(W130Workspace.TASKS_PATH), true);
+        runPanelButton(sidebarX, y, "Workspace Status", () -> requestW130("workspace status"), true);
     }
 
     private void addEditorTabs(int editorX) {
         int x = editorX;
-        int available =
-                Math.max(
-                        120,
-                        width
-                                - editorX
-                                - 170
-                );
-
+        int available = Math.max(120, width - editorX - 170);
         int shown = 0;
 
         for (String path : openTabs) {
@@ -748,49 +716,48 @@ public final class W128WebIdeScreen extends Screen {
                 break;
             }
 
-            int tabWidth =
-                    Math.min(
-                            150,
-                            Math.max(
-                                    74,
-                                    font.width(
-                                            baseName(path)
-                                    ) + 20
-                            )
-                    );
-
+            int tabWidth = Math.min(150, Math.max(86, font.width(baseName(path)) + 36));
             if (x + tabWidth > editorX + available) {
                 break;
             }
 
+            int labelWidth = tabWidth - 18;
             Button tab = W129IdeButton.themedBuilder(
                             Component.literal(
                                     baseName(path)
-                                            + (
-                                            path.equals(activePath)
-                                                    && dirty()
-                                                    ? " *"
-                                                    : ""
-                                    )
+                                            + (path.equals(activePath) && dirty() ? " *" : "")
                             ),
                             ignored -> openFile(path)
                     )
-                    .bounds(
-                            x,
-                            29,
-                            tabWidth,
-                            20
-                    )
+                    .bounds(x, 29, labelWidth, 20)
                     .build();
-
-            tab.active =
-                    !path.equals(activePath);
-
+            tab.active = !path.equals(activePath);
             addRenderableWidget(tab);
+
+            addRenderableWidget(
+                    W129IdeButton.themedBuilder(
+                                    Component.literal("x"),
+                                    ignored -> closeTab(path)
+                            )
+                            .bounds(x + labelWidth + 1, 29, 17, 20)
+                            .build()
+            );
 
             x += tabWidth + 2;
             shown++;
         }
+    }
+
+    private void closeTab(String path) {
+        if (path == null || path.isBlank()) {
+            return;
+        }
+        if (path.equals(activePath)) {
+            closeActiveTab();
+            return;
+        }
+        openTabs.remove(path);
+        reinitPreservingEditor();
     }
 
     private void addToolbar(int toolbarY) {
@@ -1256,34 +1223,12 @@ public final class W128WebIdeScreen extends Screen {
             int mouseY,
             float partialTick
     ) {
-        int paletteWidth =
-                Math.min(
-                        540,
-                        width - 60
-                );
+        int paletteWidth = Math.min(620, width - 60);
+        int paletteHeight = 210;
+        int paletteX = Math.max(ACTIVITY_WIDTH + 12, (width - paletteWidth) / 2);
+        int paletteY = Math.max(62, height / 2 - 135);
 
-        int paletteHeight = 176;
-
-        int paletteX =
-                Math.max(
-                        ACTIVITY_WIDTH + 12,
-                        (width - paletteWidth) / 2
-                );
-
-        int paletteY =
-                Math.max(
-                        78,
-                        height / 2 - 120
-                );
-
-        graphics.fill(
-                0,
-                26,
-                width,
-                height - STATUS_HEIGHT,
-                0xFF070D13
-        );
-
+        graphics.fill(0, 26, width, height - STATUS_HEIGHT, 0xFF070D13);
         graphics.fill(
                 paletteX - 2,
                 paletteY - 2,
@@ -1291,7 +1236,6 @@ public final class W128WebIdeScreen extends Screen {
                 paletteY + paletteHeight + 2,
                 W129IdeTheme.ACCENT
         );
-
         graphics.fill(
                 paletteX,
                 paletteY,
@@ -1299,7 +1243,6 @@ public final class W128WebIdeScreen extends Screen {
                 paletteY + paletteHeight,
                 W129IdeTheme.PANEL
         );
-
         graphics.fill(
                 paletteX,
                 paletteY,
@@ -1308,95 +1251,58 @@ public final class W128WebIdeScreen extends Screen {
                 W129IdeTheme.HEADER_ALT
         );
 
-        graphics.drawString(
-                font,
-                ">_  Run Command",
-                paletteX + 14,
-                paletteY + 10,
-                W129IdeTheme.ACCENT,
-                false
-        );
-
-        String shortcut =
-                "Ctrl+Shift+P";
-
+        graphics.drawString(font, ">_  Run Command", paletteX + 14, paletteY + 10, W129IdeTheme.ACCENT, false);
+        String shortcut = "Ctrl+Shift+P";
         graphics.drawString(
                 font,
                 shortcut,
-                paletteX
-                        + paletteWidth
-                        - font.width(shortcut)
-                        - 14,
+                paletteX + paletteWidth - font.width(shortcut) - 14,
                 paletteY + 10,
                 W129IdeTheme.TEXT_DIM,
                 false
         );
 
-        graphics.drawString(
-                font,
-                "RECENT COMMANDS",
-                paletteX + 16,
-                paletteY + 72,
-                W129IdeTheme.TEXT_DIM,
-                false
-        );
+        String query = paletteField == null ? "" : paletteField.getValue();
+        paletteMatches = W130CommandRegistry.search(query, 6);
+        if (paletteMatches.isEmpty()) {
+            paletteSelection = 0;
+        } else {
+            paletteSelection = Math.max(0, Math.min(paletteSelection, paletteMatches.size() - 1));
+        }
 
-        drawPaletteSuggestion(
-                graphics,
-                paletteX,
-                paletteY + 88,
-                paletteWidth,
-                "selftest",
-                "Run system self-test",
-                true
-        );
+        graphics.drawString(font, "COMMANDS", paletteX + 16, paletteY + 72, W129IdeTheme.TEXT_DIM, false);
 
-        drawPaletteSuggestion(
-                graphics,
-                paletteX,
-                paletteY + 106,
-                paletteWidth,
-                "build",
-                "Build the project",
-                false
-        );
-
-        drawPaletteSuggestion(
-                graphics,
-                paletteX,
-                paletteY + 124,
-                paletteWidth,
-                "run",
-                "Run current file/project",
-                false
-        );
-
-        drawPaletteSuggestion(
-                graphics,
-                paletteX,
-                paletteY + 142,
-                paletteWidth,
-                "publish",
-                "Publish to Server Rack",
-                false
-        );
-
-        if (paletteField != null) {
-            paletteField.render(
+        int rowY = paletteY + 88;
+        for (int i = 0; i < paletteMatches.size(); i++) {
+            W130CommandRegistry.Command command = paletteMatches.get(i);
+            drawPaletteSuggestion(
                     graphics,
-                    mouseX,
-                    mouseY,
-                    partialTick
+                    paletteX,
+                    rowY,
+                    paletteWidth,
+                    command.label(),
+                    command.description(),
+                    i == paletteSelection
+            );
+            rowY += 18;
+        }
+
+        if (paletteMatches.isEmpty()) {
+            graphics.drawString(
+                    font,
+                    "No matching commands. Enter a terminal-style command directly.",
+                    paletteX + 20,
+                    paletteY + 92,
+                    W129IdeTheme.TEXT_DIM,
+                    false
             );
         }
 
+        if (paletteField != null) {
+            paletteField.render(graphics, mouseX, mouseY, partialTick);
+        }
         if (paletteRunButton != null) {
-            paletteRunButton.render(
-                    graphics,
-                    mouseX,
-                    mouseY,
-                    partialTick
-            );
+            paletteRunButton.render(graphics, mouseX, mouseY, partialTick);
         }
     }
 
@@ -1450,225 +1356,96 @@ public final class W128WebIdeScreen extends Screen {
     ) {
         int x = ACTIVITY_WIDTH + 8;
 
-        graphics.drawString(
-                font,
-                sideMode.title(),
-                x,
-                33,
-                0xC7D0DB,
-                false
-        );
+        graphics.drawString(font, sideMode.title(), x, 33, 0xC7D0DB, false);
 
         switch (sideMode) {
             case RUN -> {
-                W128IdeLanguage language =
-                        W128IdeLanguage.detect(
-                                activePath
-                        );
-
+                int y = TOP + 230;
+                graphics.drawString(font, "DEBUG SESSION", x, y, 0x8FA9BD, false);
+                y += 15;
                 graphics.drawString(
                         font,
-                        "Current:",
+                        debugSnapshot.state() + (debugSnapshot.reason().isBlank() ? "" : " | " + debugSnapshot.reason()),
                         x,
-                        TOP + 110,
-                        0x74879A,
+                        y,
+                        debugSnapshot.paused() ? 0xFFD166 : (debugSnapshot.active() ? 0x62E38A : 0x74879A),
                         false
                 );
+                y += 15;
+                if (!debugSnapshot.path().isBlank()) {
+                    graphics.drawString(font, trimLabel(debugSnapshot.path(), 30), x, y, 0xE7EDF5, false);
+                    y += 15;
+                }
+                if (debugSnapshot.line() > 0) {
+                    graphics.drawString(font, "Line " + debugSnapshot.line(), x, y, 0x6FD7FF, false);
+                    y += 15;
+                }
 
-                graphics.drawString(
-                        font,
-                        trimLabel(
-                                activePath,
-                                28
-                        ),
-                        x,
-                        TOP + 124,
-                        0xE7EDF5,
-                        false
-                );
-
-                graphics.drawString(
-                        font,
-                        W129ComputeEngine.runtimeName(
-                                activePath
-                        ),
-                        x,
-                        TOP + 140,
-                        W129ComputeEngine.executable(
-                                activePath
-                        )
-                                ? 0x62E38A
-                                : 0xFFD166,
-                        false
-                );
-
-                graphics.drawString(
-                        font,
-                        W129ComputeEngine.executable(
-                                activePath
-                        )
-                                ? "sandbox executable"
-                                : (
-                                language.webRuntime()
-                                        ? "web runtime"
-                                        : "editor-only"
-                        ),
-                        x,
-                        TOP + 154,
-                        0x8FA9BD,
-                        false
-                );
+                int shown = 0;
+                for (var entry : debugSnapshot.variables().entrySet()) {
+                    if (shown++ >= 5 || y > height - 75) {
+                        break;
+                    }
+                    graphics.drawString(
+                            font,
+                            trimLabel(entry.getKey() + " = " + entry.getValue(), 32),
+                            x,
+                            y,
+                            0xA7B4C3,
+                            false
+                    );
+                    y += 13;
+                }
             }
 
             case SOURCE_CONTROL -> {
-                int y = TOP + 58;
-
+                int y = Math.min(height - 80, TOP + 330);
+                graphics.drawString(font, "HEAD #" + scmSnapshot.head(), x, y, 0x8FA9BD, false);
+                y += 14;
                 graphics.drawString(
                         font,
-                        "WORKING TREE",
+                        scmSnapshot.changes().size() + " change(s), " + scmSnapshot.stagedCount() + " staged",
                         x,
                         y,
-                        0x8FA9BD,
-                        false
-                );
-
-                y += 16;
-
-                for (W128IdeSnapshotPacket.FileEntry entry : files) {
-                    if (y > height - 70) {
-                        break;
-                    }
-
-                    if (
-                            entry.generated()
-                                    || managedOutput(
-                                    entry.path()
-                            )
-                    ) {
-                        String state =
-                                entry.generated()
-                                        ? "G"
-                                        : "M";
-
-                        graphics.drawString(
-                                font,
-                                state
-                                        + " "
-                                        + trimLabel(
-                                        entry.path(),
-                                        27
-                                ),
-                                x,
-                                y,
-                                entry.generated()
-                                        ? 0xFFD166
-                                        : 0x62E38A,
-                                false
-                        );
-
-                        y += 14;
-                    }
-                }
-
-                graphics.drawString(
-                        font,
-                        "G=generated M=manual override",
-                        x,
-                        Math.min(
-                                height - 84,
-                                y + 8
-                        ),
-                        0x65788B,
+                        scmSnapshot.changes().isEmpty() ? 0x62E38A : 0xFFD166,
                         false
                 );
             }
 
             case EXTENSIONS -> {
                 int y = TOP + 34;
-
                 String[] entries = {
                         "HTML/CSS      Web",
                         "JavaScript    Web",
                         "React JSX     Web",
-                        "Assembly      VSIA VM",
-                        "Python        Sandbox subset",
-                        "C             Sandbox subset",
-                        "C++           Sandbox subset",
-                        "C#            Sandbox subset",
-                        "Java          Sandbox subset",
-                        "JSON/MD       Editor"
+                        "Assembly      VSIA VM + Debug",
+                        "Python        Sandbox + Debug",
+                        "C             Sandbox + Debug",
+                        "C++           Sandbox + Debug",
+                        "C#            Sandbox + Debug",
+                        "Java          Sandbox + Debug",
+                        "JSON/MD       Editor",
+                        "W1.30 Tasks   Built-in",
+                        "W1.30 SCM     Built-in"
                 };
-
                 for (String entry : entries) {
-                    graphics.drawString(
-                            font,
-                            entry,
-                            x,
-                            y,
-                            0xA7B4C3,
-                            false
-                    );
+                    graphics.drawString(font, entry, x, y, 0xA7B4C3, false);
                     y += 15;
                 }
             }
 
             case SETTINGS -> {
-                graphics.drawString(
-                        font,
-                        "W1.29 Workbench",
-                        x,
-                        TOP + 58,
-                        0xE7EDF5,
-                        false
-                );
-
-                graphics.drawString(
-                        font,
-                        "Syntax highlight: ON",
-                        x,
-                        TOP + 76,
-                        0x62E38A,
-                        false
-                );
-
-                graphics.drawString(
-                        font,
-                        "Auto indent: ON",
-                        x,
-                        TOP + 92,
-                        0x62E38A,
-                        false
-                );
-
-                graphics.drawString(
-                        font,
-                        "VM isolation: ON",
-                        x,
-                        TOP + 108,
-                        0x62E38A,
-                        false
-                );
-
-                graphics.drawString(
-                        font,
-                        "Host compiler exec: OFF",
-                        x,
-                        TOP + 124,
-                        0x62E38A,
-                        false
-                );
+                int y = TOP + 142;
+                graphics.drawString(font, "W1.30 Workspace", x, y, 0xE7EDF5, false);
+                graphics.drawString(font, "Debugger: ON", x, y + 18, 0x62E38A, false);
+                graphics.drawString(font, "Tasks: ON", x, y + 34, 0x62E38A, false);
+                graphics.drawString(font, "Source Control: ON", x, y + 50, 0x62E38A, false);
+                graphics.drawString(font, "Host compiler exec: OFF", x, y + 66, 0x62E38A, false);
             }
 
             case SEARCH -> {
                 if (searchResults.isEmpty()) {
-                    graphics.drawString(
-                            font,
-                            "Ctrl+Shift+F",
-                            x,
-                            TOP + 26,
-                            0x65788B,
-                            false
-                    );
+                    graphics.drawString(font, "Ctrl+Shift+F", x, TOP + 26, 0x65788B, false);
                 }
             }
 
@@ -1962,6 +1739,20 @@ public final class W128WebIdeScreen extends Screen {
             int modifiers
     ) {
         if (paletteVisible) {
+            if (keyCode == GLFW.GLFW_KEY_UP) {
+                if (!paletteMatches.isEmpty()) {
+                    paletteSelection = Math.max(0, paletteSelection - 1);
+                }
+                return true;
+            }
+
+            if (keyCode == GLFW.GLFW_KEY_DOWN) {
+                if (!paletteMatches.isEmpty()) {
+                    paletteSelection = Math.min(paletteMatches.size() - 1, paletteSelection + 1);
+                }
+                return true;
+            }
+
             if (
                     keyCode == GLFW.GLFW_KEY_ESCAPE
                             || (
@@ -2082,8 +1873,28 @@ public final class W128WebIdeScreen extends Screen {
             return true;
         }
 
+        if (keyCode == GLFW.GLFW_KEY_F5 && Screen.hasShiftDown()) {
+            requestW130("debug stop");
+            return true;
+        }
+
+        if (keyCode == GLFW.GLFW_KEY_F5 && Screen.hasControlDown()) {
+            runCurrent();
+            return true;
+        }
+
         if (keyCode == GLFW.GLFW_KEY_F5) {
-            refresh();
+            requestW130(debugSnapshot.active() ? "debug continue" : "debug start");
+            return true;
+        }
+
+        if (keyCode == GLFW.GLFW_KEY_F10) {
+            requestW130("debug next");
+            return true;
+        }
+
+        if (keyCode == GLFW.GLFW_KEY_F11) {
+            requestW130(Screen.hasShiftDown() ? "debug out" : "debug step");
             return true;
         }
 
@@ -2159,10 +1970,30 @@ public final class W128WebIdeScreen extends Screen {
                 return true;
             }
 
+            int suggestion = paletteSuggestionAt(mouseX, mouseY);
+            if (suggestion >= 0 && suggestion < paletteMatches.size()) {
+                paletteSelection = suggestion;
+                executePaletteSelection();
+                return true;
+            }
+
             if (paletteField != null) {
                 setInitialFocus(paletteField);
             }
 
+            return true;
+        }
+
+        if (editor != null && editor.isInGutter(mouseX, mouseY) && button == 0) {
+            int line = editor.lineAtMouse(mouseX, mouseY);
+            if (line > 0) {
+                requestW130("break " + activePath + ":" + line);
+                return true;
+            }
+        }
+
+        if (bottomPanelVisible && bottomMode == BottomMode.PROBLEMS && button == 0
+                && navigateProblemAt(mouseX, mouseY)) {
             return true;
         }
 
@@ -2288,6 +2119,7 @@ public final class W128WebIdeScreen extends Screen {
 
             case "PROBLEMS" -> {
                 problemLines.clear();
+                problemTargets.clear();
                 problemScrollOffset = 0;
 
                 if (packet.payload().isBlank()) {
@@ -2316,8 +2148,18 @@ public final class W128WebIdeScreen extends Screen {
                                             + " "
                                             + parts[3]
                             );
+                            try {
+                                problemTargets.add(new ProblemTarget(
+                                        activePath,
+                                        Integer.parseInt(parts[1]),
+                                        Integer.parseInt(parts[2])
+                                ));
+                            } catch (NumberFormatException ignored) {
+                                problemTargets.add(new ProblemTarget("", 0, 0));
+                            }
                         } else {
                             problemLines.add(raw);
+                            problemTargets.add(new ProblemTarget("", 0, 0));
                         }
                     }
                 }
@@ -2362,6 +2204,50 @@ public final class W128WebIdeScreen extends Screen {
 
                 sideMode =
                         SideMode.SEARCH;
+            }
+
+            case "W130_DEBUG" -> {
+                debugSnapshot = W130DebugSnapshot.fromJson(packet.payload());
+                if (debugSnapshot.paused()
+                        && debugSnapshot.path().equals(activePath)
+                        && debugSnapshot.line() > 0) {
+                    pendingGoLine = debugSnapshot.line();
+                }
+            }
+
+            case "W130_SCM" -> {
+                scmSnapshot = W130ScmSnapshot.fromJson(packet.payload());
+            }
+
+            case "W130_PROBLEMS" -> {
+                problemLines.clear();
+                problemTargets.clear();
+                problemScrollOffset = 0;
+
+                if (packet.payload().isBlank()) {
+                    problemLines.add("No problems detected.");
+                    problemTargets.add(new ProblemTarget("", 0, 0));
+                } else {
+                    for (String raw : packet.payload().split("\\n")) {
+                        String[] parts = raw.split("\\|", 5);
+                        if (parts.length == 5) {
+                            try {
+                                int line = Integer.parseInt(parts[2]);
+                                int column = Integer.parseInt(parts[3]);
+                                problemLines.add(
+                                        parts[0] + " " + parts[1] + ":" + line + ":" + column + " " + parts[4]
+                                );
+                                problemTargets.add(new ProblemTarget(parts[1], line, column));
+                            } catch (NumberFormatException ignored) {
+                            }
+                        }
+                    }
+                }
+
+                if (!packet.success()) {
+                    bottomMode = BottomMode.PROBLEMS;
+                    bottomPanelVisible = true;
+                }
             }
 
             case "OUTPUT" -> {
@@ -2409,6 +2295,67 @@ public final class W128WebIdeScreen extends Screen {
                 packet.success();
     }
 
+    private void applyDebugDecorations() {
+        if (editor == null) {
+            return;
+        }
+        List<Integer> breakpoints = debugSnapshot.breakpoints().getOrDefault(activePath, List.of());
+        editor.setBreakpointLines(Set.copyOf(breakpoints));
+        editor.setExecutionLine(
+                debugSnapshot.paused() && activePath.equals(debugSnapshot.path())
+                        ? debugSnapshot.line()
+                        : 0
+        );
+    }
+
+    private boolean navigateProblemAt(double mouseX, double mouseY) {
+        int top = height - STATUS_HEIGHT - BOTTOM_PANEL_HEIGHT;
+        int left = ACTIVITY_WIDTH + SIDEBAR_WIDTH;
+        if (mouseX < left || mouseX >= width || mouseY < top + 26 || mouseY >= height - STATUS_HEIGHT) {
+            return false;
+        }
+
+        int row = (int) ((mouseY - (top + 28)) / 12.0D);
+        if (row < 0) {
+            return false;
+        }
+
+        int maxOffset = Math.max(0, problemLines.size() - MAX_PANEL_LINES);
+        int offset = Math.min(problemScrollOffset, maxOffset);
+        int end = Math.max(0, problemLines.size() - offset);
+        int start = Math.max(0, end - MAX_PANEL_LINES);
+        int index = start + row;
+        if (index < 0 || index >= problemTargets.size()) {
+            return false;
+        }
+
+        ProblemTarget target = problemTargets.get(index);
+        if (target.path().isBlank() || target.line() <= 0) {
+            return false;
+        }
+
+        pendingGoLine = target.line();
+        if (target.path().equals(activePath)) {
+            if (editor != null) {
+                editor.goToLine(target.line());
+            }
+        } else {
+            openFile(target.path());
+        }
+        return true;
+    }
+
+    private int paletteSuggestionAt(double mouseX, double mouseY) {
+        int paletteWidth = Math.min(620, width - 60);
+        int paletteX = Math.max(ACTIVITY_WIDTH + 12, (width - paletteWidth) / 2);
+        int paletteY = Math.max(62, height / 2 - 135);
+        if (mouseX < paletteX + 12 || mouseX >= paletteX + paletteWidth - 12
+                || mouseY < paletteY + 85 || mouseY >= paletteY + 85 + 18 * 6) {
+            return -1;
+        }
+        return (int) ((mouseY - (paletteY + 85)) / 18.0D);
+    }
+
     private String displayValue() {
         if (
                 activeGenerated
@@ -2433,6 +2380,12 @@ public final class W128WebIdeScreen extends Screen {
     ) {
         sideMode = target;
         reinitPreservingEditor();
+
+        if (target == SideMode.SOURCE_CONTROL) {
+            requestW130("scm status");
+        } else if (target == SideMode.RUN) {
+            requestW130("debug status");
+        }
     }
 
     private void openFile(String path) {
@@ -2888,21 +2841,48 @@ public final class W128WebIdeScreen extends Screen {
         }
 
         String raw = paletteField.getValue().trim();
-        hidePalette();
+        String lower = raw.toLowerCase(Locale.ROOT);
+        boolean directWithArgument = lower.startsWith("search ")
+                || lower.startsWith("new file ")
+                || lower.startsWith("rename ")
+                || lower.startsWith("go to line ")
+                || lower.startsWith("run ")
+                || lower.startsWith("check ")
+                || lower.startsWith("validate ")
+                || lower.startsWith("w130 ");
 
-        if (raw.startsWith(">")) {
-            raw = raw.substring(1).trim();
-        }
-        if (raw.isEmpty()) {
+        if (!directWithArgument && !paletteMatches.isEmpty()) {
+            executePaletteSelection();
             return;
         }
 
-        executePaletteCommand(raw);
+        hidePalette();
+        if (raw.startsWith(">")) {
+            raw = raw.substring(1).trim();
+        }
+        if (!raw.isEmpty()) {
+            executePaletteCommand(raw);
+        }
+    }
+
+    private void executePaletteSelection() {
+        if (paletteMatches.isEmpty()) {
+            return;
+        }
+        int index = Math.max(0, Math.min(paletteSelection, paletteMatches.size() - 1));
+        String command = paletteMatches.get(index).command();
+        hidePalette();
+        executePaletteCommand(command);
     }
 
     private void executePaletteCommand(String rawCommand) {
         String command = rawCommand.trim().replaceAll("\\s+", " ");
         String lower = command.toLowerCase(Locale.ROOT);
+
+        if (lower.startsWith("w130 ")) {
+            requestW130(command.substring(5).trim());
+            return;
+        }
 
         if (lower.startsWith("run ")) {
             sendTerminal(command);
@@ -3030,7 +3010,7 @@ public final class W128WebIdeScreen extends Screen {
                 appendPanelBlock(
                         outputLines,
                         "Command Palette",
-                        "save | run | run <path> | check | check <path> | build | publish | unpublish | reload | format | explorer | search | search <text> | run and debug | source control | extensions | settings | terminal | problems | output | toggle panel | clear terminal | status | selftest | new file <path> | rename <path> | go to line <n> | close editor"
+                        "save | run | check | build | publish | reload | format | explorer | search | terminal | problems | output | w130 debug start|continue|pause|next|step|out|restart|stop | w130 task run <label> | w130 scm status|stage|unstage|commit|diff|log|revert | w130 selftest | new file <path> | rename <path> | go to line <n> | close editor"
                 );
                 outputScrollOffset = 0;
                 reinitPreservingEditor();
@@ -3064,6 +3044,14 @@ public final class W128WebIdeScreen extends Screen {
         );
     }
 
+    private void requestW130(String command) {
+        request(
+                W128IdeAction.W130,
+                activePath,
+                command == null ? "" : command
+        );
+    }
+
     private void reinitPreservingEditor() {
         String local =
                 editor == null
@@ -3087,6 +3075,7 @@ public final class W128WebIdeScreen extends Screen {
             editorBaseline =
                     baseline;
         }
+        applyDebugDecorations();
     }
 
     private boolean dirty() {
@@ -3243,6 +3232,13 @@ public final class W128WebIdeScreen extends Screen {
             String path,
             int line,
             String preview
+    ) {
+    }
+
+    private record ProblemTarget(
+            String path,
+            int line,
+            int column
     ) {
     }
 }

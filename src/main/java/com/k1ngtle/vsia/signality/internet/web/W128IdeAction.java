@@ -15,5 +15,6 @@ public enum W128IdeAction {
     SEARCH,
     RUN,
     VALIDATE,
-    TERMINAL
+    TERMINAL,
+    W130
 }

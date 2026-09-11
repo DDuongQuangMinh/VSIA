@@ -98,6 +98,11 @@ public final class W128WebHostService {
             return error(400, "Bad Request", exception.getMessage());
         }
 
+        // W1.30 workspace metadata is private and is never exposed by HTTP.
+        if (W130Workspace.internalPath(path)) {
+            return error(404, "Not Found", "File not found: " + path);
+        }
+
         W128WebFile file = project.file(path);
 
         if (file == null

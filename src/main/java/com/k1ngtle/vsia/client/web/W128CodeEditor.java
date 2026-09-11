@@ -15,6 +15,8 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 
 public final class W128CodeEditor extends AbstractWidget {
     private static final int GUTTER_WIDTH = 48;
@@ -37,6 +39,8 @@ public final class W128CodeEditor extends AbstractWidget {
     private boolean editable = true;
     private boolean dragging;
     private W128IdeLanguage language = W128IdeLanguage.TEXT;
+    private Set<Integer> breakpointLines = Set.of();
+    private int executionLine;
 
     private final Deque<State> undo = new ArrayDeque<>();
     private final Deque<State> redo = new ArrayDeque<>();
@@ -117,6 +121,46 @@ public final class W128CodeEditor extends AbstractWidget {
         return lines.size();
     }
 
+    public void setBreakpointLines(Set<Integer> lines) {
+        if (lines == null || lines.isEmpty()) {
+            breakpointLines = Set.of();
+            return;
+        }
+        TreeSet<Integer> valid = new TreeSet<>();
+        for (Integer line : lines) {
+            if (line != null && line > 0) {
+                valid.add(line);
+            }
+        }
+        breakpointLines = Set.copyOf(valid);
+    }
+
+    public void setExecutionLine(int oneBasedLine) {
+        executionLine = Math.max(0, oneBasedLine);
+        if (executionLine > 0) {
+            int index = clamp(executionLine - 1, 0, lines.size() - 1);
+            if (index < firstVisibleLine || index >= firstVisibleLine + visibleLineCount()) {
+                firstVisibleLine = clamp(index - Math.max(1, visibleLineCount() / 2), 0, maxFirstVisibleLine());
+            }
+        }
+    }
+
+    public boolean isInGutter(double mouseX, double mouseY) {
+        return mouseX >= getX()
+                && mouseX < getX() + GUTTER_WIDTH
+                && mouseY >= getY()
+                && mouseY < getY() + height;
+    }
+
+    public int lineAtMouse(double mouseX, double mouseY) {
+        if (!isInGutter(mouseX, mouseY)) {
+            return -1;
+        }
+        int row = (int) Math.floor((mouseY - getY() - PADDING) / LINE_HEIGHT);
+        int index = firstVisibleLine + Math.max(0, row);
+        return index >= 0 && index < lines.size() ? index + 1 : -1;
+    }
+
     public void goToLine(int oneBasedLine) {
         int lineIndex = clamp(oneBasedLine - 1, 0, lines.size() - 1);
         Line line = lines.get(lineIndex);
@@ -190,13 +234,41 @@ public final class W128CodeEditor extends AbstractWidget {
             Line line = lines.get(lineIndex);
             int y = top + PADDING + row * LINE_HEIGHT;
 
-            if (lineIndex == currentLine) {
+            if (lineIndex + 1 == executionLine) {
+                graphics.fill(
+                        left + GUTTER_WIDTH,
+                        y - 1,
+                        right,
+                        y + LINE_HEIGHT - 1,
+                        0xFF163246
+                );
+            } else if (lineIndex == currentLine) {
                 graphics.fill(
                         left + GUTTER_WIDTH,
                         y - 1,
                         right,
                         y + LINE_HEIGHT - 1,
                         0xFF101722
+                );
+            }
+
+            if (breakpointLines.contains(lineIndex + 1)) {
+                graphics.fill(
+                        left + 6,
+                        y + 2,
+                        left + 12,
+                        y + 8,
+                        0xFFFF5C5C
+                );
+            }
+
+            if (lineIndex + 1 == executionLine) {
+                graphics.fill(
+                        left + 15,
+                        y + 3,
+                        left + 20,
+                        y + 8,
+                        0xFFFFD166
                 );
             }
 
