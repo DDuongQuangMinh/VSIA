@@ -2558,8 +2558,19 @@ public final class W128WebIdeScreen extends Screen {
     }
 
     private boolean hasDebugSession() {
-        return debugSnapshot != null
-                && !"IDLE".equalsIgnoreCase(debugSnapshot.state());
+        if (debugSnapshot == null
+                || "IDLE".equalsIgnoreCase(
+                debugSnapshot.state()
+        )) {
+            return false;
+        }
+
+        return !"TERMINATED".equalsIgnoreCase(
+                debugSnapshot.state()
+        )
+                || !"stopped".equalsIgnoreCase(
+                debugSnapshot.reason()
+        );
     }
 
     private boolean debuggableActiveFile() {

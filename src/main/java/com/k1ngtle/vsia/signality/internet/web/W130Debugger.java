@@ -165,7 +165,7 @@ public final class W130Debugger {
         return new DebugResult(
                 true,
                 "Debug session stopped.",
-                snapshot(session, project),
+                idleSnapshot(project),
                 true
         );
     }
