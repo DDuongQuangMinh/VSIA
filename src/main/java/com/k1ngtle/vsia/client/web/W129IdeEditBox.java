@@ -38,27 +38,45 @@ public final class W129IdeEditBox extends EditBox {
                         ? W129IdeTheme.ACCENT
                         : W129IdeTheme.BORDER;
 
+        int originalY =
+                getY();
+
         graphics.fill(
                 getX(),
-                getY(),
+                originalY,
                 getX() + width,
-                getY() + height,
+                originalY + height,
                 border
         );
 
         graphics.fill(
                 getX() + 1,
-                getY() + 1,
+                originalY + 1,
                 getX() + width - 1,
-                getY() + height - 1,
+                originalY + height - 1,
                 0xFF07101A
         );
 
-        super.renderWidget(
-                graphics,
-                mouseX,
-                mouseY,
-                partialTick
+        int textOffset =
+                Math.max(
+                        0,
+                        (height - 8) / 2
+                );
+
+        setY(
+                originalY
+                        + textOffset
         );
+
+        try {
+            super.renderWidget(
+                    graphics,
+                    mouseX,
+                    mouseY,
+                    partialTick
+            );
+        } finally {
+            setY(originalY);
+        }
     }
 }

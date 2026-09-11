@@ -1,6 +1,7 @@
 package com.k1ngtle.vsia.client.web;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
@@ -105,11 +106,24 @@ public final class W129IdeButton extends Button {
         );
     }
 
+    private int textY() {
+        return getY()
+                + Math.max(
+                0,
+                (height - 8) / 2
+        );
+    }
+
     private void drawFileButton(
             GuiGraphics graphics,
             String label
     ) {
-        int iconX = getX() + 6;
+        Font font =
+                Minecraft.getInstance().font;
+
+        int iconX =
+                getX() + 6;
+
         int iconY =
                 getY()
                         + Math.max(
@@ -139,15 +153,10 @@ public final class W129IdeButton extends Button {
         );
 
         graphics.drawString(
-                Minecraft.getInstance().font,
+                font,
                 label.stripLeading(),
                 iconX + 12,
-                getY()
-                        + (
-                        height
-                                - Minecraft.getInstance()
-                                .font.lineHeight
-                ) / 2,
+                textY(),
                 active
                         ? W129IdeTheme.TEXT
                         : 0xFFFFFFFF,
@@ -159,17 +168,33 @@ public final class W129IdeButton extends Button {
             GuiGraphics graphics,
             String label
     ) {
+        Font font =
+                Minecraft.getInstance().font;
+
         int textColor =
                 active
                         ? W129IdeTheme.TEXT
                         : 0xFFFFFFFF;
 
+        int textWidth =
+                font.width(label);
+
         int iconColor =
                 actionColor(label);
 
-        if (iconColor != 0) {
+        boolean compact =
+                width <= 44
+                        || width
+                        < textWidth + 24
+                        || label.equalsIgnoreCase("x");
+
+        if (
+                iconColor != 0
+                        && !compact
+        ) {
             int iconX =
                     getX() + 6;
+
             int iconY =
                     getY()
                             + Math.max(
@@ -185,30 +210,36 @@ public final class W129IdeButton extends Button {
                     iconColor
             );
 
-            int textWidth =
-                    Minecraft.getInstance()
-                            .font.width(label);
+            int availableStart =
+                    iconX + 11;
+
+            int centeredX =
+                    getX()
+                            + (
+                            width
+                                    - textWidth
+                    ) / 2;
+
+            int maxTextX =
+                    getX()
+                            + width
+                            - textWidth
+                            - 4;
 
             int textX =
-                    Math.max(
-                            iconX + 11,
-                            getX()
-                                    + (
-                                    width
-                                            - textWidth
-                            ) / 2
+                    Math.min(
+                            Math.max(
+                                    availableStart,
+                                    centeredX
+                            ),
+                            maxTextX
                     );
 
             graphics.drawString(
-                    Minecraft.getInstance().font,
+                    font,
                     label,
                     textX,
-                    getY()
-                            + (
-                            height
-                                    - Minecraft.getInstance()
-                                    .font.lineHeight
-                    ) / 2,
+                    textY(),
                     textColor,
                     false
             );
@@ -217,15 +248,10 @@ public final class W129IdeButton extends Button {
         }
 
         graphics.drawCenteredString(
-                Minecraft.getInstance().font,
+                font,
                 getMessage(),
                 getX() + width / 2,
-                getY()
-                        + (
-                        height
-                                - Minecraft.getInstance()
-                                .font.lineHeight
-                ) / 2,
+                textY(),
                 textColor
         );
     }

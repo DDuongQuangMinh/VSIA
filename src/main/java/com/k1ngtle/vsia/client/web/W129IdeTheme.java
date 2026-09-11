@@ -4,14 +4,14 @@ public final class W129IdeTheme {
     private W129IdeTheme() {
     }
 
-    public static final int WINDOW = 0xF0101720;
-    public static final int HEADER = 0xF0121E2D;
-    public static final int HEADER_ALT = 0xF0162638;
-    public static final int ACTIVITY = 0xF014202E;
-    public static final int SIDEBAR = 0xF0121C28;
-    public static final int PANEL = 0xF00B121A;
-    public static final int PANEL_ALT = 0xF0101A25;
-    public static final int STATUS = 0xF0112030;
+    public static final int WINDOW = 0xFF101720;
+    public static final int HEADER = 0xFF121E2D;
+    public static final int HEADER_ALT = 0xFF162638;
+    public static final int ACTIVITY = 0xFF14202E;
+    public static final int SIDEBAR = 0xFF121C28;
+    public static final int PANEL = 0xFF0B121A;
+    public static final int PANEL_ALT = 0xFF101A25;
+    public static final int STATUS = 0xFF112030;
 
     public static final int BORDER = 0xFF31506C;
     public static final int BORDER_SOFT = 0xFF24394D;

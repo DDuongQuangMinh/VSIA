@@ -1300,7 +1300,7 @@ public final class W128WebIdeScreen extends Screen {
                 26,
                 width,
                 height - STATUS_HEIGHT,
-                0x66000000
+                0xD9000000
         );
 
         graphics.fill(
