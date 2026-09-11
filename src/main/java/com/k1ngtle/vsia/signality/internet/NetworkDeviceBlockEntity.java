@@ -23,6 +23,11 @@ import com.k1ngtle.vsia.signality.engineering.channel.ScheduledRfTransmission;
 import com.k1ngtle.vsia.signality.engineering.cellular.CellRecord;
 import com.k1ngtle.vsia.signality.engineering.cellular.CellularMode;
 import com.k1ngtle.vsia.signality.engineering.cellular.CellularRanController;
+import com.k1ngtle.vsia.signality.engineering.cellular.CellularAutomationController;
+import com.k1ngtle.vsia.signality.engineering.cellular.CellularGeneration;
+import com.k1ngtle.vsia.signality.engineering.cellular.CellularMeasurement;
+import com.k1ngtle.vsia.signality.engineering.cellular.CellularMeasurementEngine;
+import com.k1ngtle.vsia.signality.engineering.cellular.CellularSimProfile;
 import com.k1ngtle.vsia.signality.engineering.cellular.ResourceBlockAllocation;
 import com.k1ngtle.vsia.signality.engineering.cellular.UeRanState;
 import com.k1ngtle.vsia.signality.engineering.cellular.core.PduSession;
@@ -403,6 +408,18 @@ private final WifiPhyController wifiPhy =
     private final CellularRanController cellularRan =
             new CellularRanController();
 
+    private final CellularAutomationController cellularAutomation =
+            new CellularAutomationController();
+
+    private boolean cellularAutomationEnabled =
+            true;
+
+    private String cellularDefaultDnn =
+            "internet";
+
+    private int cellularDefaultFiveQi =
+            9;
+
     private final RadioController radio =
             new RadioController();
 
@@ -548,6 +565,10 @@ private final WifiPhyController wifiPhy =
                             );
 
                             tickWifiSinglePlayerAutomation(
+                                    nowMicros
+                            );
+
+                            tickCellularAutomation(
                                     nowMicros
                             );
                         }
@@ -3501,6 +3522,84 @@ private final WifiPhyController wifiPhy =
         return cellularRan.discoveredCells();
     }
 
+    public CellularGeneration cellularGeneration() {
+        return CellularGeneration.fromProtocol(
+                networkProfile().protocol()
+        );
+    }
+
+    public boolean cellularAutomationEnabled() {
+        return cellularAutomationEnabled;
+    }
+
+    public void setCellularAutomationEnabled(
+            boolean enabled
+    ) {
+        cellularAutomationEnabled =
+                enabled;
+
+        cellularAutomation.reset();
+        setChanged();
+    }
+
+    public CellularMeasurement estimateCellularMeasurement(
+            double distanceMeters,
+            double interferenceDbm,
+            double additionalLossDb
+    ) {
+        NetworkProfile profile =
+                networkProfile();
+
+        double transmitPowerDbm =
+                10.0
+                        * Math.log10(
+                        Math.max(
+                                1.0E-15,
+                                profile.transmitPowerWatts()
+                        )
+                )
+                        + 30.0;
+
+        int resourceBlocks =
+                switch (cellularGeneration()) {
+                    case G1_ANALOG, G2_GSM, G3_UMTS -> 1;
+                    case G4_LTE -> Math.max(
+                            6,
+                            (int) Math.round(
+                                    profile.bandwidthHz()
+                                            / 180_000.0
+                            )
+                    );
+                    case G5_NR -> Math.max(
+                            11,
+                            (int) Math.round(
+                                    profile.bandwidthHz()
+                                            / (
+                                            12.0
+                                                    * Math.max(
+                                                    15_000.0,
+                                                    profile.phy()
+                                                            .subcarrierSpacingHz()
+                                            )
+                                    )
+                            )
+                    );
+                };
+
+        return CellularMeasurementEngine.evaluate(
+                activeFrequencyHz,
+                distanceMeters,
+                transmitPowerDbm,
+                profile.antennaGain(),
+                profile.antennaGain(),
+                profile.bandwidthHz(),
+                resourceBlocks,
+                interferenceDbm,
+                5.0,
+                additionalLossDb
+        );
+    }
+
     public Collection<ResourceBlockAllocation> scheduleCellularResourceBlocks(
             int totalResourceBlocks
     ) {
@@ -3683,6 +3782,63 @@ private final WifiPhyController wifiPhy =
         }
 
         cellularRan.configureUe();
+        cellularAutomation.reset();
+        setChanged();
+        return true;
+    }
+
+    public boolean configureCellularUe(
+            CellularSimProfile sim
+    ) {
+        if (!isCellularProfile()
+                || sim == null) {
+            return false;
+        }
+
+        cellularRan.configureUe(
+                sim.supi(),
+                sim.subscriberKey()
+        );
+
+        cellularDefaultDnn =
+                sim.defaultDnn();
+
+        cellularDefaultFiveQi =
+                sim.defaultFiveQi();
+
+        cellularAutomation.reset();
+        setChanged();
+        return true;
+    }
+
+    public boolean configureCellularUe(
+            String supi,
+            byte[] subscriberKey,
+            String defaultDnn,
+            int defaultFiveQi
+    ) {
+        if (!isCellularProfile()) {
+            return false;
+        }
+
+        cellularRan.configureUe(
+                supi,
+                subscriberKey
+        );
+
+        cellularDefaultDnn =
+                defaultDnn == null
+                        || defaultDnn.isBlank()
+                        ? "internet"
+                        : defaultDnn.trim();
+
+        cellularDefaultFiveQi =
+                Math.max(
+                        1,
+                        defaultFiveQi
+                );
+
+        cellularAutomation.reset();
         setChanged();
         return true;
     }
@@ -3702,6 +3858,7 @@ private final WifiPhyController wifiPhy =
                 plmn
         );
 
+        cellularAutomation.reset();
         setChanged();
         return true;
     }
@@ -3834,6 +3991,53 @@ private final WifiPhyController wifiPhy =
         );
 
         return true;
+    }
+
+    private void tickCellularAutomation(
+            long nowMicros
+    ) {
+        if (!cellularAutomationEnabled
+                || !isCellularProfile()) {
+            return;
+        }
+
+        CellularAutomationController.Action action =
+                cellularAutomation.nextAction(
+                        nowMicros,
+                        cellularRan.mode(),
+                        cellularRan.ueState(),
+                        cellularRan.nasState(),
+                        !cellularRan.discoveredCells()
+                                .isEmpty(),
+                        cellularRan.pduSession()
+                );
+
+        switch (action) {
+            case BROADCAST_SYSTEM_INFORMATION ->
+                    sendCellBroadcast();
+
+            case START_CELL_SEARCH ->
+                    startCellSearch();
+
+            case SELECT_AND_ATTACH ->
+                    selectAndAttachStrongestCell();
+
+            case REQUEST_PDU_SESSION -> {
+                if (cellularGeneration()
+                        .packetData()) {
+                    requestCellularPduSession(
+                            cellularDefaultDnn,
+                            cellularDefaultFiveQi
+                    );
+                }
+            }
+
+            case SEND_MEASUREMENT_REPORT ->
+                    sendCellularMeasurementReport();
+
+            case NONE -> {
+            }
+        }
     }
 
     public boolean configureRadioTransceiver(
@@ -11157,6 +11361,21 @@ private final WifiPhyController wifiPhy =
                 cellularRan.save()
         );
 
+        tag.putBoolean(
+                "CellularAutomationEnabled",
+                cellularAutomationEnabled
+        );
+
+        tag.putString(
+                "CellularDefaultDnn",
+                cellularDefaultDnn
+        );
+
+        tag.putInt(
+                "CellularDefaultFiveQi",
+                cellularDefaultFiveQi
+        );
+
         tag.put(
                 "Radio",
                 radio.save()
@@ -11376,6 +11595,34 @@ private final WifiPhyController wifiPhy =
                     )
             );
         }
+
+        cellularAutomationEnabled =
+                !tag.contains(
+                        "CellularAutomationEnabled"
+                )
+                        || tag.getBoolean(
+                        "CellularAutomationEnabled"
+                );
+
+        String loadedCellularDnn =
+                tag.getString(
+                        "CellularDefaultDnn"
+                );
+
+        cellularDefaultDnn =
+                loadedCellularDnn.isBlank()
+                        ? "internet"
+                        : loadedCellularDnn;
+
+        cellularDefaultFiveQi =
+                Math.max(
+                        1,
+                        tag.getInt(
+                                "CellularDefaultFiveQi"
+                        )
+                );
+
+        cellularAutomation.reset();
 
         if (tag.contains("Radio")) {
             radio.load(

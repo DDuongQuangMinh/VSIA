@@ -37,6 +37,7 @@ import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.slf4j.Logger;
 
+import com.k1ngtle.vsia.signality.debug.CellularCommand;
 public final class Signality {
 
     public static final String MODID =
@@ -185,7 +186,11 @@ public final class Signality {
         SignalityLabCommand.register(
                 event.getDispatcher()
         );
-    }
+    
+
+        CellularCommand.register(
+                event.getDispatcher()
+        );}
 
     @SubscribeEvent
     public void onServerTick(

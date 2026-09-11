@@ -38,8 +38,8 @@ public final class CellularRanController {
     private final Map<UUID, String> pendingSupi =
             new HashMap<>();
 
-    private final ProportionalFairScheduler scheduler =
-            new ProportionalFairScheduler();
+    private final CellularQosScheduler scheduler =
+            new CellularQosScheduler();
 
     private final HandoverEngine handoverEngine =
             new HandoverEngine(3.0);
@@ -535,6 +535,7 @@ public final class CellularRanController {
 
         return scheduler.schedule(
                 connectedUes.values(),
+                core::session,
                 totalResourceBlocks
         );
     }
@@ -1790,6 +1791,17 @@ public final class CellularRanController {
             );
         }
 
+        
+        tag.putByteArray(
+                "UeSubscriberKey",
+                ueSubscriberKey
+        );
+
+        tag.put(
+                "Core",
+                core.save()
+        );
+
         return tag;
     }
 
@@ -1857,6 +1869,15 @@ public final class CellularRanController {
                         "UeSupi"
                 );
 
+        ueSubscriberKey =
+                tag.contains(
+                        "UeSubscriberKey"
+                )
+                        ? tag.getByteArray(
+                        "UeSubscriberKey"
+                )
+                        : new byte[0];
+
         servingCellId =
                 tag.hasUUID(
                         "ServingCellId"
@@ -1886,11 +1907,17 @@ public final class CellularRanController {
         ueBearers.clear();
         pendingChallenges.clear();
         pendingSupi.clear();
+                if (tag.contains(
+                "Core"
+        )) {
+            core.load(
+                    tag.getCompound(
+                            "Core"
+                    )
+            );
+        }
 
-        ueSubscriberKey =
-                new byte[0];
-
-        uePduSession =
+uePduSession =
                 null;
 
         if (mode
