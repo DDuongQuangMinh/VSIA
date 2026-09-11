@@ -323,7 +323,9 @@ public final class W128WebIdeScreen extends Screen {
                 )
         );
 
-        button.active = sideMode != target;
+        ((W129IdeButton) button).setSelected(
+                sideMode == target
+        );
         addRenderableWidget(button);
 
         return y + 30;
@@ -447,9 +449,9 @@ public final class W128WebIdeScreen extends Screen {
                         .bounds(sidebarX + 8, y, SIDEBAR_WIDTH - 16, 18)
                         .build();
 
-                if (row.path().equals(activePath)) {
-                    fileButton.active = false;
-                }
+                ((W129IdeButton) fileButton).setSelected(
+                        row.path().equals(activePath)
+                );
                 addRenderableWidget(fileButton);
             }
 
@@ -568,14 +570,17 @@ public final class W128WebIdeScreen extends Screen {
 
     private void addRunPanel(int sidebarX) {
         int y = TOP;
-        y = runPanelButton(sidebarX, y, "Start Debugging (F5)", () -> requestW130("debug start"), true);
+        boolean paused = debugSnapshot.paused();
+        boolean hasSession = hasDebugSession();
+
+        y = runPanelButton(sidebarX, y, "Start Debugging (F5)", this::startDebugging, debuggableActiveFile());
         y = runPanelButton(sidebarX, y, "Run Without Debugging", this::runCurrent, true);
-        y = runPanelButton(sidebarX, y, "Continue", () -> requestW130("debug continue"), debugSnapshot.active());
-        y = runPanelButton(sidebarX, y, "Step Over (F10)", () -> requestW130("debug next"), debugSnapshot.paused());
-        y = runPanelButton(sidebarX, y, "Step Into (F11)", () -> requestW130("debug step"), debugSnapshot.paused());
-        y = runPanelButton(sidebarX, y, "Step Out (Shift+F11)", () -> requestW130("debug out"), debugSnapshot.paused());
-        y = runPanelButton(sidebarX, y, "Restart", () -> requestW130("debug restart"), debugSnapshot.active());
-        y = runPanelButton(sidebarX, y, "Stop (Shift+F5)", () -> requestW130("debug stop"), debugSnapshot.active());
+        y = runPanelButton(sidebarX, y, "Continue", this::continueDebugging, paused);
+        y = runPanelButton(sidebarX, y, "Step Over (F10)", () -> stepDebugging("debug next"), paused);
+        y = runPanelButton(sidebarX, y, "Step Into (F11)", () -> stepDebugging("debug step"), paused);
+        y = runPanelButton(sidebarX, y, "Step Out (Shift+F11)", () -> stepDebugging("debug out"), paused);
+        y = runPanelButton(sidebarX, y, "Restart", this::restartDebugging, hasSession);
+        y = runPanelButton(sidebarX, y, "Stop (Shift+F5)", this::stopDebugging, hasSession);
         y = runPanelButton(sidebarX, y, "Run Build Task", () -> requestW130("task run build"), true);
         runPanelButton(sidebarX, y, "W1.30 Self Test", () -> requestW130("selftest"), true);
     }
@@ -731,7 +736,9 @@ public final class W128WebIdeScreen extends Screen {
                     )
                     .bounds(x, 29, labelWidth, 20)
                     .build();
-            tab.active = !path.equals(activePath);
+            ((W129IdeButton) tab).setSelected(
+                    path.equals(activePath)
+            );
             addRenderableWidget(tab);
 
             addRenderableWidget(
@@ -997,8 +1004,9 @@ public final class W128WebIdeScreen extends Screen {
                 )
                 .build();
 
-        button.active =
-                bottomMode != target;
+        ((W129IdeButton) button).setSelected(
+                bottomMode == target
+        );
 
         return button;
     }
@@ -1874,7 +1882,7 @@ public final class W128WebIdeScreen extends Screen {
         }
 
         if (keyCode == GLFW.GLFW_KEY_F5 && Screen.hasShiftDown()) {
-            requestW130("debug stop");
+            stopDebugging();
             return true;
         }
 
@@ -1884,17 +1892,30 @@ public final class W128WebIdeScreen extends Screen {
         }
 
         if (keyCode == GLFW.GLFW_KEY_F5) {
-            requestW130(debugSnapshot.active() ? "debug continue" : "debug start");
+            if (debugSnapshot.paused()) {
+                continueDebugging();
+            } else if (debugSnapshot.active()) {
+                setLocalStatus(
+                        "The debugger is already running.",
+                        false
+                );
+            } else {
+                startDebugging();
+            }
             return true;
         }
 
         if (keyCode == GLFW.GLFW_KEY_F10) {
-            requestW130("debug next");
+            stepDebugging("debug next");
             return true;
         }
 
         if (keyCode == GLFW.GLFW_KEY_F11) {
-            requestW130(Screen.hasShiftDown() ? "debug out" : "debug step");
+            stepDebugging(
+                    Screen.hasShiftDown()
+                            ? "debug out"
+                            : "debug step"
+            );
             return true;
         }
 
@@ -2534,6 +2555,95 @@ public final class W128WebIdeScreen extends Screen {
                 activePath,
                 ""
         );
+    }
+
+    private boolean hasDebugSession() {
+        return debugSnapshot != null
+                && !"IDLE".equalsIgnoreCase(debugSnapshot.state());
+    }
+
+    private boolean debuggableActiveFile() {
+        if (activePath == null || activePath.isBlank()) {
+            return false;
+        }
+
+        W128IdeLanguage language = W128IdeLanguage.detect(activePath);
+
+        return W129ComputeEngine.executable(activePath)
+                || language == W128IdeLanguage.JAVASCRIPT
+                || language == W128IdeLanguage.JSX;
+    }
+
+    private void startDebugging() {
+        if (dirty()) {
+            setLocalStatus(
+                    "Save the file before starting the debugger.",
+                    false
+            );
+            return;
+        }
+
+        if (!debuggableActiveFile()) {
+            setLocalStatus(
+                    "The active file has no W1.30 debug runtime.",
+                    false
+            );
+            return;
+        }
+
+        requestW130("debug start");
+    }
+
+    private void continueDebugging() {
+        if (!debugSnapshot.paused()) {
+            setLocalStatus(
+                    hasDebugSession()
+                            ? "The debugger is not currently paused."
+                            : "Start Debugging (F5) first.",
+                    false
+            );
+            return;
+        }
+
+        requestW130("debug continue");
+    }
+
+    private void stepDebugging(String command) {
+        if (!debugSnapshot.paused()) {
+            setLocalStatus(
+                    hasDebugSession()
+                            ? "Step commands require a paused debug session."
+                            : "Start Debugging (F5) first.",
+                    false
+            );
+            return;
+        }
+
+        requestW130(command);
+    }
+
+    private void restartDebugging() {
+        if (!hasDebugSession()) {
+            setLocalStatus(
+                    "There is no debug session to restart.",
+                    false
+            );
+            return;
+        }
+
+        requestW130("debug restart");
+    }
+
+    private void stopDebugging() {
+        if (!hasDebugSession()) {
+            setLocalStatus(
+                    "There is no debug session to stop.",
+                    false
+            );
+            return;
+        }
+
+        requestW130("debug stop");
     }
 
     private void runCurrent() {

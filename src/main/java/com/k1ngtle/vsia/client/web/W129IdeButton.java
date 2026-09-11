@@ -7,6 +7,8 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
 
 public final class W129IdeButton extends Button {
+    private boolean selected;
+
     private W129IdeButton(
             int x,
             int y,
@@ -15,25 +17,19 @@ public final class W129IdeButton extends Button {
             Component message,
             OnPress onPress
     ) {
-        super(
-                x,
-                y,
-                width,
-                height,
-                message,
-                onPress,
-                Button.DEFAULT_NARRATION
-        );
+        super(x, y, width, height, message, onPress, Button.DEFAULT_NARRATION);
     }
 
-    public static Builder themedBuilder(
-            Component message,
-            OnPress onPress
-    ) {
-        return new Builder(
-                message,
-                onPress
-        );
+    public static Builder themedBuilder(Component message, OnPress onPress) {
+        return new Builder(message, onPress);
+    }
+
+    public void setSelected(boolean selected) {
+        this.selected = selected;
+    }
+
+    public boolean isSelected() {
+        return selected;
     }
 
     @Override
@@ -43,26 +39,23 @@ public final class W129IdeButton extends Button {
             int mouseY,
             float partialTick
     ) {
-        boolean selected =
-                !active;
+        boolean disabled = !active;
 
-        int background =
-                selected
-                        ? W129IdeTheme.SELECTION
-                        : (
-                        isHoveredOrFocused()
-                                ? W129IdeTheme.HOVER
-                                : W129IdeTheme.HEADER_ALT
-                );
+        int background = disabled
+                ? W129IdeTheme.PANEL_ALT
+                : selected
+                ? W129IdeTheme.SELECTION
+                : isHoveredOrFocused()
+                ? W129IdeTheme.HOVER
+                : W129IdeTheme.HEADER_ALT;
 
-        int border =
-                selected
-                        ? W129IdeTheme.ACCENT
-                        : (
-                        isHoveredOrFocused()
-                                ? W129IdeTheme.ACCENT_DARK
-                                : W129IdeTheme.BORDER_SOFT
-                );
+        int border = disabled
+                ? W129IdeTheme.BORDER_SOFT
+                : selected
+                ? W129IdeTheme.ACCENT
+                : isHoveredOrFocused()
+                ? W129IdeTheme.ACCENT_DARK
+                : W129IdeTheme.BORDER_SOFT;
 
         graphics.fill(
                 getX(),
@@ -80,8 +73,7 @@ public final class W129IdeButton extends Button {
                 background
         );
 
-        String label =
-                getMessage().getString();
+        String label = getMessage().getString();
 
         boolean fileLike =
                 label.contains("/")
@@ -93,48 +85,40 @@ public final class W129IdeButton extends Button {
                 );
 
         if (fileLike) {
-            drawFileButton(
-                    graphics,
-                    label
-            );
+            drawFileButton(graphics, label);
             return;
         }
 
-        drawActionButton(
-                graphics,
-                label
-        );
+        drawActionButton(graphics, label);
     }
 
     private int textY() {
-        return getY()
-                + Math.max(
-                0,
-                (height - 8) / 2
-        );
+        return getY() + Math.max(0, (height - 8) / 2);
+    }
+
+    private int textColor() {
+        if (!active) {
+            return W129IdeTheme.TEXT_MUTED;
+        }
+
+        return selected
+                ? 0xFFFFFFFF
+                : W129IdeTheme.TEXT;
     }
 
     private void drawFileButton(
             GuiGraphics graphics,
             String label
     ) {
-        Font font =
-                Minecraft.getInstance().font;
+        Font font = Minecraft.getInstance().font;
+        int iconX = getX() + 6;
+        int iconY = getY() + Math.max(3, (height - 8) / 2);
 
-        int iconX =
-                getX() + 6;
-
-        int iconY =
-                getY()
-                        + Math.max(
-                        3,
-                        (height - 8) / 2
-                );
-
-        int iconColor =
-                label.contains(".")
-                        ? W129IdeTheme.FILE
-                        : W129IdeTheme.FOLDER;
+        int iconColor = !active
+                ? W129IdeTheme.TEXT_MUTED
+                : label.contains(".")
+                ? W129IdeTheme.FILE
+                : W129IdeTheme.FOLDER;
 
         graphics.fill(
                 iconX,
@@ -149,7 +133,9 @@ public final class W129IdeButton extends Button {
                 iconY + 2,
                 iconX + 7,
                 iconY + 3,
-                0xAAFFFFFF
+                active
+                        ? 0xAAFFFFFF
+                        : 0x556B7A88
         );
 
         graphics.drawString(
@@ -157,9 +143,7 @@ public final class W129IdeButton extends Button {
                 label.stripLeading(),
                 iconX + 12,
                 textY(),
-                active
-                        ? W129IdeTheme.TEXT
-                        : 0xFFFFFFFF,
+                textColor(),
                 false
         );
     }
@@ -168,39 +152,22 @@ public final class W129IdeButton extends Button {
             GuiGraphics graphics,
             String label
     ) {
-        Font font =
-                Minecraft.getInstance().font;
+        Font font = Minecraft.getInstance().font;
+        int textWidth = font.width(label);
+        int iconColor = actionColor(label);
 
-        int textColor =
-                active
-                        ? W129IdeTheme.TEXT
-                        : 0xFFFFFFFF;
-
-        int textWidth =
-                font.width(label);
-
-        int iconColor =
-                actionColor(label);
+        if (!active) {
+            iconColor = W129IdeTheme.TEXT_MUTED;
+        }
 
         boolean compact =
                 width <= 44
-                        || width
-                        < textWidth + 24
+                        || width < textWidth + 24
                         || label.equalsIgnoreCase("x");
 
-        if (
-                iconColor != 0
-                        && !compact
-        ) {
-            int iconX =
-                    getX() + 6;
-
-            int iconY =
-                    getY()
-                            + Math.max(
-                            4,
-                            (height - 7) / 2
-                    );
+        if (iconColor != 0 && !compact) {
+            int iconX = getX() + 6;
+            int iconY = getY() + Math.max(4, (height - 7) / 2);
 
             graphics.fill(
                     iconX,
@@ -210,40 +177,22 @@ public final class W129IdeButton extends Button {
                     iconColor
             );
 
-            int availableStart =
-                    iconX + 11;
-
-            int centeredX =
-                    getX()
-                            + (
-                            width
-                                    - textWidth
-                    ) / 2;
-
-            int maxTextX =
-                    getX()
-                            + width
-                            - textWidth
-                            - 4;
-
-            int textX =
-                    Math.min(
-                            Math.max(
-                                    availableStart,
-                                    centeredX
-                            ),
-                            maxTextX
-                    );
+            int availableStart = iconX + 11;
+            int centeredX = getX() + (width - textWidth) / 2;
+            int maxTextX = getX() + width - textWidth - 4;
+            int textX = Math.min(
+                    Math.max(availableStart, centeredX),
+                    maxTextX
+            );
 
             graphics.drawString(
                     font,
                     label,
                     textX,
                     textY(),
-                    textColor,
+                    textColor(),
                     false
             );
-
             return;
         }
 
@@ -252,27 +201,18 @@ public final class W129IdeButton extends Button {
                 getMessage(),
                 getX() + width / 2,
                 textY(),
-                textColor
+                textColor()
         );
     }
 
-    private int actionColor(
-            String label
-    ) {
-        String value =
-                label.toLowerCase();
+    private int actionColor(String label) {
+        String value = label.toLowerCase();
 
-        if (
-                value.equals("run")
-                        || value.contains("run current")
-        ) {
+        if (value.equals("run") || value.contains("run current")) {
             return W129IdeTheme.RUN;
         }
 
-        if (
-                value.equals("delete")
-                        || value.equals("x")
-        ) {
+        if (value.equals("delete") || value.equals("x")) {
             return W129IdeTheme.DELETE;
         }
 
@@ -284,10 +224,7 @@ public final class W129IdeButton extends Button {
             return W129IdeTheme.ACCENT;
         }
 
-        if (
-                value.equals("check")
-                        || value.contains("validate")
-        ) {
+        if (value.equals("check") || value.contains("validate")) {
             return W129IdeTheme.SUCCESS;
         }
 
@@ -302,6 +239,7 @@ public final class W129IdeButton extends Button {
         private int y;
         private int width = 150;
         private int height = 20;
+        private boolean selected;
 
         private Builder(
                 Component message,
@@ -324,15 +262,24 @@ public final class W129IdeButton extends Button {
             return this;
         }
 
+        public Builder selected(boolean selected) {
+            this.selected = selected;
+            return this;
+        }
+
         public W129IdeButton build() {
-            return new W129IdeButton(
-                    x,
-                    y,
-                    width,
-                    height,
-                    message,
-                    onPress
-            );
+            W129IdeButton button =
+                    new W129IdeButton(
+                            x,
+                            y,
+                            width,
+                            height,
+                            message,
+                            onPress
+                    );
+
+            button.setSelected(selected);
+            return button;
         }
     }
 }
