@@ -32,6 +32,7 @@ public final class W128WebIdeScreen extends Screen {
     private static final int FILE_ROWS = 14;
     private static final int MAX_OPEN_TABS = 8;
     private static final int MAX_PANEL_LINES = 11;
+    private static final int PANEL_SCROLL_STEP = 3;
 
     private String host;
     private String mode;
@@ -70,6 +71,9 @@ public final class W128WebIdeScreen extends Screen {
 
     private int filePage;
     private int pendingGoLine = -1;
+    private int terminalScrollOffset;
+    private int problemScrollOffset;
+    private int outputScrollOffset;
     private String editorBaseline = "";
 
     public W128WebIdeScreen(W128IdeSnapshotPacket packet) {
@@ -1474,15 +1478,51 @@ public final class W128WebIdeScreen extends Screen {
 
         int y = top + 28;
 
-        int start =
+        int maxOffset =
                 Math.max(
                         0,
                         lines.size()
                                 - MAX_PANEL_LINES
                 );
 
+        int scrollOffset =
+                Math.min(
+                        panelScrollOffset(bottomMode),
+                        maxOffset
+                );
+
+        setPanelScrollOffset(bottomMode, scrollOffset);
+
+        int end =
+                Math.max(
+                        0,
+                        lines.size() - scrollOffset
+                );
+
+        int start =
+                Math.max(
+                        0,
+                        end - MAX_PANEL_LINES
+                );
+
+        if (maxOffset > 0) {
+            String scrollState =
+                    scrollOffset == 0
+                            ? "BOTTOM"
+                            : "SCROLL +" + scrollOffset;
+
+            graphics.drawString(
+                    font,
+                    scrollState,
+                    Math.max(left + 250, width - font.width(scrollState) - 42),
+                    top + 8,
+                    0x65788B,
+                    false
+            );
+        }
+
         for (int i = start;
-             i < lines.size();
+             i < end;
              i++) {
             String line =
                     lines.get(i);
@@ -1504,6 +1544,47 @@ public final class W128WebIdeScreen extends Screen {
 
             y += 12;
         }
+    }
+
+    private List<String> panelLines(BottomMode mode) {
+        return switch (mode) {
+            case TERMINAL -> terminalLines;
+            case PROBLEMS -> problemLines;
+            case OUTPUT -> outputLines;
+        };
+    }
+
+    private int panelScrollOffset(BottomMode mode) {
+        return switch (mode) {
+            case TERMINAL -> terminalScrollOffset;
+            case PROBLEMS -> problemScrollOffset;
+            case OUTPUT -> outputScrollOffset;
+        };
+    }
+
+    private void setPanelScrollOffset(BottomMode mode, int value) {
+        int clamped = Math.max(0, value);
+        switch (mode) {
+            case TERMINAL -> terminalScrollOffset = clamped;
+            case PROBLEMS -> problemScrollOffset = clamped;
+            case OUTPUT -> outputScrollOffset = clamped;
+        }
+    }
+
+    private void scrollBottomPanel(BottomMode mode, int deltaLines) {
+        List<String> lines = panelLines(mode);
+        int maxOffset = Math.max(0, lines.size() - MAX_PANEL_LINES);
+        int next = panelScrollOffset(mode) + deltaLines;
+        setPanelScrollOffset(mode, Math.max(0, Math.min(maxOffset, next)));
+    }
+
+    private void scrollPanelToTop(BottomMode mode) {
+        List<String> lines = panelLines(mode);
+        setPanelScrollOffset(mode, Math.max(0, lines.size() - MAX_PANEL_LINES));
+    }
+
+    private void scrollPanelToBottom(BottomMode mode) {
+        setPanelScrollOffset(mode, 0);
     }
 
     private void renderStatusBar(
@@ -1591,6 +1672,36 @@ public final class W128WebIdeScreen extends Screen {
                         == GLFW.GLFW_KEY_KP_ENTER
         )) {
             executeTerminalField();
+            return true;
+        }
+
+        if (terminalField != null
+                && terminalField.isFocused()
+                && keyCode == GLFW.GLFW_KEY_PAGE_UP) {
+            scrollBottomPanel(bottomMode, MAX_PANEL_LINES - 1);
+            return true;
+        }
+
+        if (terminalField != null
+                && terminalField.isFocused()
+                && keyCode == GLFW.GLFW_KEY_PAGE_DOWN) {
+            scrollBottomPanel(bottomMode, -(MAX_PANEL_LINES - 1));
+            return true;
+        }
+
+        if (terminalField != null
+                && terminalField.isFocused()
+                && Screen.hasControlDown()
+                && keyCode == GLFW.GLFW_KEY_HOME) {
+            scrollPanelToTop(bottomMode);
+            return true;
+        }
+
+        if (terminalField != null
+                && terminalField.isFocused()
+                && Screen.hasControlDown()
+                && keyCode == GLFW.GLFW_KEY_END) {
+            scrollPanelToBottom(bottomMode);
             return true;
         }
 
@@ -1688,6 +1799,33 @@ public final class W128WebIdeScreen extends Screen {
     }
 
     @Override
+    public boolean mouseScrolled(
+            double mouseX,
+            double mouseY,
+            double delta
+    ) {
+        if (bottomPanelVisible) {
+            int left = ACTIVITY_WIDTH + SIDEBAR_WIDTH;
+            int top = height - STATUS_HEIGHT - BOTTOM_PANEL_HEIGHT;
+            int bottom = height - STATUS_HEIGHT;
+
+            if (mouseX >= left
+                    && mouseX < width
+                    && mouseY >= top
+                    && mouseY < bottom) {
+                if (delta > 0.0D) {
+                    scrollBottomPanel(bottomMode, PANEL_SCROLL_STEP);
+                } else if (delta < 0.0D) {
+                    scrollBottomPanel(bottomMode, -PANEL_SCROLL_STEP);
+                }
+                return true;
+            }
+        }
+
+        return super.mouseScrolled(mouseX, mouseY, delta);
+    }
+
+    @Override
     public boolean isPauseScreen() {
         return false;
     }
@@ -1761,13 +1899,17 @@ public final class W128WebIdeScreen extends Screen {
 
                 bottomPanelVisible =
                         true;
+                terminalScrollOffset = 0;
             }
 
-            case "TERMINAL_CLEAR" ->
-                    terminalLines.clear();
+            case "TERMINAL_CLEAR" -> {
+                terminalLines.clear();
+                terminalScrollOffset = 0;
+            }
 
             case "PROBLEMS" -> {
                 problemLines.clear();
+                problemScrollOffset = 0;
 
                 if (packet.payload().isBlank()) {
                     problemLines.add(
@@ -1843,19 +1985,23 @@ public final class W128WebIdeScreen extends Screen {
                         SideMode.SEARCH;
             }
 
-            case "OUTPUT" ->
-                    appendPanelBlock(
-                            outputLines,
-                            packet.title(),
-                            packet.payload()
-                    );
+            case "OUTPUT" -> {
+                appendPanelBlock(
+                        outputLines,
+                        packet.title(),
+                        packet.payload()
+                );
+                outputScrollOffset = 0;
+            }
 
-            default ->
-                    appendPanelBlock(
-                            outputLines,
-                            packet.title(),
-                            packet.payload()
-                    );
+            default -> {
+                appendPanelBlock(
+                        outputLines,
+                        packet.title(),
+                        packet.payload()
+                );
+                outputScrollOffset = 0;
+            }
         }
 
         reinitPreservingEditor();
@@ -2070,8 +2216,19 @@ public final class W128WebIdeScreen extends Screen {
         if (!W129ComputeEngine.executable(
                 activePath
         )) {
+            W128IdeLanguage language = W128IdeLanguage.detect(activePath);
+
+            if (language.webRuntime()) {
+                setLocalStatus(
+                        "Web runtime selected: Run performs a project Build. Publish when ready.",
+                        true
+                );
+                build();
+                return;
+            }
+
             setLocalStatus(
-                    "This file uses the web/editor runtime. Use Build + Publish for web execution.",
+                    "This file is editor-only and has no W1.29 execution runtime.",
                     false
             );
             return;
@@ -2287,6 +2444,7 @@ public final class W128WebIdeScreen extends Screen {
                 "> " + command
         );
 
+        terminalScrollOffset = 0;
         sendTerminal(command);
     }
 
@@ -2350,99 +2508,160 @@ public final class W128WebIdeScreen extends Screen {
             return;
         }
 
-        String command =
-                paletteField.getValue()
-                        .trim()
-                        .toLowerCase(
-                                Locale.ROOT
-                        );
-
-        if (command.startsWith(">")) {
-            command =
-                    command.substring(1)
-                            .trim();
-        }
-
-        switch (command) {
-            case "save",
-                 "file: save" ->
-                    save();
-
-            case "run",
-                 "run current file" ->
-                    runCurrent();
-
-            case "check",
-                 "validate",
-                 "check current file" ->
-                    validateCurrent();
-
-            case "build",
-                 "build project" ->
-                    build();
-
-            case "publish" ->
-                    publish();
-
-            case "reload",
-                 "refresh" ->
-                    refresh();
-
-            case "format",
-                 "format document" ->
-                    formatOrToggle();
-
-            case "explorer" -> {
-                sideMode =
-                        SideMode.EXPLORER;
-                reinitPreservingEditor();
-            }
-
-            case "search" -> {
-                sideMode =
-                        SideMode.SEARCH;
-                reinitPreservingEditor();
-            }
-
-            case "terminal" -> {
-                bottomPanelVisible =
-                        true;
-                bottomMode =
-                        BottomMode.TERMINAL;
-                reinitPreservingEditor();
-            }
-
-            case "problems" -> {
-                bottomPanelVisible =
-                        true;
-                bottomMode =
-                        BottomMode.PROBLEMS;
-                reinitPreservingEditor();
-            }
-
-            case "output" -> {
-                bottomPanelVisible =
-                        true;
-                bottomMode =
-                        BottomMode.OUTPUT;
-                reinitPreservingEditor();
-            }
-
-            case "selftest",
-                 "w1.29 self test" ->
-                    sendTerminal(
-                            "selftest"
-                    );
-
-            default ->
-                    setLocalStatus(
-                            "Unknown command palette entry: "
-                                    + command,
-                            false
-                    );
-        }
-
+        String raw = paletteField.getValue().trim();
         hidePalette();
+
+        if (raw.startsWith(">")) {
+            raw = raw.substring(1).trim();
+        }
+        if (raw.isEmpty()) {
+            return;
+        }
+
+        executePaletteCommand(raw);
+    }
+
+    private void executePaletteCommand(String rawCommand) {
+        String command = rawCommand.trim().replaceAll("\\s+", " ");
+        String lower = command.toLowerCase(Locale.ROOT);
+
+        if (lower.startsWith("run ")) {
+            sendTerminal(command);
+            return;
+        }
+
+        if (lower.startsWith("check ") || lower.startsWith("validate ")) {
+            String argument = command.substring(command.indexOf(' ') + 1).trim();
+            sendTerminal("check " + argument);
+            return;
+        }
+
+        if (lower.startsWith("search ")) {
+            String query = command.substring(command.indexOf(' ') + 1).trim();
+            sideMode = SideMode.SEARCH;
+            reinitPreservingEditor();
+            if (searchField != null) {
+                searchField.setValue(query);
+                setInitialFocus(searchField);
+                searchWorkspace();
+            }
+            return;
+        }
+
+        if (lower.startsWith("new file ")) {
+            request(W128IdeAction.CREATE, command.substring("new file ".length()).trim(), "");
+            return;
+        }
+
+        if (lower.startsWith("rename ")) {
+            request(W128IdeAction.RENAME, activePath, command.substring("rename ".length()).trim());
+            return;
+        }
+
+        if (lower.startsWith("go to line ")) {
+            String rawLine = command.substring("go to line ".length()).trim();
+            try {
+                if (editor != null) {
+                    editor.goToLine(Integer.parseInt(rawLine));
+                }
+            } catch (NumberFormatException exception) {
+                setLocalStatus("Invalid line number: " + rawLine, false);
+            }
+            return;
+        }
+
+        switch (lower) {
+            case "save", "file: save", "file save" -> save();
+            case "run", "run current file", "debug: run current file" -> runCurrent();
+            case "check", "validate", "check current file", "validate current file" -> validateCurrent();
+            case "build", "build project", "tasks: build project" -> build();
+            case "publish", "publish project" -> publish();
+            case "unpublish", "unpublish project" -> unpublish();
+            case "reload", "refresh", "developer: reload" -> refresh();
+            case "format", "format document", "editor: format document" -> formatOrToggle();
+
+            case "explorer", "view: explorer" -> {
+                sideMode = SideMode.EXPLORER;
+                reinitPreservingEditor();
+            }
+
+            case "search", "view: search" -> {
+                sideMode = SideMode.SEARCH;
+                reinitPreservingEditor();
+                if (searchField != null) {
+                    setInitialFocus(searchField);
+                }
+            }
+
+            case "run and debug", "view: run and debug" -> {
+                sideMode = SideMode.RUN;
+                reinitPreservingEditor();
+            }
+
+            case "source control", "view: source control" -> {
+                sideMode = SideMode.SOURCE_CONTROL;
+                reinitPreservingEditor();
+            }
+
+            case "extensions", "view: extensions" -> {
+                sideMode = SideMode.EXTENSIONS;
+                reinitPreservingEditor();
+            }
+
+            case "settings", "preferences: settings" -> {
+                sideMode = SideMode.SETTINGS;
+                reinitPreservingEditor();
+            }
+
+            case "terminal", "view: terminal", "terminal: focus terminal" -> {
+                bottomPanelVisible = true;
+                bottomMode = BottomMode.TERMINAL;
+                terminalScrollOffset = 0;
+                reinitPreservingEditor();
+                if (terminalField != null) {
+                    setInitialFocus(terminalField);
+                }
+            }
+
+            case "problems", "view: problems" -> {
+                bottomPanelVisible = true;
+                bottomMode = BottomMode.PROBLEMS;
+                reinitPreservingEditor();
+            }
+
+            case "output", "view: output" -> {
+                bottomPanelVisible = true;
+                bottomMode = BottomMode.OUTPUT;
+                reinitPreservingEditor();
+            }
+
+            case "toggle panel", "view: toggle panel" -> {
+                bottomPanelVisible = !bottomPanelVisible;
+                reinitPreservingEditor();
+            }
+
+            case "clear terminal", "terminal: clear" -> sendTerminal("clear");
+            case "status", "project status" -> sendTerminal("status");
+            case "selftest", "w1.29 self test", "w1.29 selftest" -> sendTerminal("selftest");
+            case "close editor", "close active editor", "file: close editor" -> closeActiveTab();
+
+            case "help", "command palette help" -> {
+                bottomPanelVisible = true;
+                bottomMode = BottomMode.OUTPUT;
+                appendPanelBlock(
+                        outputLines,
+                        "Command Palette",
+                        "save | run | run <path> | check | check <path> | build | publish | unpublish | reload | format | explorer | search | search <text> | run and debug | source control | extensions | settings | terminal | problems | output | toggle panel | clear terminal | status | selftest | new file <path> | rename <path> | go to line <n> | close editor"
+                );
+                outputScrollOffset = 0;
+                reinitPreservingEditor();
+            }
+
+            default -> setLocalStatus(
+                    "Unknown Command Palette entry: " + rawCommand + " | use 'help' for commands",
+                    false
+            );
+        }
     }
 
     private void request(
