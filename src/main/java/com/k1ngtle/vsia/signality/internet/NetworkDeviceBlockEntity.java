@@ -417,6 +417,15 @@ private final WifiPhyController wifiPhy =
     private boolean cellularAutomationEnabled =
             true;
 
+    // CELLULAR_RAR_QUEUE_V1
+    private static final long CELLULAR_RAR_RESPONSE_DELAY_US = 100_000L;
+
+    private final java.util.ArrayDeque<PendingCellularControl> cellularPendingControl =
+            new java.util.ArrayDeque<>();
+
+    private record PendingCellularControl(long dueMicros, CompoundTag message) {
+    }
+
     private String cellularDefaultDnn =
             "internet";
 
@@ -3493,6 +3502,34 @@ private final WifiPhyController wifiPhy =
         return cellularRan.controlRxCount();
     }
 
+    public String cellularLastWireRx() {
+        return cellularRan.lastWireRx();
+    }
+
+    public String cellularLastWireTarget() {
+        return cellularRan.lastWireTarget();
+    }
+
+    public String cellularLastWireOwn() {
+        return cellularRan.lastWireOwn();
+    }
+
+    public String cellularLastRejectedType() {
+        return cellularRan.lastRejectedType();
+    }
+
+    public String cellularLastRejectedTarget() {
+        return cellularRan.lastRejectedTarget();
+    }
+
+    public long cellularRejectedTargetCount() {
+        return cellularRan.rejectedTargetCount();
+    }
+
+    public int cellularPendingControlCount() {
+        return cellularPendingControl.size();
+    }
+
     public int cellularRandomAccessRetries() {
         return cellularAutomation.randomAccessRetries();
     }
@@ -4116,6 +4153,8 @@ private final WifiPhyController wifiPhy =
     private void tickCellularAutomation(
             long nowMicros
     ) {
+        flushPendingCellularControl(nowMicros);
+
         if (!cellularAutomationEnabled
                 || !isCellularProfile()) {
             return;
@@ -11127,14 +11166,40 @@ private final WifiPhyController wifiPhy =
     private void transmitCellularControl(
             CompoundTag cellularMessage
     ) {
-        CompoundTag payload =
-                baseEnvelope();
+        String messageType = cellularMessage.getString("cellular_message_type");
 
-        payload.put(
-                "cellular_control",
-                cellularMessage
-        );
+        if ("RANDOM_ACCESS_RESPONSE".equals(messageType)
+                && level instanceof ServerLevel serverLevel) {
+            long dueMicros =
+                    NetworkTimebase.nowMicros(serverLevel)
+                            + CELLULAR_RAR_RESPONSE_DELAY_US;
 
+            cellularPendingControl.addLast(
+                    new PendingCellularControl(
+                            dueMicros,
+                            cellularMessage.copy()
+                    )
+            );
+            return;
+        }
+
+        transmitCellularControlNow(cellularMessage);
+    }
+
+    private void flushPendingCellularControl(long nowMicros) {
+        while (!cellularPendingControl.isEmpty()) {
+            PendingCellularControl pending = cellularPendingControl.peekFirst();
+            if (pending == null || pending.dueMicros() > nowMicros) {
+                return;
+            }
+            cellularPendingControl.removeFirst();
+            transmitCellularControlNow(pending.message());
+        }
+    }
+
+    private void transmitCellularControlNow(CompoundTag cellularMessage) {
+        CompoundTag payload = baseEnvelope();
+        payload.put("cellular_control", cellularMessage);
         broadcastPayload(payload);
     }
 

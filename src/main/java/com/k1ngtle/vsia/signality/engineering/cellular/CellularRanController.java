@@ -90,6 +90,14 @@ public final class CellularRanController {
     private long controlTxCount;
     private long controlRxCount;
 
+    // CELLULAR_RAR_DIAGNOSTICS_V1
+    private CellularMessageType lastWireRxType;
+    private UUID lastWireTargetId;
+    private UUID lastWireOwnId;
+    private CellularMessageType lastRejectedType;
+    private UUID lastRejectedTargetId;
+    private long rejectedTargetCount;
+
     public CellularMode mode() {
         return mode;
     }
@@ -140,6 +148,30 @@ public final class CellularRanController {
 
     public long controlRxCount() {
         return controlRxCount;
+    }
+
+    public String lastWireRx() {
+        return lastWireRxType == null ? "NONE" : lastWireRxType.name();
+    }
+
+    public String lastWireTarget() {
+        return lastWireTargetId == null ? "BROADCAST" : lastWireTargetId.toString();
+    }
+
+    public String lastWireOwn() {
+        return lastWireOwnId == null ? "NONE" : lastWireOwnId.toString();
+    }
+
+    public String lastRejectedType() {
+        return lastRejectedType == null ? "NONE" : lastRejectedType.name();
+    }
+
+    public String lastRejectedTarget() {
+        return lastRejectedTargetId == null ? "NONE" : lastRejectedTargetId.toString();
+    }
+
+    public long rejectedTargetCount() {
+        return rejectedTargetCount;
     }
 
     public Collection<CellRecord> discoveredCells() {
@@ -439,19 +471,6 @@ public final class CellularRanController {
             return null;
         }
 
-        if (message.contains(
-                "target_id"
-        )
-                && !message
-                .getUUID(
-                        "target_id"
-                )
-                .equals(
-                        ownId
-                )) {
-            return null;
-        }
-
         CellularMessageType type;
 
         try {
@@ -462,6 +481,21 @@ public final class CellularRanController {
                             )
                     );
         } catch (Exception ignored) {
+            return null;
+        }
+
+        lastWireRxType = type;
+        lastWireOwnId = ownId;
+        lastWireTargetId =
+                message.contains("target_id")
+                        ? message.getUUID("target_id")
+                        : null;
+
+        if (lastWireTargetId != null
+                && !lastWireTargetId.equals(ownId)) {
+            rejectedTargetCount++;
+            lastRejectedType = type;
+            lastRejectedTargetId = lastWireTargetId;
             return null;
         }
 

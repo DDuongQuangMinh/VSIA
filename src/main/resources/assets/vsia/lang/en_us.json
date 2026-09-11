@@ -28,5 +28,6 @@
     "block.vsia.rt_ac68u_router": "RT-AC68U Router",
     "item.vsia.rt_ac68u_router": "RT-AC68U Router",
     "block.vsia.firewall": "Firewall",
-    "item.vsia.ship_grabber": "Ship Grabber"
+    "item.vsia.ship_grabber": "Ship Grabber",
+    "block.vsia.temporary_iphone": "Temporary iPhone"
 }

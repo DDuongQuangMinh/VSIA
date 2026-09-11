@@ -337,6 +337,35 @@ public final class CellularCommand {
                 ChatFormatting.GRAY
         );
 
+        // CELLULAR_RAR_STATUS_V1
+        line(
+                source,
+                "Wire RX="
+                        + device.cellularLastWireRx()
+                        + " | target="
+                        + device.cellularLastWireTarget()
+                        + " | own="
+                        + device.cellularLastWireOwn()
+                        + " | rejected="
+                        + device.cellularRejectedTargetCount()
+                        + " | pending="
+                        + device.cellularPendingControlCount(),
+                device.cellularRejectedTargetCount() == 0
+                        ? ChatFormatting.GRAY
+                        : ChatFormatting.GOLD
+        );
+
+        if (device.cellularRejectedTargetCount() > 0) {
+            line(
+                    source,
+                    "Last rejected="
+                            + device.cellularLastRejectedType()
+                            + " | target="
+                            + device.cellularLastRejectedTarget(),
+                    ChatFormatting.GOLD
+            );
+        }
+
         line(
                 source,
                 "Recovery RACH="

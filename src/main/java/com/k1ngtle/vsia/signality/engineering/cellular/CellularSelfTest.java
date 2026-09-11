@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.signality.engineering.cellular;
 
 import com.k1ngtle.vsia.signality.engineering.cellular.core.PduSession;
 import com.k1ngtle.vsia.signality.engineering.cellular.nas.NasState;
+import net.minecraft.nbt.CompoundTag;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -553,6 +554,90 @@ public final class CellularSelfTest {
                                     == CellularAutomationController.Action
                                     .RETRY_NAS_REGISTRATION,
                             "NAS registration timeout did not schedule retry"
+                    );
+                }
+        );
+
+        // CELLULAR_RAR_SELFTEST_V1
+        test(
+                results,
+                "cell-rar-target",
+                () -> {
+                    CellularRanController base = new CellularRanController();
+                    UUID baseId = UUID.randomUUID();
+                    UUID ueId = UUID.randomUUID();
+                    base.configureBaseStation(101, 10_001L, "00101");
+
+                    CompoundTag rach = new CompoundTag();
+                    rach.putString(
+                            "cellular_message_type",
+                            CellularMessageType.RACH_PREAMBLE.name()
+                    );
+                    rach.putUUID("target_id", baseId);
+                    rach.putUUID("ue_id", ueId);
+                    rach.putInt("preamble_index", 7);
+
+                    CompoundTag[] emitted = new CompoundTag[1];
+                    base.receive(
+                            baseId,
+                            rach,
+                            -55.0,
+                            25.0,
+                            message -> emitted[0] = message.copy()
+                    );
+
+                    require(emitted[0] != null, "base did not emit RAR");
+                    require(
+                            CellularMessageType.RANDOM_ACCESS_RESPONSE.name().equals(
+                                    emitted[0].getString("cellular_message_type")
+                            ),
+                            "RACH response was not RAR"
+                    );
+                    require(
+                            emitted[0].getUUID("target_id").equals(ueId),
+                            "RAR target does not match UE ID"
+                    );
+                }
+        );
+
+        test(
+                results,
+                "cell-rar-target-filter",
+                () -> {
+                    CellularRanController ue = new CellularRanController();
+                    ue.configureUe();
+                    UUID ownId = UUID.randomUUID();
+                    UUID wrongTarget = UUID.randomUUID();
+
+                    CompoundTag rar = new CompoundTag();
+                    rar.putString(
+                            "cellular_message_type",
+                            CellularMessageType.RANDOM_ACCESS_RESPONSE.name()
+                    );
+                    rar.putUUID("target_id", wrongTarget);
+                    rar.putUUID("base_station_id", UUID.randomUUID());
+                    rar.putInt("temporary_rnti", 123);
+
+                    long before = ue.rejectedTargetCount();
+                    ue.receive(
+                            ownId,
+                            rar,
+                            -50.0,
+                            30.0,
+                            ignored -> { }
+                    );
+
+                    require(
+                            ue.rejectedTargetCount() == before + 1L,
+                            "wrong-target RAR was not counted"
+                    );
+                    require(
+                            CellularMessageType.RANDOM_ACCESS_RESPONSE.name().equals(ue.lastWireRx()),
+                            "wire diagnostic lost RAR type"
+                    );
+                    require(
+                            wrongTarget.toString().equals(ue.lastRejectedTarget()),
+                            "rejected target diagnostic mismatch"
                     );
                 }
         );

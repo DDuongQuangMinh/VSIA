@@ -31,6 +31,8 @@ import com.k1ngtle.vsia.signality.internet.server.StorageServerItem;
 import com.k1ngtle.vsia.signality.internet.router.RtAc68uRouterBlock;
 import com.k1ngtle.vsia.signality.internet.router.RtAc68uRouterBlockEntity;
 import com.k1ngtle.vsia.signality.internet.router.RtAc68uRouterItem;
+import com.k1ngtle.vsia.signality.internet.cellular.phone.TemporaryIPhoneBlock;
+import com.k1ngtle.vsia.signality.internet.cellular.phone.TemporaryIPhoneBlockEntity;
 import com.k1ngtle.vsia.signality.integration.vs.item.ShipGrabberItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
@@ -180,6 +182,34 @@ public class SignalityBlocks {
                     RT_AC68U_ROUTER.get()
             ).build(null)
     );
+
+    // TEMPORARY_IPHONE_V1
+    public static final RegistryObject<Block> TEMPORARY_IPHONE = BLOCKS.register(
+            "temporary_iphone",
+            () -> new TemporaryIPhoneBlock(
+                    BlockBehaviour.Properties.of()
+                            .mapColor(MapColor.METAL)
+                            .strength(0.5F, 1.0F)
+                            .noOcclusion()
+            )
+    );
+
+    public static final RegistryObject<Item> TEMPORARY_IPHONE_ITEM = ITEMS.register(
+            "temporary_iphone",
+            () -> new BlockItem(
+                    TEMPORARY_IPHONE.get(),
+                    new Item.Properties().stacksTo(1)
+            )
+    );
+
+    public static final RegistryObject<BlockEntityType<TemporaryIPhoneBlockEntity>> TEMPORARY_IPHONE_BE =
+            BLOCK_ENTITIES.register(
+                    "temporary_iphone",
+                    () -> BlockEntityType.Builder.of(
+                            TemporaryIPhoneBlockEntity::new,
+                            TEMPORARY_IPHONE.get()
+                    ).build(null)
+            );
 
     public static final RegistryObject<Item> SHIP_GRABBER = ITEMS.register(
             "ship_grabber",
