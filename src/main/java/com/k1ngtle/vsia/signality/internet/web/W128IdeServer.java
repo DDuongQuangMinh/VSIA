@@ -29,14 +29,21 @@ public final class W128IdeServer {
         }
 
         long now = System.currentTimeMillis();
-        W130IdePlatform.initialize(data, project, now);
+        W131IdePlatform.initialize(data, project, now);
         project = data.project(project.host()).orElse(project);
 
         String selected = defaultPath(project);
-        send(player, project, selected, "VS:IA W1.30 Development Platform ready.", true);
+        W131WorkspaceState.rememberFile(
+                data,
+                project,
+                selected,
+                now
+        );
+        send(player, project, selected, "VS:IA W1.31 Project Intelligence ready.", true);
         W130IdePlatform.sendInitialState(player, project);
+        W131IdePlatform.sendInitialState(player, project);
 
-        return W128WebBuildResult.ok("Opened VS:IA W1.30 IDE for " + project.host());
+        return W128WebBuildResult.ok("Opened VS:IA W1.31 IDE for " + project.host());
     }
 
     public static void handle(ServerPlayer player, W128IdeRequestPacket request) {
@@ -93,7 +100,7 @@ public final class W128IdeServer {
                     request.content(),
                     now
             );
-            case W130 -> W130IdePlatform.handle(
+            case W130 -> W131IdePlatform.handle(
                     data,
                     project,
                     player,
@@ -122,7 +129,21 @@ public final class W128IdeServer {
             selected = defaultPath(project);
         }
 
+        if (!selected.isBlank()
+                && project.file(selected) != null) {
+            W131WorkspaceState.rememberFile(
+                    data,
+                    project,
+                    selected,
+                    now
+            );
+        }
+
         send(player, project, selected, operation.message(), operation.success());
+        W131IdePlatform.sendWorkspaceState(
+                player,
+                project
+        );
     }
 
     private static W128WebBuildResult save(
@@ -517,6 +538,17 @@ public final class W128IdeServer {
                 ? parts[1].trim()
                 : "";
 
+        if (W131IdePlatform.handlesTerminalVerb(verb)) {
+            return W131IdePlatform.handle(
+                    data,
+                    project,
+                    player,
+                    activePath,
+                    command,
+                    now
+            );
+        }
+
         switch (verb) {
             case "clear" -> {
                 sendEvent(
@@ -538,12 +570,19 @@ public final class W128IdeServer {
                         true,
                         "Terminal Help",
                         """
-                        W1.29 terminal commands:
+                        W1.31 terminal commands:
                           help
                           clear
                           pwd
-                          ls
+                          cd <path>
+                          ls [path]
+                          tree [path]
                           cat <path>
+                          mkdir <path>
+                          touch <path>
+                          cp <source> <destination>
+                          mv <source> <destination>
+                          rm <path>
                           run [path]
                           check [path]
                           build
@@ -553,6 +592,16 @@ public final class W128IdeServer {
                           selftest
                           w130 help
                           w130 selftest
+                          w131 help
+                          w131 selftest
+                          w131 index
+                          w131 diagnostics
+                          w131 outline [path]
+                          w131 symbols [query]
+                          w131 definition <symbol>
+                          w131 references <symbol>
+                          w131 complete [prefix]
+                          w131 recent
                           debug start|continue|pause|next|step|out|restart|stop
                           break <line>
                           watch add|remove <expression>
@@ -642,8 +691,8 @@ public final class W128IdeServer {
             case "run" -> {
                 String path = argument.isBlank()
                         ? activePath
-                        : normalizeSelectablePath(
-                                project,
+                        : W131WorkspaceFs.resolvePath(
+                                W131WorkspaceState.cwd(project),
                                 argument
                         );
 
@@ -657,8 +706,8 @@ public final class W128IdeServer {
             case "check", "validate" -> {
                 String path = argument.isBlank()
                         ? activePath
-                        : normalizeSelectablePath(
-                                project,
+                        : W131WorkspaceFs.resolvePath(
+                                W131WorkspaceState.cwd(project),
                                 argument
                         );
 
@@ -782,11 +831,11 @@ public final class W128IdeServer {
                 );
             }
 
-            case "w130", "debug", "break", "watch", "task", "scm", "workspace" -> {
+            case "w130", "w131", "debug", "break", "watch", "task", "scm", "workspace" -> {
                 String forwarded = "w130".equals(verb)
                         ? argument
                         : command;
-                return W130IdePlatform.handle(
+                return W131IdePlatform.handle(
                         data,
                         project,
                         player,

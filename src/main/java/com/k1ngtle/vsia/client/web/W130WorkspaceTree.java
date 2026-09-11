@@ -16,44 +16,151 @@ public final class W130WorkspaceTree {
             Collection<String> paths,
             Set<String> expandedFolders
     ) {
-        Node root = new Node("/", "/", true);
+        return rows(
+                paths,
+                List.of(),
+                expandedFolders
+        );
+    }
 
-        if (paths != null) {
-            for (String raw : paths) {
-                add(root, normalize(raw));
+    public static List<Row> rows(
+            Collection<String> paths,
+            Collection<String> virtualFolders,
+            Set<String> expandedFolders
+    ) {
+        Node root = new Node(
+                "/",
+                "/",
+                true
+        );
+
+        if (virtualFolders != null) {
+            for (String raw : virtualFolders) {
+                addFolder(
+                        root,
+                        normalize(raw)
+                );
             }
         }
 
-        List<Row> output = new ArrayList<>();
-        append(root, expandedFolders == null ? Set.of() : expandedFolders, output, 0);
+        if (paths != null) {
+            for (String raw : paths) {
+                add(
+                        root,
+                        normalize(raw)
+                );
+            }
+        }
+
+        List<Row> output =
+                new ArrayList<>();
+
+        append(
+                root,
+                expandedFolders == null
+                        ? Set.of()
+                        : expandedFolders,
+                output,
+                0
+        );
+
         return List.copyOf(output);
     }
 
-    private static void add(Node root, String path) {
-        if (path.isBlank() || "/".equals(path)) {
+    private static void add(
+            Node root,
+            String path
+    ) {
+        if (path.isBlank()
+                || "/".equals(path)) {
             return;
         }
 
-        String[] parts = path.substring(1).split("/");
-        Node current = root;
-        StringBuilder full = new StringBuilder();
+        String[] parts =
+                path.substring(1)
+                        .split("/");
 
-        for (int i = 0; i < parts.length; i++) {
+        Node current = root;
+        StringBuilder full =
+                new StringBuilder();
+
+        for (int i = 0;
+             i < parts.length;
+             i++) {
             String part = parts[i];
+
             if (part.isEmpty()) {
                 continue;
             }
 
-            full.append('/').append(part);
-            boolean folder = i < parts.length - 1;
-            String key = full.toString();
-            current = current.children.computeIfAbsent(
-                    part,
-                    ignored -> new Node(key, part, folder)
-            );
+            full.append('/')
+                    .append(part);
+
+            boolean folder =
+                    i < parts.length - 1;
+
+            String key =
+                    full.toString();
+
+            current =
+                    current.children
+                            .computeIfAbsent(
+                                    part,
+                                    ignored ->
+                                            new Node(
+                                                    key,
+                                                    part,
+                                                    folder
+                                            )
+                            );
+
             if (folder) {
                 current.folder = true;
             }
+        }
+    }
+
+    private static void addFolder(
+            Node root,
+            String path
+    ) {
+        if (path.isBlank()
+                || "/".equals(path)) {
+            return;
+        }
+
+        String[] parts =
+                path.substring(1)
+                        .split("/");
+
+        Node current = root;
+        StringBuilder full =
+                new StringBuilder();
+
+        for (String part : parts) {
+            if (part.isEmpty()) {
+                continue;
+            }
+
+            full.append('/')
+                    .append(part);
+
+            String key =
+                    full.toString();
+
+            current =
+                    current.children
+                            .computeIfAbsent(
+                                    part,
+                                    ignored ->
+                                            new Node(
+                                                    key,
+                                                    part,
+                                                    true
+                                            )
+                            );
+
+            current.folder = true;
         }
     }
 
@@ -63,30 +170,82 @@ public final class W130WorkspaceTree {
             List<Row> output,
             int depth
     ) {
-        List<Node> children = root.children.values().stream()
-                .sorted(Comparator.comparing((Node node) -> !node.folder)
-                        .thenComparing(node -> node.name.toLowerCase()))
-                .toList();
+        List<Node> children =
+                root.children
+                        .values()
+                        .stream()
+                        .sorted(
+                                Comparator.comparing(
+                                                (Node node) ->
+                                                        !node.folder
+                                        )
+                                        .thenComparing(
+                                                node ->
+                                                        node.name
+                                                                .toLowerCase()
+                                        )
+                        )
+                        .toList();
 
         for (Node child : children) {
-            output.add(new Row(child.path, child.name, child.folder, depth));
-            if (child.folder && expanded.contains(child.path)) {
-                append(child, expanded, output, depth + 1);
+            output.add(
+                    new Row(
+                            child.path,
+                            child.name,
+                            child.folder,
+                            depth
+                    )
+            );
+
+            if (child.folder
+                    && expanded.contains(
+                    child.path
+            )) {
+                append(
+                        child,
+                        expanded,
+                        output,
+                        depth + 1
+                );
             }
         }
     }
 
-    private static String normalize(String path) {
-        if (path == null || path.isBlank()) {
+    private static String normalize(
+            String path
+    ) {
+        if (path == null
+                || path.isBlank()) {
             return "";
         }
-        String value = path.replace('\\', '/');
+
+        String value =
+                path.replace(
+                        '\\',
+                        '/'
+                );
+
         if (!value.startsWith("/")) {
             value = "/" + value;
         }
+
         while (value.contains("//")) {
-            value = value.replace("//", "/");
+            value =
+                    value.replace(
+                            "//",
+                            "/"
+                    );
         }
+
+        if (value.length() > 1
+                && value.endsWith("/")) {
+            value =
+                    value.substring(
+                            0,
+                            value.length() - 1
+                    );
+        }
+
         return value;
     }
 
@@ -97,9 +256,21 @@ public final class W130WorkspaceTree {
             int depth
     ) {
         public Row {
-            path = path == null ? "" : path;
-            label = label == null ? "" : label;
-            depth = Math.max(0, depth);
+            path =
+                    path == null
+                            ? ""
+                            : path;
+
+            label =
+                    label == null
+                            ? ""
+                            : label;
+
+            depth =
+                    Math.max(
+                            0,
+                            depth
+                    );
         }
     }
 
@@ -107,9 +278,16 @@ public final class W130WorkspaceTree {
         private final String path;
         private final String name;
         private boolean folder;
-        private final Map<String, Node> children = new LinkedHashMap<>();
 
-        private Node(String path, String name, boolean folder) {
+        private final Map<String, Node>
+                children =
+                new LinkedHashMap<>();
+
+        private Node(
+                String path,
+                String name,
+                boolean folder
+        ) {
             this.path = path;
             this.name = name;
             this.folder = folder;

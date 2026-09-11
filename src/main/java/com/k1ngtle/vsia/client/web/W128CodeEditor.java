@@ -117,6 +117,52 @@ public final class W128CodeEditor extends AbstractWidget {
         return Math.max(0, cursor - line.start()) + 1;
     }
 
+    public String wordAtCursor() {
+        if (value.isEmpty()) {
+            return "";
+        }
+
+        int index = Math.min(cursor, value.length());
+
+        if (index == value.length() && index > 0) {
+            index--;
+        }
+
+        if (index > 0
+                && index < value.length()
+                && !isWordCharacter(value.charAt(index))
+                && isWordCharacter(value.charAt(index - 1))) {
+            index--;
+        }
+
+        if (index < 0
+                || index >= value.length()
+                || !isWordCharacter(value.charAt(index))) {
+            return "";
+        }
+
+        int start = index;
+        int end = index + 1;
+
+        while (start > 0
+                && isWordCharacter(value.charAt(start - 1))) {
+            start--;
+        }
+
+        while (end < value.length()
+                && isWordCharacter(value.charAt(end))) {
+            end++;
+        }
+
+        return value.substring(start, end);
+    }
+
+    private static boolean isWordCharacter(char value) {
+        return Character.isLetterOrDigit(value)
+                || value == '_'
+                || value == '$';
+    }
+
     public int lineCount() {
         return lines.size();
     }

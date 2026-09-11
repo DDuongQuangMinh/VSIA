@@ -62,6 +62,7 @@ public final class W128WebIdeScreen extends Screen {
     private EditBox pathField;
     private EditBox goLineField;
     private EditBox searchField;
+    private EditBox symbolField;
     private EditBox terminalField;
     private EditBox paletteField;
     private EditBox commitMessageField;
@@ -78,6 +79,8 @@ public final class W128WebIdeScreen extends Screen {
 
     private final List<String> openTabs = new ArrayList<>();
     private final List<SearchResult> searchResults = new ArrayList<>();
+    private final List<SymbolTarget> symbolResults = new ArrayList<>();
+    private final Set<String> workspaceFolders = new HashSet<>();
     private final List<String> terminalLines = new ArrayList<>();
     private final List<String> problemLines = new ArrayList<>();
     private final List<ProblemTarget> problemTargets = new ArrayList<>();
@@ -96,6 +99,7 @@ public final class W128WebIdeScreen extends Screen {
     private int problemScrollOffset;
     private int outputScrollOffset;
     private String editorBaseline = "";
+    private String workspaceCwd = "/";
 
     public W128WebIdeScreen(W128IdeSnapshotPacket packet) {
         super(Component.literal("VS:IA Development Platform"));
@@ -275,6 +279,12 @@ public final class W128WebIdeScreen extends Screen {
         );
         y = activityButton(
                 y,
+                "SY",
+                "Symbols and Outline",
+                SideMode.SYMBOLS
+        );
+        y = activityButton(
+                y,
                 "RUN",
                 "Run and Debug",
                 SideMode.RUN
@@ -337,6 +347,8 @@ public final class W128WebIdeScreen extends Screen {
                     addExplorer(sidebarX);
             case SEARCH ->
                     addSearch(sidebarX);
+            case SYMBOLS ->
+                    addSymbols(sidebarX);
             case RUN ->
                     addRunPanel(sidebarX);
             case SOURCE_CONTROL ->
@@ -353,7 +365,7 @@ public final class W128WebIdeScreen extends Screen {
                 font,
                 sidebarX + 8,
                 TOP,
-                SIDEBAR_WIDTH - 104,
+                SIDEBAR_WIDTH - 132,
                 18,
                 Component.literal("Path")
         );
@@ -371,9 +383,23 @@ public final class W128WebIdeScreen extends Screen {
                                 ignored -> createFile()
                         )
                         .bounds(
-                                sidebarX + SIDEBAR_WIDTH - 90,
+                                sidebarX + SIDEBAR_WIDTH - 120,
                                 TOP,
-                                38,
+                                34,
+                                18
+                        )
+                        .build()
+        );
+
+        addRenderableWidget(
+                W129IdeButton.themedBuilder(
+                                Component.literal("Dir"),
+                                ignored -> createFolder()
+                        )
+                        .bounds(
+                                sidebarX + SIDEBAR_WIDTH - 82,
+                                TOP,
+                                34,
                                 18
                         )
                         .build()
@@ -385,9 +411,9 @@ public final class W128WebIdeScreen extends Screen {
                                 ignored -> renameFile()
                         )
                         .bounds(
-                                sidebarX + SIDEBAR_WIDTH - 48,
+                                sidebarX + SIDEBAR_WIDTH - 44,
                                 TOP,
-                                40,
+                                36,
                                 18
                         )
                         .build()
@@ -399,6 +425,7 @@ public final class W128WebIdeScreen extends Screen {
     private void addFileButtons(int sidebarX) {
         List<W130WorkspaceTree.Row> rows = W130WorkspaceTree.rows(
                 files.stream().map(W128IdeSnapshotPacket.FileEntry::path).toList(),
+                workspaceFolders,
                 expandedFolders
         );
 
@@ -568,6 +595,87 @@ public final class W128WebIdeScreen extends Screen {
         }
     }
 
+    private void addSymbols(int sidebarX) {
+        symbolField = new W129IdeEditBox(
+                font,
+                sidebarX + 8,
+                TOP,
+                SIDEBAR_WIDTH - 112,
+                18,
+                Component.literal("Symbol")
+        );
+        symbolField.setMaxLength(128);
+        symbolField.setHint(Component.literal("Search symbol..."));
+        addRenderableWidget(symbolField);
+
+        addRenderableWidget(
+                W129IdeButton.themedBuilder(
+                                Component.literal("Find"),
+                                ignored -> {
+                                    String query = symbolField == null
+                                            ? ""
+                                            : symbolField.getValue().trim();
+                                    requestW131("symbols " + query);
+                                }
+                        )
+                        .bounds(
+                                sidebarX + SIDEBAR_WIDTH - 100,
+                                TOP,
+                                44,
+                                18
+                        )
+                        .build()
+        );
+
+        addRenderableWidget(
+                W129IdeButton.themedBuilder(
+                                Component.literal("Out"),
+                                ignored -> requestW131(
+                                        "outline " + activePath
+                                )
+                        )
+                        .bounds(
+                                sidebarX + SIDEBAR_WIDTH - 52,
+                                TOP,
+                                44,
+                                18
+                        )
+                        .build()
+        );
+
+        int y = TOP + 24;
+        int shown = 0;
+
+        for (SymbolTarget target : symbolResults) {
+            if (shown >= 14) {
+                break;
+            }
+
+            String label = target.kind()
+                    + " "
+                    + trimLabel(target.name(), 18)
+                    + " :"
+                    + target.line();
+
+            addRenderableWidget(
+                    W129IdeButton.themedBuilder(
+                                    Component.literal(label),
+                                    ignored -> openSymbolResult(target)
+                            )
+                            .bounds(
+                                    sidebarX + 8,
+                                    y,
+                                    SIDEBAR_WIDTH - 16,
+                                    18
+                            )
+                            .build()
+            );
+
+            y += 20;
+            shown++;
+        }
+    }
+
     private void addRunPanel(int sidebarX) {
         int y = TOP;
         boolean paused = debugSnapshot.paused();
@@ -582,7 +690,7 @@ public final class W128WebIdeScreen extends Screen {
         y = runPanelButton(sidebarX, y, "Restart", this::restartDebugging, hasSession);
         y = runPanelButton(sidebarX, y, "Stop (Shift+F5)", this::stopDebugging, hasSession);
         y = runPanelButton(sidebarX, y, "Run Build Task", () -> requestW130("task run build"), true);
-        runPanelButton(sidebarX, y, "W1.30 Self Test", () -> requestW130("selftest"), true);
+        runPanelButton(sidebarX, y, "W1.31 Self Test", () -> requestW131("selftest"), true);
     }
 
     private int runPanelButton(
@@ -959,7 +1067,7 @@ public final class W128WebIdeScreen extends Screen {
             terminalField.setMaxLength(512);
             terminalField.setHint(
                     Component.literal(
-                            "help | run | check | build | publish | selftest"
+                            "help | cd | ls | tree | run | check | w131 selftest"
                     )
             );
             addRenderableWidget(terminalField);
@@ -1367,6 +1475,15 @@ public final class W128WebIdeScreen extends Screen {
         graphics.drawString(font, sideMode.title(), x, 33, 0xC7D0DB, false);
 
         switch (sideMode) {
+            case SYMBOLS -> {
+                int y = TOP + 326;
+                graphics.drawString(font, "PROJECT INTELLIGENCE", x, y, 0x8FA9BD, false);
+                graphics.drawString(font, "Ctrl+Shift+O  Outline", x, y + 16, 0xA7B4C3, false);
+                graphics.drawString(font, "F12           Definition", x, y + 32, 0xA7B4C3, false);
+                graphics.drawString(font, "Shift+F12     References", x, y + 48, 0xA7B4C3, false);
+                graphics.drawString(font, "Ctrl+Space    Complete", x, y + 64, 0xA7B4C3, false);
+            }
+
             case RUN -> {
                 int y = TOP + 230;
                 graphics.drawString(font, "DEBUG SESSION", x, y, 0x8FA9BD, false);
@@ -1434,7 +1551,9 @@ public final class W128WebIdeScreen extends Screen {
                         "Java          Sandbox + Debug",
                         "JSON/MD       Editor",
                         "W1.30 Tasks   Built-in",
-                        "W1.30 SCM     Built-in"
+                        "W1.30 SCM     Built-in",
+                        "W1.31 Symbols Built-in",
+                        "W1.31 Shell   Built-in"
                 };
                 for (String entry : entries) {
                     graphics.drawString(font, entry, x, y, 0xA7B4C3, false);
@@ -1444,11 +1563,13 @@ public final class W128WebIdeScreen extends Screen {
 
             case SETTINGS -> {
                 int y = TOP + 142;
-                graphics.drawString(font, "W1.30 Workspace", x, y, 0xE7EDF5, false);
+                graphics.drawString(font, "W1.31 Workspace", x, y, 0xE7EDF5, false);
                 graphics.drawString(font, "Debugger: ON", x, y + 18, 0x62E38A, false);
                 graphics.drawString(font, "Tasks: ON", x, y + 34, 0x62E38A, false);
                 graphics.drawString(font, "Source Control: ON", x, y + 50, 0x62E38A, false);
-                graphics.drawString(font, "Host compiler exec: OFF", x, y + 66, 0x62E38A, false);
+                graphics.drawString(font, "Symbols: ON", x, y + 66, 0x62E38A, false);
+                graphics.drawString(font, "Workspace Shell: ON", x, y + 82, 0x62E38A, false);
+                graphics.drawString(font, "Host compiler exec: OFF", x, y + 98, 0x62E38A, false);
             }
 
             case SEARCH -> {
@@ -1881,6 +2002,55 @@ public final class W128WebIdeScreen extends Screen {
             return true;
         }
 
+        if (
+                keyCode == GLFW.GLFW_KEY_O
+                        && Screen.hasControlDown()
+                        && Screen.hasShiftDown()
+        ) {
+            sideMode = SideMode.SYMBOLS;
+            reinitPreservingEditor();
+            requestW131("outline " + activePath);
+            return true;
+        }
+
+        if (keyCode == GLFW.GLFW_KEY_F12) {
+            String symbol = editor == null
+                    ? ""
+                    : editor.wordAtCursor();
+
+            if (symbol.isBlank()) {
+                setLocalStatus(
+                        "Place the caret on a symbol first.",
+                        false
+                );
+                return true;
+            }
+
+            sideMode = SideMode.SYMBOLS;
+            reinitPreservingEditor();
+            requestW131(
+                    (Screen.hasShiftDown()
+                            ? "references "
+                            : "definition ")
+                            + symbol
+            );
+            return true;
+        }
+
+        if (
+                keyCode == GLFW.GLFW_KEY_SPACE
+                        && Screen.hasControlDown()
+        ) {
+            String prefix = editor == null
+                    ? ""
+                    : editor.wordAtCursor();
+
+            sideMode = SideMode.SYMBOLS;
+            reinitPreservingEditor();
+            requestW131("complete " + prefix);
+            return true;
+        }
+
         if (keyCode == GLFW.GLFW_KEY_F5 && Screen.hasShiftDown()) {
             stopDebugging();
             return true;
@@ -2240,6 +2410,68 @@ public final class W128WebIdeScreen extends Screen {
                 scmSnapshot = W130ScmSnapshot.fromJson(packet.payload());
             }
 
+            case "W131_SYMBOLS" -> {
+                symbolResults.clear();
+
+                if (!packet.payload().isBlank()) {
+                    for (String raw : packet.payload().split("\n")) {
+                        String[] parts = raw.split("\\|", 6);
+
+                        if (parts.length == 6) {
+                            try {
+                                symbolResults.add(
+                                        new SymbolTarget(
+                                                parts[0],
+                                                parts[1],
+                                                parts[2],
+                                                Integer.parseInt(parts[3]),
+                                                Integer.parseInt(parts[4]),
+                                                parts[5]
+                                        )
+                                );
+                            } catch (NumberFormatException ignored) {
+                            }
+                        }
+                    }
+                }
+
+                sideMode = SideMode.SYMBOLS;
+            }
+
+            case "W131_NAVIGATE" -> {
+                String[] parts = packet.payload().split("\\|", 3);
+
+                if (parts.length >= 2) {
+                    try {
+                        String path = parts[0];
+                        int line = Integer.parseInt(parts[1]);
+
+                        pendingGoLine = Math.max(1, line);
+
+                        if (!path.equals(activePath)) {
+                            openFile(path);
+                        }
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+
+            case "W131_WORKSPACE" -> {
+                workspaceFolders.clear();
+
+                for (String raw : packet.payload().split("\n")) {
+                    if (raw.startsWith("CWD|")) {
+                        workspaceCwd = raw.substring(4).trim();
+                    } else if (raw.startsWith("FOLDER|")) {
+                        String folder = raw.substring(7).trim();
+
+                        if (!folder.isBlank()) {
+                            workspaceFolders.add(folder);
+                        }
+                    }
+                }
+            }
+
             case "W130_PROBLEMS" -> {
                 problemLines.clear();
                 problemTargets.clear();
@@ -2366,6 +2598,27 @@ public final class W128WebIdeScreen extends Screen {
         return true;
     }
 
+    private void openSymbolResult(
+            SymbolTarget target
+    ) {
+        if (target == null
+                || target.path().isBlank()
+                || target.line() <= 0) {
+            return;
+        }
+
+        pendingGoLine = target.line();
+
+        if (target.path().equals(activePath)) {
+            if (editor != null) {
+                editor.goToLine(target.line());
+            }
+            return;
+        }
+
+        openFile(target.path());
+    }
+
     private int paletteSuggestionAt(double mouseX, double mouseY) {
         int paletteWidth = Math.min(620, width - 60);
         int paletteX = Math.max(ACTIVITY_WIDTH + 12, (width - paletteWidth) / 2);
@@ -2406,6 +2659,8 @@ public final class W128WebIdeScreen extends Screen {
             requestW130("scm status");
         } else if (target == SideMode.RUN) {
             requestW130("debug status");
+        } else if (target == SideMode.SYMBOLS) {
+            requestW131("outline " + activePath);
         }
     }
 
@@ -2513,6 +2768,33 @@ public final class W128WebIdeScreen extends Screen {
                 W128IdeAction.CREATE,
                 value,
                 ""
+        );
+    }
+
+    private void createFolder() {
+        if (dirty()) {
+            setLocalStatus(
+                    "Save or Reload before creating a folder.",
+                    false
+            );
+            return;
+        }
+
+        String value = pathField == null
+                ? ""
+                : pathField.getValue().trim();
+
+        if (value.isBlank()) {
+            setLocalStatus(
+                    "Enter a folder path in the path box.",
+                    false
+            );
+            return;
+        }
+
+        String safe = value.replace("\"", "");
+        requestW131(
+                "mkdir \"" + safe + "\""
         );
     }
 
@@ -2970,7 +3252,19 @@ public final class W128WebIdeScreen extends Screen {
                 || lower.startsWith("run ")
                 || lower.startsWith("check ")
                 || lower.startsWith("validate ")
-                || lower.startsWith("w130 ");
+                || lower.startsWith("w130 ")
+                || lower.startsWith("w131 ")
+                || lower.startsWith("definition ")
+                || lower.startsWith("references ")
+                || lower.startsWith("symbols ")
+                || lower.startsWith("outline ")
+                || lower.startsWith("complete ")
+                || lower.startsWith("mkdir ")
+                || lower.startsWith("touch ")
+                || lower.startsWith("cp ")
+                || lower.startsWith("mv ")
+                || lower.startsWith("rm ")
+                || lower.startsWith("cd ");
 
         if (!directWithArgument && !paletteMatches.isEmpty()) {
             executePaletteSelection();
@@ -3002,6 +3296,30 @@ public final class W128WebIdeScreen extends Screen {
 
         if (lower.startsWith("w130 ")) {
             requestW130(command.substring(5).trim());
+            return;
+        }
+
+        if (lower.startsWith("w131 ")) {
+            requestW131(command.substring(5).trim());
+            return;
+        }
+
+        if (lower.startsWith("definition ")
+                || lower.startsWith("references ")
+                || lower.startsWith("symbols ")
+                || lower.startsWith("outline ")
+                || lower.startsWith("complete ")) {
+            requestW131(command);
+            return;
+        }
+
+        if (lower.startsWith("mkdir ")
+                || lower.startsWith("touch ")
+                || lower.startsWith("cp ")
+                || lower.startsWith("mv ")
+                || lower.startsWith("rm ")
+                || lower.startsWith("cd ")) {
+            sendTerminal(command);
             return;
         }
 
@@ -3073,6 +3391,17 @@ public final class W128WebIdeScreen extends Screen {
                 }
             }
 
+            case "symbols", "outline", "view: symbols" -> {
+                sideMode = SideMode.SYMBOLS;
+                reinitPreservingEditor();
+                requestW131("outline " + activePath);
+            }
+
+            case "index", "workspace index" -> requestW131("index");
+            case "diagnostics", "workspace diagnostics" -> requestW131("diagnostics");
+            case "recent", "recent files" -> requestW131("recent");
+            case "pwd", "ls", "tree" -> sendTerminal(lower);
+
             case "run and debug", "view: run and debug" -> {
                 sideMode = SideMode.RUN;
                 reinitPreservingEditor();
@@ -3131,7 +3460,7 @@ public final class W128WebIdeScreen extends Screen {
                 appendPanelBlock(
                         outputLines,
                         "Command Palette",
-                        "save | run | check | build | publish | reload | format | explorer | search | terminal | problems | output | w130 debug start|continue|pause|next|step|out|restart|stop | w130 task run <label> | w130 scm status|stage|unstage|commit|diff|log|revert | w130 selftest | new file <path> | rename <path> | go to line <n> | close editor"
+                        "save | run | check | build | publish | reload | format | explorer | search | symbols | terminal | problems | output | definition <symbol> | references <symbol> | complete <prefix> | w131 index|diagnostics|outline|symbols|recent|selftest | cd|ls|tree|mkdir|touch|cp|mv|rm | w130 debug/task/scm | new file <path> | rename <path> | go to line <n> | close editor"
                 );
                 outputScrollOffset = 0;
                 reinitPreservingEditor();
@@ -3170,6 +3499,18 @@ public final class W128WebIdeScreen extends Screen {
                 W128IdeAction.W130,
                 activePath,
                 command == null ? "" : command
+        );
+    }
+
+    private void requestW131(String command) {
+        String value = command == null
+                ? ""
+                : command.trim();
+
+        request(
+                W128IdeAction.W130,
+                activePath,
+                "w131 " + value
         );
     }
 
@@ -3327,6 +3668,7 @@ public final class W128WebIdeScreen extends Screen {
     private enum SideMode {
         EXPLORER("EXPLORER"),
         SEARCH("SEARCH"),
+        SYMBOLS("SYMBOLS / OUTLINE"),
         RUN("RUN AND DEBUG"),
         SOURCE_CONTROL("SOURCE CONTROL"),
         EXTENSIONS("EXTENSIONS"),
@@ -3360,6 +3702,16 @@ public final class W128WebIdeScreen extends Screen {
             String path,
             int line,
             int column
+    ) {
+    }
+
+    private record SymbolTarget(
+            String kind,
+            String name,
+            String path,
+            int line,
+            int column,
+            String detail
     ) {
     }
 }
