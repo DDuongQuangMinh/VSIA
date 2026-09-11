@@ -81,6 +81,15 @@ public final class CellularRanController {
 
     private PduSession uePduSession;
 
+    private static final String CELLULAR_RECOVERY_RACH_RRC_NAS_V1 =
+            "CELLULAR_RECOVERY_RACH_RRC_NAS_V1";
+
+    private CellularMessageType lastControlTxType;
+    private CellularMessageType lastControlRxType;
+
+    private long controlTxCount;
+    private long controlRxCount;
+
     public CellularMode mode() {
         return mode;
     }
@@ -111,6 +120,26 @@ public final class CellularRanController {
 
     public PduSession pduSession() {
         return uePduSession;
+    }
+
+    public String lastControlTx() {
+        return lastControlTxType == null
+                ? "NONE"
+                : lastControlTxType.name();
+    }
+
+    public String lastControlRx() {
+        return lastControlRxType == null
+                ? "NONE"
+                : lastControlRxType.name();
+    }
+
+    public long controlTxCount() {
+        return controlTxCount;
+    }
+
+    public long controlRxCount() {
+        return controlRxCount;
     }
 
     public Collection<CellRecord> discoveredCells() {
@@ -274,6 +303,74 @@ public final class CellularRanController {
         return true;
     }
 
+    public boolean retryRandomAccess(
+            UUID ueId,
+            Sender sender
+    ) {
+        if (mode != CellularMode.UE
+                || servingCellId == null) {
+            return false;
+        }
+
+        beginRandomAccess(
+                ueId,
+                sender
+        );
+
+        return true;
+    }
+
+    public boolean retryRrcSetup(
+            UUID ueId,
+            Sender sender
+    ) {
+        if (mode != CellularMode.UE
+                || servingCellId == null
+                || servingRnti <= 0) {
+            return false;
+        }
+
+        ueState =
+                UeRanState.RRC_CONNECTING;
+
+        sendRrcSetupRequest(
+                ueId,
+                sender
+        );
+
+        return true;
+    }
+
+    public boolean retryNasRegistration(
+            UUID ueId,
+            Sender sender
+    ) {
+        if (mode != CellularMode.UE
+                || servingCellId == null) {
+            return false;
+        }
+
+        beginNasRegistration(
+                ueId,
+                sender
+        );
+
+        return true;
+    }
+
+    public boolean recoverToCellSearch() {
+        if (mode != CellularMode.UE) {
+            return false;
+        }
+
+        resetUe();
+
+        ueState =
+                UeRanState.CELL_SEARCH;
+
+        return true;
+    }
+
     public void sendSystemInformation(
             UUID baseStationId,
             double frequencyHz,
@@ -320,6 +417,10 @@ public final class CellularRanController {
                 profileId
         );
 
+        markControlTx(
+                CellularMessageType.SSB
+        );
+
         sender.send(
                 message
         );
@@ -363,6 +464,10 @@ public final class CellularRanController {
         } catch (Exception ignored) {
             return null;
         }
+
+        markControlRx(
+                type
+        );
 
         if (type
                 == CellularMessageType.SSB) {
@@ -722,28 +827,9 @@ public final class CellularRanController {
                 ueState =
                         UeRanState.RRC_CONNECTING;
 
-                CompoundTag request =
-                        baseMessage(
-                                CellularMessageType.RRC_SETUP_REQUEST
-                        );
-
-                request.putUUID(
-                        "target_id",
-                        servingCellId
-                );
-
-                request.putUUID(
-                        "ue_id",
-                        ownId
-                );
-
-                request.putInt(
-                        "temporary_rnti",
-                        servingRnti
-                );
-
-                sender.send(
-                        request
+                sendRrcSetupRequest(
+                        ownId,
+                        sender
                 );
             }
 
@@ -1337,8 +1423,50 @@ public final class CellularRanController {
                         )
         );
 
+        markControlTx(
+                CellularMessageType.RACH_PREAMBLE
+        );
+
         sender.send(
                 message
+        );
+    }
+
+    private void sendRrcSetupRequest(
+            UUID ueId,
+            Sender sender
+    ) {
+        if (servingCellId == null
+                || servingRnti <= 0) {
+            return;
+        }
+
+        CompoundTag request =
+                baseMessage(
+                        CellularMessageType.RRC_SETUP_REQUEST
+                );
+
+        request.putUUID(
+                "target_id",
+                servingCellId
+        );
+
+        request.putUUID(
+                "ue_id",
+                ueId
+        );
+
+        request.putInt(
+                "temporary_rnti",
+                servingRnti
+        );
+
+        markControlTx(
+                CellularMessageType.RRC_SETUP_REQUEST
+        );
+
+        sender.send(
+                request
         );
     }
 
@@ -1383,6 +1511,10 @@ public final class CellularRanController {
         response.putInt(
                 "uplink_grant_resource_blocks",
                 4
+        );
+
+        markControlTx(
+                CellularMessageType.RANDOM_ACCESS_RESPONSE
         );
 
         sender.send(
@@ -1431,6 +1563,10 @@ public final class CellularRanController {
         response.putInt(
                 "rnti",
                 rnti
+        );
+
+        markControlTx(
+                CellularMessageType.RRC_SETUP
         );
 
         sender.send(
@@ -1520,6 +1656,10 @@ public final class CellularRanController {
         message.put(
                 "nas",
                 nas
+        );
+
+        markControlTx(
+                CellularMessageType.NAS
         );
 
         sender.send(
@@ -1613,6 +1753,30 @@ public final class CellularRanController {
         sender.send(
                 message
         );
+    }
+
+    private void markControlTx(
+            CellularMessageType type
+    ) {
+        if (type != CellularMessageType.SSB
+                || lastControlTxType == null) {
+            lastControlTxType =
+                    type;
+        }
+
+        controlTxCount++;
+    }
+
+    private void markControlRx(
+            CellularMessageType type
+    ) {
+        if (type != CellularMessageType.SSB
+                || lastControlRxType == null) {
+            lastControlRxType =
+                    type;
+        }
+
+        controlRxCount++;
     }
 
     private static CompoundTag nasMessage(

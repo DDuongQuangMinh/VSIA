@@ -8,6 +8,9 @@ import java.util.List;
 import java.util.UUID;
 
 public final class CellularSelfTest {
+    private static final String CELLULAR_RECOVERY_RACH_RRC_NAS_V1 =
+            "CELLULAR_RECOVERY_RACH_RRC_NAS_V1";
+
     private CellularSelfTest() {
     }
 
@@ -450,6 +453,106 @@ public final class CellularSelfTest {
                                     == CellularAutomationController.Action
                                     .REQUEST_PDU_SESSION,
                             "registered UE did not request a PDU session"
+                    );
+                }
+        );
+
+        test(
+                results,
+                "cell-auto-rach-retry",
+                () -> {
+                    CellularAutomationController controller =
+                            new CellularAutomationController();
+
+                    require(
+                            controller.nextAction(
+                                    0L,
+                                    CellularMode.UE,
+                                    UeRanState.RANDOM_ACCESS,
+                                    NasState.DEREGISTERED,
+                                    true,
+                                    null
+                            )
+                                    == CellularAutomationController.Action.NONE,
+                            "RACH retried immediately instead of waiting"
+                    );
+
+                    require(
+                            controller.nextAction(
+                                    300_000L,
+                                    CellularMode.UE,
+                                    UeRanState.RANDOM_ACCESS,
+                                    NasState.DEREGISTERED,
+                                    true,
+                                    null
+                            )
+                                    == CellularAutomationController.Action
+                                    .RETRY_RANDOM_ACCESS,
+                            "RACH timeout did not schedule retry"
+                    );
+                }
+        );
+
+        test(
+                results,
+                "cell-auto-rrc-retry",
+                () -> {
+                    CellularAutomationController controller =
+                            new CellularAutomationController();
+
+                    controller.nextAction(
+                            0L,
+                            CellularMode.UE,
+                            UeRanState.RRC_CONNECTING,
+                            NasState.DEREGISTERED,
+                            true,
+                            null
+                    );
+
+                    require(
+                            controller.nextAction(
+                                    400_000L,
+                                    CellularMode.UE,
+                                    UeRanState.RRC_CONNECTING,
+                                    NasState.DEREGISTERED,
+                                    true,
+                                    null
+                            )
+                                    == CellularAutomationController.Action
+                                    .RETRY_RRC_SETUP,
+                            "RRC setup timeout did not schedule retry"
+                    );
+                }
+        );
+
+        test(
+                results,
+                "cell-auto-nas-retry",
+                () -> {
+                    CellularAutomationController controller =
+                            new CellularAutomationController();
+
+                    controller.nextAction(
+                            0L,
+                            CellularMode.UE,
+                            UeRanState.REGISTERING,
+                            NasState.REGISTERING,
+                            true,
+                            null
+                    );
+
+                    require(
+                            controller.nextAction(
+                                    800_000L,
+                                    CellularMode.UE,
+                                    UeRanState.REGISTERING,
+                                    NasState.REGISTERING,
+                                    true,
+                                    null
+                            )
+                                    == CellularAutomationController.Action
+                                    .RETRY_NAS_REGISTRATION,
+                            "NAS registration timeout did not schedule retry"
                     );
                 }
         );

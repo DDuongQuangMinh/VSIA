@@ -411,6 +411,9 @@ private final WifiPhyController wifiPhy =
     private final CellularAutomationController cellularAutomation =
             new CellularAutomationController();
 
+    private static final String CELLULAR_RECOVERY_RACH_RRC_NAS_V1 =
+            "CELLULAR_RECOVERY_RACH_RRC_NAS_V1";
+
     private boolean cellularAutomationEnabled =
             true;
 
@@ -3474,6 +3477,50 @@ private final WifiPhyController wifiPhy =
         return cellularRan.pduSession();
     }
 
+    public String cellularLastControlTx() {
+        return cellularRan.lastControlTx();
+    }
+
+    public String cellularLastControlRx() {
+        return cellularRan.lastControlRx();
+    }
+
+    public long cellularControlTxCount() {
+        return cellularRan.controlTxCount();
+    }
+
+    public long cellularControlRxCount() {
+        return cellularRan.controlRxCount();
+    }
+
+    public int cellularRandomAccessRetries() {
+        return cellularAutomation.randomAccessRetries();
+    }
+
+    public int cellularRrcSetupRetries() {
+        return cellularAutomation.rrcSetupRetries();
+    }
+
+    public int cellularNasRegistrationRetries() {
+        return cellularAutomation.nasRegistrationRetries();
+    }
+
+    public String cellularLastAutomationAction() {
+        return cellularAutomation.lastAction().name();
+    }
+
+    public long cellularAutomationStateAgeMillis() {
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return 0L;
+        }
+
+        return cellularAutomation.stateAgeMicros(
+                NetworkTimebase.nowMicros(
+                        serverLevel
+                )
+        ) / 1_000L;
+    }
+
     public RadioMode radioMode() {
         return radio.mode();
     }
@@ -3962,6 +4009,79 @@ private final WifiPhyController wifiPhy =
         return result;
     }
 
+    public boolean retryCellularRandomAccess() {
+        if (!isCellularProfile()
+                || cellularRan.mode() != CellularMode.UE) {
+            return false;
+        }
+
+        boolean result =
+                cellularRan.retryRandomAccess(
+                        signalId,
+                        this::transmitCellularControl
+                );
+
+        if (result) {
+            setChanged();
+        }
+
+        return result;
+    }
+
+    public boolean retryCellularRrcSetup() {
+        if (!isCellularProfile()
+                || cellularRan.mode() != CellularMode.UE) {
+            return false;
+        }
+
+        boolean result =
+                cellularRan.retryRrcSetup(
+                        signalId,
+                        this::transmitCellularControl
+                );
+
+        if (result) {
+            setChanged();
+        }
+
+        return result;
+    }
+
+    public boolean retryCellularNasRegistration() {
+        if (!isCellularProfile()
+                || cellularRan.mode() != CellularMode.UE) {
+            return false;
+        }
+
+        boolean result =
+                cellularRan.retryNasRegistration(
+                        signalId,
+                        this::transmitCellularControl
+                );
+
+        if (result) {
+            setChanged();
+        }
+
+        return result;
+    }
+
+    public boolean recoverCellularSearch() {
+        if (!isCellularProfile()
+                || cellularRan.mode() != CellularMode.UE) {
+            return false;
+        }
+
+        boolean result =
+                cellularRan.recoverToCellSearch();
+
+        if (result) {
+            setChanged();
+        }
+
+        return result;
+    }
+
     public boolean sendCellBroadcast() {
         if (!isCellularProfile()
                 || cellularRan.mode()
@@ -4021,6 +4141,21 @@ private final WifiPhyController wifiPhy =
 
             case SELECT_AND_ATTACH ->
                     selectAndAttachStrongestCell();
+
+            case RETRY_RANDOM_ACCESS ->
+                    retryCellularRandomAccess();
+
+            case RETRY_RRC_SETUP ->
+                    retryCellularRrcSetup();
+
+            case RETRY_NAS_REGISTRATION ->
+                    retryCellularNasRegistration();
+
+            case RESTART_RANDOM_ACCESS ->
+                    retryCellularRandomAccess();
+
+            case RECOVER_CELL_SEARCH ->
+                    recoverCellularSearch();
 
             case REQUEST_PDU_SESSION -> {
                 if (cellularGeneration()

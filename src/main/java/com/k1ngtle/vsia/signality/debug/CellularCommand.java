@@ -32,6 +32,9 @@ import net.minecraft.world.phys.HitResult;
 import java.util.Locale;
 
 public final class CellularCommand {
+    private static final String CELLULAR_RECOVERY_RACH_RRC_NAS_V1 =
+            "CELLULAR_RECOVERY_RACH_RRC_NAS_V1";
+
     private CellularCommand() {
     }
 
@@ -318,6 +321,35 @@ public final class CellularCommand {
                         + " | serving="
                         + String.valueOf(device.servingCellId()),
                 ChatFormatting.WHITE
+        );
+
+        line(
+                source,
+                "Control TX="
+                        + device.cellularLastControlTx()
+                        + " ("
+                        + device.cellularControlTxCount()
+                        + ") | RX="
+                        + device.cellularLastControlRx()
+                        + " ("
+                        + device.cellularControlRxCount()
+                        + ")",
+                ChatFormatting.GRAY
+        );
+
+        line(
+                source,
+                "Recovery RACH="
+                        + device.cellularRandomAccessRetries()
+                        + " | RRC="
+                        + device.cellularRrcSetupRetries()
+                        + " | NAS="
+                        + device.cellularNasRegistrationRetries()
+                        + " | age="
+                        + device.cellularAutomationStateAgeMillis()
+                        + " ms | last="
+                        + device.cellularLastAutomationAction(),
+                ChatFormatting.GRAY
         );
 
         PduSession session =
