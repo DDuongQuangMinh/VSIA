@@ -12,6 +12,12 @@ import com.k1ngtle.vsia.signality.engineering.cellular.CellularProtocolConceptCa
 import com.k1ngtle.vsia.signality.engineering.cellular.CellularSelfTest;
 import com.k1ngtle.vsia.signality.engineering.cellular.CellularSimProfile;
 import com.k1ngtle.vsia.signality.engineering.cellular.core.PduSession;
+import com.k1ngtle.vsia.signality.engineering.cellular.userplane.CellularUserPlaneDirection;
+import com.k1ngtle.vsia.signality.engineering.cellular.userplane.CellularUserPlaneHop;
+import com.k1ngtle.vsia.signality.engineering.cellular.userplane.CellularUserPlaneSelfTest;
+import com.k1ngtle.vsia.signality.engineering.cellular.userplane.CellularUserPlaneService;
+import com.k1ngtle.vsia.signality.engineering.cellular.userplane.CellularUserPlaneStatsSnapshot;
+import com.k1ngtle.vsia.signality.engineering.cellular.userplane.CellularUserPlaneTrace;
 import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.BoolArgumentType;
@@ -176,6 +182,90 @@ public final class CellularCommand {
                                                         )
                                         )
                         )
+                        // CELLULAR_USER_PLANE_V1
+                        .then(
+                                Commands.literal("ping")
+                                        .then(
+                                                Commands.argument(
+                                                                "target",
+                                                                StringArgumentType.word()
+                                                        )
+                                                        .executes(
+                                                                context -> ping(
+                                                                        context.getSource(),
+                                                                        StringArgumentType.getString(
+                                                                                context,
+                                                                                "target"
+                                                                        ),
+                                                                        1
+                                                                )
+                                                        )
+                                                        .then(
+                                                                Commands.argument(
+                                                                                "count",
+                                                                                IntegerArgumentType.integer(
+                                                                                        1,
+                                                                                        16
+                                                                                )
+                                                                        )
+                                                                        .executes(
+                                                                                context -> ping(
+                                                                                        context.getSource(),
+                                                                                        StringArgumentType.getString(
+                                                                                                context,
+                                                                                                "target"
+                                                                                        ),
+                                                                                        IntegerArgumentType.getInteger(
+                                                                                                context,
+                                                                                                "count"
+                                                                                        )
+                                                                                )
+                                                                        )
+                                                        )
+                                        )
+                        )
+                        .then(
+                                Commands.literal("trace")
+                                        .then(
+                                                Commands.argument(
+                                                                "target",
+                                                                StringArgumentType.word()
+                                                        )
+                                                        .executes(
+                                                                context -> trace(
+                                                                        context.getSource(),
+                                                                        StringArgumentType.getString(
+                                                                                context,
+                                                                                "target"
+                                                                        )
+                                                                )
+                                                        )
+                                        )
+                        )
+                        .then(
+                                Commands.literal("data")
+                                        .executes(
+                                                context -> dataStatus(
+                                                        context.getSource()
+                                                )
+                                        )
+                                        .then(
+                                                Commands.literal("status")
+                                                        .executes(
+                                                                context -> dataStatus(
+                                                                        context.getSource()
+                                                                )
+                                                        )
+                                        )
+                                        .then(
+                                                Commands.literal("reset")
+                                                        .executes(
+                                                                context -> dataReset(
+                                                                        context.getSource()
+                                                                )
+                                                        )
+                                        )
+                        )
                         .then(
                                 Commands.literal("profile")
                                         .then(
@@ -234,6 +324,15 @@ public final class CellularCommand {
         line(source, "/vsiacellular base <1g|2g|3g|4g|5g> <pci> <cell_identity> <plmn>", ChatFormatting.WHITE);
         line(source, "/vsiacellular provision <plmn> <subscriber> <secret>", ChatFormatting.WHITE);
         line(source, "/vsiacellular selftest", ChatFormatting.WHITE);
+        line(source, "/vsiacellular ping <ipv4> [count]", ChatFormatting.WHITE);
+        line(source, "/vsiacellular trace <ipv4>", ChatFormatting.WHITE);
+        line(source, "/vsiacellular data status", ChatFormatting.WHITE);
+        line(source, "/vsiacellular data reset", ChatFormatting.WHITE);
+        line(
+                source,
+                "User-plane echo targets: 10.0.0.1 (UPF gateway), 198.51.100.1 (simulated DNN test endpoint).",
+                ChatFormatting.AQUA
+        );
         line(source, "/vsiacellular profile <1g|2g|3g|4g|5g>", ChatFormatting.WHITE);
         line(source, "/vsiacellular link <1g|2g|3g|4g|5g> <distance_m>", ChatFormatting.WHITE);
         line(
@@ -277,7 +376,40 @@ public final class CellularCommand {
                         : ChatFormatting.RED
         );
 
-        return report.failed() == 0 ? 1 : 0;
+        CellularUserPlaneSelfTest.Report userPlaneReport =
+                CellularUserPlaneSelfTest.run();
+
+        for (CellularUserPlaneSelfTest.Result result
+                : userPlaneReport.results()) {
+            line(
+                    source,
+                    (result.passed() ? "[PASS] " : "[FAIL] ")
+                            + result.id()
+                            + (result.detail().isBlank()
+                            ? ""
+                            : " | " + result.detail()),
+                    result.passed()
+                            ? ChatFormatting.GREEN
+                            : ChatFormatting.RED
+            );
+        }
+
+        line(
+                source,
+                "Cellular user-plane self-test result: "
+                        + userPlaneReport.passed()
+                        + " passed, "
+                        + userPlaneReport.failed()
+                        + " failed",
+                userPlaneReport.failed() == 0
+                        ? ChatFormatting.GREEN
+                        : ChatFormatting.RED
+        );
+
+        return report.failed() == 0
+                && userPlaneReport.failed() == 0
+                ? 1
+                : 0;
     }
 
     private static int status(CommandSourceStack source) {
@@ -423,6 +555,340 @@ public final class CellularCommand {
                 session == null
                         ? ChatFormatting.GRAY
                         : ChatFormatting.GREEN
+        );
+
+        CellularUserPlaneStatsSnapshot userPlane =
+                CellularUserPlaneService.snapshot(
+                        device.id()
+                );
+
+        line(
+                source,
+                "User plane TX="
+                        + userPlane.txPackets()
+                        + " RX="
+                        + userPlane.rxPackets()
+                        + " drop="
+                        + userPlane.droppedPackets()
+                        + " | IP bytes="
+                        + userPlane.txIpBytes()
+                        + "/"
+                        + userPlane.rxIpBytes()
+                        + " | radio bytes="
+                        + userPlane.txRadioBytes()
+                        + "/"
+                        + userPlane.rxRadioBytes(),
+                ChatFormatting.AQUA
+        );
+
+        line(
+                source,
+                "User plane last="
+                        + userPlane.lastResult()
+                        + " seq="
+                        + userPlane.lastSequence()
+                        + " target="
+                        + (userPlane.lastTarget().isBlank()
+                        ? "NONE"
+                        : userPlane.lastTarget())
+                        + " RTT="
+                        + String.format(
+                                Locale.ROOT,
+                                "%.3f ms",
+                                userPlane.lastRoundTripMicros()
+                                        / 1000.0
+                        ),
+                userPlane.droppedPackets() == 0L
+                        ? ChatFormatting.GRAY
+                        : ChatFormatting.GOLD
+        );
+
+        return 1;
+    }
+
+    // CELLULAR_USER_PLANE_V1
+    private static int ping(
+            CommandSourceStack source,
+            String target,
+            int count
+    ) {
+        NetworkDeviceBlockEntity device =
+                lookedAtDevice(source);
+
+        if (device == null) {
+            return 0;
+        }
+
+        PduSession session =
+                device.cellularPduSession();
+
+        if (session == null || !session.active()) {
+            source.sendFailure(
+                    Component.literal(
+                            "No active PDU session. Complete cellular registration and PDU-session establishment first."
+                    )
+            );
+            return 0;
+        }
+
+        line(
+                source,
+                "PING "
+                        + target
+                        + " from "
+                        + session.ipAddress()
+                        + " | DNN="
+                        + session.dnn()
+                        + " | 5QI="
+                        + session.fiveQi()
+                        + " | "
+                        + CellularUserPlaneService.DEFAULT_PAYLOAD_BYTES
+                        + " data bytes",
+                ChatFormatting.AQUA
+        );
+
+        int received = 0;
+
+        for (int i = 0; i < count; i++) {
+            CellularUserPlaneTrace trace =
+                    CellularUserPlaneService.ping(
+                            device.id(),
+                            session,
+                            target
+                    );
+
+            if (trace.success()) {
+                received++;
+
+                line(
+                        source,
+                        "64 bytes from "
+                                + trace.targetAddress()
+                                + ": icmp_seq="
+                                + trace.sequence()
+                                + " ttl="
+                                + trace.ttl()
+                                + " time="
+                                + String.format(
+                                        Locale.ROOT,
+                                        "%.3f",
+                                        trace.roundTripMillis()
+                                )
+                                + " ms | route="
+                                + trace.route(),
+                        ChatFormatting.GREEN
+                );
+            } else {
+                line(
+                        source,
+                        "From "
+                                + session.ipAddress()
+                                + " icmp_seq="
+                                + trace.sequence()
+                                + " Destination Unreachable: "
+                                + trace.failureReason(),
+                        ChatFormatting.RED
+                );
+            }
+        }
+
+        int lost = count - received;
+
+        line(
+                source,
+                count
+                        + " packets transmitted, "
+                        + received
+                        + " received, "
+                        + String.format(
+                                Locale.ROOT,
+                                "%.1f",
+                                100.0 * lost / count
+                        )
+                        + "% packet loss",
+                lost == 0
+                        ? ChatFormatting.GREEN
+                        : ChatFormatting.GOLD
+        );
+
+        return received > 0 ? 1 : 0;
+    }
+
+    private static int trace(
+            CommandSourceStack source,
+            String target
+    ) {
+        NetworkDeviceBlockEntity device =
+                lookedAtDevice(source);
+
+        if (device == null) {
+            return 0;
+        }
+
+        PduSession session =
+                device.cellularPduSession();
+
+        if (session == null || !session.active()) {
+            source.sendFailure(
+                    Component.literal(
+                            "No active PDU session."
+                    )
+            );
+            return 0;
+        }
+
+        CellularUserPlaneTrace trace =
+                CellularUserPlaneService.ping(
+                        device.id(),
+                        session,
+                        target
+                );
+
+        if (!trace.success()) {
+            source.sendFailure(
+                    Component.literal(
+                            "User-plane trace failed: "
+                                    + trace.failureReason()
+                    )
+            );
+            return 0;
+        }
+
+        line(
+                source,
+                "Cellular user-plane trace "
+                        + trace.sourceAddress()
+                        + " -> "
+                        + trace.targetAddress()
+                        + " | seq="
+                        + trace.sequence(),
+                ChatFormatting.AQUA
+        );
+
+        int index = 1;
+
+        for (CellularUserPlaneHop hop : trace.hops()) {
+            line(
+                    source,
+                    String.format(
+                            Locale.ROOT,
+                            "%02d %-8s %-10s %5d us %4d B | %s",
+                            index++,
+                            hop.direction(),
+                            hop.layer(),
+                            hop.processingMicros(),
+                            hop.wireBytes(),
+                            hop.note()
+                    ),
+                    hop.direction() == CellularUserPlaneDirection.UPLINK
+                            ? ChatFormatting.YELLOW
+                            : hop.direction() == CellularUserPlaneDirection.DOWNLINK
+                            ? ChatFormatting.AQUA
+                            : ChatFormatting.WHITE
+            );
+        }
+
+        line(
+                source,
+                "Trace complete | route="
+                        + trace.route()
+                        + " | RTT="
+                        + String.format(
+                                Locale.ROOT,
+                                "%.3f ms",
+                                trace.roundTripMillis()
+                        ),
+                ChatFormatting.GREEN
+        );
+
+        return 1;
+    }
+
+    private static int dataStatus(
+            CommandSourceStack source
+    ) {
+        NetworkDeviceBlockEntity device =
+                lookedAtDevice(source);
+
+        if (device == null) {
+            return 0;
+        }
+
+        CellularUserPlaneStatsSnapshot snapshot =
+                CellularUserPlaneService.snapshot(
+                        device.id()
+                );
+
+        line(
+                source,
+                "Cellular user plane | TX="
+                        + snapshot.txPackets()
+                        + " RX="
+                        + snapshot.rxPackets()
+                        + " drop="
+                        + snapshot.droppedPackets()
+                        + " loss="
+                        + String.format(
+                                Locale.ROOT,
+                                "%.1f%%",
+                                snapshot.packetLossPercent()
+                        ),
+                ChatFormatting.AQUA
+        );
+
+        line(
+                source,
+                "IP bytes TX/RX="
+                        + snapshot.txIpBytes()
+                        + "/"
+                        + snapshot.rxIpBytes()
+                        + " | radio bytes TX/RX="
+                        + snapshot.txRadioBytes()
+                        + "/"
+                        + snapshot.rxRadioBytes(),
+                ChatFormatting.GRAY
+        );
+
+        line(
+                source,
+                "Last seq="
+                        + snapshot.lastSequence()
+                        + " target="
+                        + (snapshot.lastTarget().isBlank()
+                        ? "NONE"
+                        : snapshot.lastTarget())
+                        + " result="
+                        + snapshot.lastResult()
+                        + " RTT="
+                        + String.format(
+                                Locale.ROOT,
+                                "%.3f ms",
+                                snapshot.lastRoundTripMicros() / 1000.0
+                        ),
+                ChatFormatting.GRAY
+        );
+
+        return 1;
+    }
+
+    private static int dataReset(
+            CommandSourceStack source
+    ) {
+        NetworkDeviceBlockEntity device =
+                lookedAtDevice(source);
+
+        if (device == null) {
+            return 0;
+        }
+
+        CellularUserPlaneService.reset(
+                device.id()
+        );
+
+        line(
+                source,
+                "Cellular user-plane counters reset.",
+                ChatFormatting.GREEN
         );
 
         return 1;
