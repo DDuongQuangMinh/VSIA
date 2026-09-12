@@ -420,6 +420,9 @@ private final WifiPhyController wifiPhy =
     // CELLULAR_RAR_QUEUE_V1
     private static final long CELLULAR_RAR_RESPONSE_DELAY_US = 50_000L;
 
+
+    // CELLULAR_TDD_UL_CONTROL_SLOT_V1
+    private static final long CELLULAR_UL_CONTROL_SLOT_OFFSET_US = 25_000L;
     private final java.util.ArrayDeque<PendingCellularControl> cellularPendingControl =
             new java.util.ArrayDeque<>();
 
@@ -432,6 +435,8 @@ private final WifiPhyController wifiPhy =
     private long cellularRarSsbDeferrals;
     private String cellularLastRarTarget = "NONE";
 
+    private long cellularUplinkSlotShiftCount;
+    private String cellularLastUplinkSlotType = "NONE";
     private String cellularDefaultDnn =
             "internet";
 
@@ -3550,6 +3555,18 @@ private final WifiPhyController wifiPhy =
 
     public String cellularLastRarTarget() {
         return cellularLastRarTarget;
+    }
+
+    public long cellularUplinkSlotOffsetMicros() {
+        return CELLULAR_UL_CONTROL_SLOT_OFFSET_US;
+    }
+
+    public long cellularUplinkSlotShiftCount() {
+        return cellularUplinkSlotShiftCount;
+    }
+
+    public String cellularLastUplinkSlotType() {
+        return cellularLastUplinkSlotType;
     }
 
     public int cellularRandomAccessRetries() {
@@ -11239,6 +11256,27 @@ private final WifiPhyController wifiPhy =
     private void transmitCellularControlNow(CompoundTag cellularMessage) {
         CompoundTag payload = baseEnvelope();
         payload.put("cellular_control", cellularMessage);
+
+        /*
+         * Simplified NR TDD execution model:
+         * - base-station/downlink control occupies the early micro-slot
+         * - UE/uplink control occupies a later micro-slot
+         *
+         * This preserves RF self-interference realism instead of
+         * pretending the base station can receive through its own SSB.
+         */
+        if (cellularRan.mode() == CellularMode.UE) {
+            payload.putLong(
+                    "rf_start_delay_us",
+                    CELLULAR_UL_CONTROL_SLOT_OFFSET_US
+            );
+
+            cellularUplinkSlotShiftCount++;
+            cellularLastUplinkSlotType = cellularMessage.getString(
+                    "cellular_message_type"
+            );
+        }
+
         broadcastPayload(payload);
     }
 

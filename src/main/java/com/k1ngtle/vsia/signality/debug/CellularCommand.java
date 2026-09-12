@@ -379,6 +379,17 @@ public final class CellularCommand {
                         + device.cellularRarSsbDeferrals(),
                 ChatFormatting.AQUA
         );
+        // CELLULAR_TDD_UL_CONTROL_STATUS_V1
+        line(
+                source,
+                "TDD UL slot=+"
+                        + device.cellularUplinkSlotOffsetMicros()
+                        + " us | shifted="
+                        + device.cellularUplinkSlotShiftCount()
+                        + " | last="
+                        + device.cellularLastUplinkSlotType(),
+                ChatFormatting.AQUA
+        );
         line(
                 source,
                 "Recovery RACH="
