@@ -34,6 +34,7 @@ import com.k1ngtle.vsia.signality.internet.router.RtAc68uRouterItem;
 import com.k1ngtle.vsia.signality.internet.cellular.phone.TemporaryIPhoneBlock;
 import com.k1ngtle.vsia.signality.internet.cellular.phone.TemporaryIPhoneBlockEntity;
 import com.k1ngtle.vsia.signality.integration.vs.item.ShipGrabberItem;
+import com.k1ngtle.vsia.phone.TemporaryIPhoneItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
@@ -196,9 +197,9 @@ public class SignalityBlocks {
 
     public static final RegistryObject<Item> TEMPORARY_IPHONE_ITEM = ITEMS.register(
             "temporary_iphone",
-            () -> new BlockItem(
+            () -> new TemporaryIPhoneItem(
                     TEMPORARY_IPHONE.get(),
-                    new Item.Properties().stacksTo(1)
+                    new Item.Properties()
             )
     );
 
