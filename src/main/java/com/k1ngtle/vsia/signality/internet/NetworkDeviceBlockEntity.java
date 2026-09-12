@@ -418,13 +418,19 @@ private final WifiPhyController wifiPhy =
             true;
 
     // CELLULAR_RAR_QUEUE_V1
-    private static final long CELLULAR_RAR_RESPONSE_DELAY_US = 100_000L;
+    private static final long CELLULAR_RAR_RESPONSE_DELAY_US = 50_000L;
 
     private final java.util.ArrayDeque<PendingCellularControl> cellularPendingControl =
             new java.util.ArrayDeque<>();
 
     private record PendingCellularControl(long dueMicros, CompoundTag message) {
     }
+
+    // CELLULAR_RAR_DOWNLINK_FIX_V2
+    private long cellularRarQueuedCount;
+    private long cellularRarFlushedCount;
+    private long cellularRarSsbDeferrals;
+    private String cellularLastRarTarget = "NONE";
 
     private String cellularDefaultDnn =
             "internet";
@@ -3530,6 +3536,22 @@ private final WifiPhyController wifiPhy =
         return cellularPendingControl.size();
     }
 
+    public long cellularRarQueuedCount() {
+        return cellularRarQueuedCount;
+    }
+
+    public long cellularRarFlushedCount() {
+        return cellularRarFlushedCount;
+    }
+
+    public long cellularRarSsbDeferrals() {
+        return cellularRarSsbDeferrals;
+    }
+
+    public String cellularLastRarTarget() {
+        return cellularLastRarTarget;
+    }
+
     public int cellularRandomAccessRetries() {
         return cellularAutomation.randomAccessRetries();
     }
@@ -4153,7 +4175,7 @@ private final WifiPhyController wifiPhy =
     private void tickCellularAutomation(
             long nowMicros
     ) {
-        flushPendingCellularControl(nowMicros);
+        boolean cellularRarFlushedThisTick = flushPendingCellularControl(nowMicros);
 
         if (!cellularAutomationEnabled
                 || !isCellularProfile()) {
@@ -4172,8 +4194,13 @@ private final WifiPhyController wifiPhy =
                 );
 
         switch (action) {
-            case BROADCAST_SYSTEM_INFORMATION ->
-                    sendCellBroadcast();
+            case BROADCAST_SYSTEM_INFORMATION -> {
+                    if (cellularRarFlushedThisTick) {
+                        cellularRarSsbDeferrals++;
+                    } else {
+                        sendCellBroadcast();
+                    }
+                }
 
             case START_CELL_SEARCH ->
                     startCellSearch();
@@ -11174,6 +11201,11 @@ private final WifiPhyController wifiPhy =
                     NetworkTimebase.nowMicros(serverLevel)
                             + CELLULAR_RAR_RESPONSE_DELAY_US;
 
+            cellularRarQueuedCount++;
+            cellularLastRarTarget = cellularMessage.contains("target_id")
+                    ? cellularMessage.getUUID("target_id").toString()
+                    : "BROADCAST";
+
             cellularPendingControl.addLast(
                     new PendingCellularControl(
                             dueMicros,
@@ -11186,15 +11218,22 @@ private final WifiPhyController wifiPhy =
         transmitCellularControlNow(cellularMessage);
     }
 
-    private void flushPendingCellularControl(long nowMicros) {
+    private boolean flushPendingCellularControl(long nowMicros) {
+        boolean flushed = false;
+
         while (!cellularPendingControl.isEmpty()) {
             PendingCellularControl pending = cellularPendingControl.peekFirst();
             if (pending == null || pending.dueMicros() > nowMicros) {
-                return;
+                return flushed;
             }
+
             cellularPendingControl.removeFirst();
+            cellularRarFlushedCount++;
             transmitCellularControlNow(pending.message());
+            flushed = true;
         }
+
+        return flushed;
     }
 
     private void transmitCellularControlNow(CompoundTag cellularMessage) {

@@ -366,6 +366,19 @@ public final class CellularCommand {
             );
         }
 
+        // CELLULAR_RAR_DOWNLINK_STATUS_V2
+        line(
+                source,
+                "RAR DL queued="
+                        + device.cellularRarQueuedCount()
+                        + " | flushed="
+                        + device.cellularRarFlushedCount()
+                        + " | target="
+                        + device.cellularLastRarTarget()
+                        + " | ssbDeferred="
+                        + device.cellularRarSsbDeferrals(),
+                ChatFormatting.AQUA
+        );
         line(
                 source,
                 "Recovery RACH="
