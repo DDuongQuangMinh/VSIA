@@ -15,10 +15,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class PhoneBrowserServerService {
-    private static final int MAX_STYLE_CHARACTERS = 262_144;
+    private static final int MAX_STYLE_CHARACTERS =
+            262_144;
 
     private static final Pattern LINK_TAG =
-            Pattern.compile("(?is)<link\\b[^>]*>");
+            Pattern.compile(
+                    "(?is)<link\\b[^>]*>"
+            );
 
     private static final Pattern ATTRIBUTE =
             Pattern.compile(
@@ -33,9 +36,12 @@ public final class PhoneBrowserServerService {
             String rawUrl,
             String transport
     ) {
-        BrowserRequest request = new BrowserRequest(rawUrl);
+        BrowserRequest request =
+                new BrowserRequest(rawUrl);
 
-        if (request.authority().isBlank()) {
+        if (request
+                .authority()
+                .isBlank()) {
             return ServerPage.error(
                     request.displayUrl(),
                     400,
@@ -45,11 +51,18 @@ public final class PhoneBrowserServerService {
             );
         }
 
-        ServerLevel level = player.serverLevel();
-        long now = System.currentTimeMillis();
+        ServerLevel level =
+                player.serverLevel();
+
+        long now =
+                System.currentTimeMillis();
 
         RequestTarget target =
-                resolveTarget(level, request, now);
+                resolveTarget(
+                        level,
+                        request,
+                        now
+                );
 
         if (!target.success()) {
             return ServerPage.error(
@@ -62,11 +75,9 @@ public final class PhoneBrowserServerService {
         }
 
         W128HttpResponse http =
-                W128WebHostService.serve(
+                serveTarget(
                         level,
-                        target.rackIp(),
-                        target.host(),
-                        target.path(),
+                        target,
                         now
                 );
 
@@ -85,14 +96,19 @@ public final class PhoneBrowserServerService {
         if (http.status() >= 200
                 && http.status() < 400
                 && http.contentType()
-                .toLowerCase(Locale.ROOT)
-                .contains("html")) {
-            styleSheet = loadStyleSheets(
-                    level,
-                    target,
-                    http.body(),
-                    now
-            );
+                .toLowerCase(
+                        Locale.ROOT
+                )
+                .contains(
+                        "html"
+                )) {
+            styleSheet =
+                    loadStyleSheets(
+                            level,
+                            target,
+                            http.body(),
+                            now
+                    );
         }
 
         return new ServerPage(
@@ -102,7 +118,9 @@ public final class PhoneBrowserServerService {
                 http.contentType(),
                 http.body(),
                 styleSheet,
-                normalizeTransport(transport),
+                normalizeTransport(
+                        transport
+                ),
                 routeSummary(
                         transport,
                         target
@@ -110,12 +128,39 @@ public final class PhoneBrowserServerService {
         );
     }
 
+    private static W128HttpResponse serveTarget(
+            ServerLevel level,
+            RequestTarget target,
+            long now
+    ) {
+        if (target.direct()) {
+            return W128WebHostService
+                    .serveDirect(
+                            level,
+                            target.rackIp(),
+                            target.host(),
+                            target.path(),
+                            now
+                    );
+        }
+
+        return W128WebHostService
+                .serve(
+                        level,
+                        target.rackIp(),
+                        target.host(),
+                        target.path(),
+                        now
+                );
+    }
+
     private static RequestTarget resolveTarget(
             ServerLevel level,
             BrowserRequest request,
             long now
     ) {
-        if (request.isPureRackAddress()) {
+        if (request
+                .isPureRackAddress()) {
             BrowserRequest.DirectRackTarget target =
                     request.directRackTarget();
 
@@ -124,8 +169,8 @@ public final class PhoneBrowserServerService {
                         request.displayUrl(),
                         400,
                         "Bad Request",
-                        "Direct Server Rack browsing needs a domain target.\n"
-                                + "Use either:\n"
+                        "Direct Server Rack browsing needs a website host.\n"
+                                + "Use:\n"
                                 + "domain.com@10.0.1.20\n"
                                 + "or\n"
                                 + "10.0.1.20/domain.com"
@@ -140,14 +185,21 @@ public final class PhoneBrowserServerService {
                     ),
                     target.rackIp(),
                     target.host(),
-                    target.path()
+                    target.path(),
+                    true
             );
         }
 
-        if (request.usesDirectRack()) {
-            String rackIp = request.directRackIp();
-            String host = request.host();
-            String path = request.path();
+        if (request
+                .usesDirectRack()) {
+            String rackIp =
+                    request.directRackIp();
+
+            String host =
+                    request.host();
+
+            String path =
+                    request.path();
 
             if (host.isBlank()) {
                 return RequestTarget.error(
@@ -166,11 +218,13 @@ public final class PhoneBrowserServerService {
                     ),
                     rackIp,
                     host,
-                    path
+                    path,
+                    true
             );
         }
 
-        String host = request.host();
+        String host =
+                request.host();
 
         if (host.isBlank()) {
             return RequestTarget.error(
@@ -182,7 +236,8 @@ public final class PhoneBrowserServerService {
         }
 
         Optional<InternetDnsAnswer> answer =
-                InternetRegistrySavedData.get(level)
+                InternetRegistrySavedData
+                        .get(level)
                         .resolveFirst(
                                 host,
                                 "A",
@@ -202,9 +257,11 @@ public final class PhoneBrowserServerService {
 
         return RequestTarget.success(
                 request.displayUrl(),
-                answer.get().value(),
+                answer.get()
+                        .value(),
                 host,
-                request.path()
+                request.path(),
+                false
         );
     }
 
@@ -214,75 +271,127 @@ public final class PhoneBrowserServerService {
             String html,
             long now
     ) {
-        List<String> hrefs = styleSheetHrefs(html);
+        List<String> hrefs =
+                styleSheetHrefs(html);
 
         if (hrefs.isEmpty()) {
             return "";
         }
 
-        StringBuilder combined = new StringBuilder();
-        int loaded = 0;
-        String baseUrl = target.canonicalUrl();
+        StringBuilder combined =
+                new StringBuilder();
 
-        for (String href : hrefs) {
+        int loaded = 0;
+
+        for (String href
+                : hrefs) {
             if (loaded >= 4) {
                 break;
             }
 
             String resolved =
                     BrowserRequest.resolve(
-                            baseUrl,
+                            target.canonicalUrl(),
                             href
                     );
 
             BrowserRequest cssRequest =
-                    new BrowserRequest(resolved);
+                    new BrowserRequest(
+                            resolved
+                    );
 
             String cssHost;
             String cssPath;
             String cssRackIp;
+            boolean direct;
 
-            if (cssRequest.usesDirectRack()) {
-                cssHost = cssRequest.host();
-                cssPath = cssRequest.path();
-                cssRackIp = cssRequest.directRackIp();
-            } else if (cssRequest.isPureRackAddress()) {
-                BrowserRequest.DirectRackTarget direct =
-                        cssRequest.directRackTarget();
+            if (cssRequest
+                    .usesDirectRack()) {
+                cssHost =
+                        cssRequest.host();
 
-                if (direct == null) {
+                cssPath =
+                        cssRequest.path();
+
+                cssRackIp =
+                        cssRequest.directRackIp();
+
+                direct = true;
+            } else if (cssRequest
+                    .isPureRackAddress()) {
+                BrowserRequest.DirectRackTarget directTarget =
+                        cssRequest
+                                .directRackTarget();
+
+                if (directTarget == null) {
                     continue;
                 }
 
-                cssHost = direct.host();
-                cssPath = direct.path();
-                cssRackIp = direct.rackIp();
+                cssHost =
+                        directTarget.host();
+
+                cssPath =
+                        directTarget.path();
+
+                cssRackIp =
+                        directTarget.rackIp();
+
+                direct = true;
             } else {
-                cssHost = cssRequest.host();
-                cssPath = cssRequest.path();
-                cssRackIp = target.rackIp();
+                cssHost =
+                        cssRequest.host();
+
+                cssPath =
+                        cssRequest.path();
+
+                cssRackIp =
+                        target.rackIp();
+
+                direct =
+                        target.direct();
             }
 
-            if (!target.host().equals(cssHost)
-                    || !target.rackIp().equals(cssRackIp)) {
+            if (!target.host()
+                    .equals(
+                            cssHost
+                    )
+                    || !target
+                    .rackIp()
+                    .equals(
+                            cssRackIp
+                    )) {
                 continue;
             }
 
             W128HttpResponse css =
-                    W128WebHostService.serve(
-                            level,
-                            cssRackIp,
-                            cssHost,
-                            cssPath,
-                            now
-                    );
+                    direct
+                            ? W128WebHostService
+                            .serveDirect(
+                                    level,
+                                    cssRackIp,
+                                    cssHost,
+                                    cssPath,
+                                    now
+                            )
+                            : W128WebHostService
+                            .serve(
+                                    level,
+                                    cssRackIp,
+                                    cssHost,
+                                    cssPath,
+                                    now
+                            );
 
             if (css == null
                     || css.status() < 200
                     || css.status() >= 400
                     || !css.contentType()
-                    .toLowerCase(Locale.ROOT)
-                    .contains("css")) {
+                    .toLowerCase(
+                            Locale.ROOT
+                    )
+                    .contains(
+                            "css"
+                    )) {
                 continue;
             }
 
@@ -298,12 +407,20 @@ public final class PhoneBrowserServerService {
                 break;
             }
 
-            String body = css.body();
+            String body =
+                    css.body();
 
-            if (body.length() > remaining) {
-                combined.append(body, 0, remaining);
+            if (body.length()
+                    > remaining) {
+                combined.append(
+                        body,
+                        0,
+                        remaining
+                );
             } else {
-                combined.append(body);
+                combined.append(
+                        body
+                );
             }
 
             loaded++;
@@ -312,46 +429,86 @@ public final class PhoneBrowserServerService {
         return combined.toString();
     }
 
-    private static List<String> styleSheetHrefs(String html) {
-        List<String> result = new ArrayList<>();
+    private static List<String> styleSheetHrefs(
+            String html
+    ) {
+        List<String> result =
+                new ArrayList<>();
 
         Matcher matcher =
                 LINK_TAG.matcher(
-                        html == null ? "" : html
+                        html == null
+                                ? ""
+                                : html
                 );
 
         while (matcher.find()) {
-            String tag = matcher.group();
-            String rel = attribute(tag, "rel");
+            String tag =
+                    matcher.group();
 
-            if (!rel.toLowerCase(Locale.ROOT).contains("stylesheet")) {
+            String rel =
+                    attribute(
+                            tag,
+                            "rel"
+                    );
+
+            if (!rel
+                    .toLowerCase(
+                            Locale.ROOT
+                    )
+                    .contains(
+                            "stylesheet"
+                    )) {
                 continue;
             }
 
-            String href = attribute(tag, "href");
+            String href =
+                    attribute(
+                            tag,
+                            "href"
+                    );
 
             if (!href.isBlank()) {
-                result.add(href);
+                result.add(
+                        href
+                );
             }
         }
 
         return result;
     }
 
-    private static String attribute(String source, String name) {
+    private static String attribute(
+            String source,
+            String name
+    ) {
         Matcher matcher =
                 ATTRIBUTE.matcher(
-                        source == null ? "" : source
+                        source == null
+                                ? ""
+                                : source
                 );
 
         while (matcher.find()) {
-            if (!matcher.group(1).equalsIgnoreCase(name)) {
+            if (!matcher
+                    .group(1)
+                    .equalsIgnoreCase(
+                            name
+                    )) {
                 continue;
             }
 
-            if (matcher.group(2) != null) return matcher.group(2);
-            if (matcher.group(3) != null) return matcher.group(3);
-            if (matcher.group(4) != null) return matcher.group(4);
+            if (matcher.group(2) != null) {
+                return matcher.group(2);
+            }
+
+            if (matcher.group(3) != null) {
+                return matcher.group(3);
+            }
+
+            if (matcher.group(4) != null) {
+                return matcher.group(4);
+            }
         }
 
         return "";
@@ -362,24 +519,40 @@ public final class PhoneBrowserServerService {
             String rackIp,
             String path
     ) {
-        if (host == null || host.isBlank() || rackIp == null || rackIp.isBlank()) {
+        if (host == null
+                || host.isBlank()
+                || rackIp == null
+                || rackIp.isBlank()) {
             return "";
         }
 
         String normalizedPath =
-                path == null || path.isBlank()
+                path == null
+                        || path.isBlank()
                         ? "/"
                         : path;
 
-        if ("/".equals(normalizedPath)) {
-            return host + "@" + rackIp;
+        if ("/".equals(
+                normalizedPath
+        )) {
+            return host
+                    + "@"
+                    + rackIp;
         }
 
-        return host + "@" + rackIp + normalizedPath;
+        return host
+                + "@"
+                + rackIp
+                + normalizedPath;
     }
 
-    private static String normalizeTransport(String transport) {
-        if ("CELLULAR".equalsIgnoreCase(transport)) {
+    private static String normalizeTransport(
+            String transport
+    ) {
+        if ("CELLULAR"
+                .equalsIgnoreCase(
+                        transport
+                )) {
             return "CELLULAR";
         }
 
@@ -390,17 +563,29 @@ public final class PhoneBrowserServerService {
             String transport,
             RequestTarget target
     ) {
+        String path =
+                target.direct()
+                        ? "Direct Rack"
+                        : "ISP1 DNS";
+
         String destination =
                 target.host()
                         + " @ "
                         + target.rackIp();
 
-        if ("CELLULAR".equalsIgnoreCase(transport)) {
-            return "Browser → Cellular → UE → gNB → 5G Core → UPF → DNS/Direct → HTTP → "
+        if ("CELLULAR"
+                .equalsIgnoreCase(
+                        transport
+                )) {
+            return "Browser → Cellular → UE → gNB → 5G Core → UPF → "
+                    + path
+                    + " → HTTP → "
                     + destination;
         }
 
-        return "Browser → Wi-Fi → 802.11 → AP → Router → DNS/Direct → HTTP → "
+        return "Browser → Wi-Fi → 802.11 → AP → Router → "
+                + path
+                + " → HTTP → "
                 + destination;
     }
 
@@ -428,16 +613,10 @@ public final class PhoneBrowserServerService {
                     "text/plain; charset=utf-8",
                     body,
                     "",
-                    normalizeTransport(transport),
-                    PhoneBrowserServerService.routeSummary(
-                            transport,
-                            RequestTarget.error(
-                                    url,
-                                    statusCode,
-                                    reason,
-                                    ""
-                            )
-                    )
+                    normalizeTransport(
+                            transport
+                    ),
+                    "Browser request failed before HTTP response"
             );
         }
     }
@@ -448,6 +627,7 @@ public final class PhoneBrowserServerService {
             String rackIp,
             String host,
             String path,
+            boolean direct,
             int statusCode,
             String reason,
             String body
@@ -456,14 +636,19 @@ public final class PhoneBrowserServerService {
                 String canonicalUrl,
                 String rackIp,
                 String host,
-                String path
+                String path,
+                boolean direct
         ) {
             return new RequestTarget(
                     true,
                     canonicalUrl,
                     rackIp,
                     host,
-                    path == null || path.isBlank() ? "/" : path,
+                    path == null
+                            || path.isBlank()
+                            ? "/"
+                            : path,
+                    direct,
                     200,
                     "",
                     ""
@@ -478,10 +663,13 @@ public final class PhoneBrowserServerService {
         ) {
             return new RequestTarget(
                     false,
-                    canonicalUrl == null ? "" : canonicalUrl,
-                    "unresolved",
-                    "unresolved",
+                    canonicalUrl == null
+                            ? ""
+                            : canonicalUrl,
+                    "",
+                    "",
                     "/",
+                    false,
                     statusCode,
                     reason,
                     body
