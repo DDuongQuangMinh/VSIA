@@ -24,7 +24,6 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
     private static final int COLOR_TEXT_SECONDARY = 0xFF4B4C51;
     private static final int COLOR_TEXT_TERTIARY = 0xFF8C8D93;
     private static final int COLOR_ACCENT = 0xFF2D7CFF;
-    private static final int COLOR_ACCENT_SOFT = 0x1F2D7CFF;
     private static final int COLOR_BORDER = 0xFFE6E6EB;
     private static final int COLOR_RED = 0xFFFF6157;
     private static final int COLOR_SHADOW = 0x18000000;
@@ -41,6 +40,7 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
 
     private int overlayScroll;
     private int scrollY;
+    private int startPageTotalHeight;
 
     private int contentX;
     private int contentY;
@@ -134,6 +134,7 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             renderStartPage(graphics);
         } else {
             BrowserResponse response = browser.response();
+
             if (response.statusCode() == 0) {
                 renderNetworkError(graphics, response);
             } else {
@@ -242,7 +243,7 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
         drawCompassIcon(graphics, centerX - 20, centerY - 24, 40);
 
         PhoneText.drawCentered(graphics, font, "Loading Website", centerX, centerY + 28, COLOR_TEXT_PRIMARY);
-        PhoneText.drawCentered(graphics, font, "Please wait…", centerX, centerY + 45, COLOR_TEXT_TERTIARY);
+        PhoneText.drawCentered(graphics, font, "Please wait...", centerX, centerY + 45, COLOR_TEXT_TERTIARY);
 
         int barX = phoneX + 40;
         int barY = centerY + 64;
@@ -264,77 +265,64 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
     ) {
         roundedRect(graphics, contentX, contentY, contentWidth, contentHeight, 18, COLOR_PAGE);
 
-        int y = contentY + 18;
+        graphics.enableScissor(contentX, contentY, contentX + contentWidth, contentY + contentHeight);
 
-        y = drawSectionTitle(graphics, "Favorites", y);
-        y = drawFavoritesGrid(graphics, y);
+        int innerX = contentX + 12;
+        int innerWidth = contentWidth - 24;
+        int y = contentY + 16 - scrollY;
 
-        y += 12;
-        y = drawSectionTitle(graphics, "Frequently Visited", y);
-        y = drawFrequentlyVisitedGrid(graphics, y);
+        PhoneText.draw(graphics, font, "Favorites", innerX, y, COLOR_TEXT_PRIMARY);
+        y += 20;
+        y = drawFavoritesGrid(graphics, innerX, innerWidth, y);
 
-        y += 12;
-        y = drawSharedWithYouHeader(graphics, y);
-        drawSharedWithYouCards(graphics, y);
-    }
+        y += 10;
+        PhoneText.draw(graphics, font, "Frequently Visited", innerX, y, COLOR_TEXT_PRIMARY);
+        y += 20;
+        y = drawFrequentlyVisitedGrid(graphics, innerX, innerWidth, y);
 
-    private int drawSectionTitle(
-            GuiGraphics graphics,
-            String title,
-            int y
-    ) {
-        PhoneText.draw(
-                graphics,
-                font,
-                title,
-                contentX + 14,
-                y,
-                COLOR_TEXT_PRIMARY
-        );
-        return y + 20;
-    }
-
-    private int drawSharedWithYouHeader(
-            GuiGraphics graphics,
-            int y
-    ) {
-        PhoneText.draw(graphics, font, "Shared with You", contentX + 14, y, COLOR_TEXT_PRIMARY);
-        PhoneText.draw(graphics, font, "Show All", contentX + contentWidth - 66, y, COLOR_ACCENT);
+        y += 10;
+        PhoneText.draw(graphics, font, "Shared with You", innerX, y, COLOR_TEXT_PRIMARY);
+        PhoneText.draw(graphics, font, "Show All", contentX + contentWidth - 64, y, COLOR_ACCENT);
         PhoneText.draw(graphics, font, ">", contentX + contentWidth - 18, y, COLOR_ACCENT);
-        return y + 22;
+        y += 20;
+        y = drawSharedWithYouCards(graphics, innerX, innerWidth, y);
+
+        startPageTotalHeight = Math.max(0, (y + scrollY + 16) - contentY);
+
+        graphics.disableScissor();
     }
 
     private int drawFavoritesGrid(
             GuiGraphics graphics,
-            int y
+            int startX,
+            int availableWidth,
+            int startY
     ) {
         List<QuickSite> favorites = new ArrayList<>();
-        favorites.add(new QuickSite("Saved\nTabs", "", 0xFFEFF2F8, COLOR_ACCENT, QuickIcon.TABS, QuickAction.SAVED_TABS));
-        favorites.add(new QuickSite("Apple", "", 0xFFF6F6F8, 0xFF8E8E93, QuickIcon.CIRCLE, QuickAction.NONE));
-        favorites.add(new QuickSite("Bing", "", 0xFFF6F6F8, 0xFF2E9BFF, QuickIcon.B, QuickAction.NONE));
-        favorites.add(new QuickSite("Google", "", 0xFFF6F6F8, 0xFF4285F4, QuickIcon.G, QuickAction.NONE));
-        favorites.add(new QuickSite("Yahoo", "", 0xFF4C1FB8, 0xFFFFFFFF, QuickIcon.TEXT, QuickAction.NONE));
-        favorites.add(new QuickSite("VSIA", "", 0xFF2D7CFF, 0xFFFFFFFF, QuickIcon.OMEGA, QuickAction.NONE));
+        favorites.add(new QuickSite("Saved\nTabs", 0xFFEFF2F8, COLOR_ACCENT, QuickIcon.TABS, QuickAction.SAVED_TABS));
+        favorites.add(new QuickSite("Apple", 0xFFF6F6F8, 0xFF8E8E93, QuickIcon.CIRCLE, QuickAction.NONE));
+        favorites.add(new QuickSite("Bing", 0xFFF6F6F8, 0xFF2E9BFF, QuickIcon.B, QuickAction.NONE));
+        favorites.add(new QuickSite("Google", 0xFFF6F6F8, 0xFF4285F4, QuickIcon.G, QuickAction.NONE));
+        favorites.add(new QuickSite("Yahoo", 0xFF4C1FB8, 0xFFFFFFFF, QuickIcon.TEXT, QuickAction.NONE));
+        favorites.add(new QuickSite("VSIA", 0xFF2D7CFF, 0xFFFFFFFF, QuickIcon.OMEGA, QuickAction.NONE));
 
-        int columns = 4;
-        int cardWidth = 50;
-        int cardHeight = 50;
-        int gapX = 18;
-        int gapY = 26;
-        int startX = contentX + 14;
+        GridMetrics grid = createGridMetrics(availableWidth, 4, 40, 10);
+        int cardHeight = 40;
+        int rowGap = 22;
+        int textOffset = 6;
 
         for (int i = 0; i < favorites.size(); i++) {
-            int row = i / columns;
-            int col = i % columns;
+            int row = i / 4;
+            int col = i % 4;
 
-            int x = startX + col * (cardWidth + gapX);
-            int cardY = y + row * (cardHeight + gapY);
+            int x = startX + col * (grid.cellWidth + grid.gap);
+            int y = startY + row * (cardHeight + rowGap + 20);
 
             drawQuickSiteSquare(
                     graphics,
                     x,
-                    cardY,
-                    cardWidth,
+                    y,
+                    grid.cellWidth,
                     cardHeight,
                     favorites.get(i)
             );
@@ -342,39 +330,40 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             drawMultiLineCentered(
                     graphics,
                     favorites.get(i).title(),
-                    x + cardWidth / 2,
-                    cardY + cardHeight + 7,
+                    x + grid.cellWidth / 2,
+                    y + cardHeight + textOffset,
                     COLOR_TEXT_PRIMARY
             );
         }
 
-        return y + 2 * (cardHeight + gapY) + 4;
+        int rows = (favorites.size() + 3) / 4;
+        return startY + rows * cardHeight + (rows - 1) * (rowGap + 20) + 20;
     }
 
     private int drawFrequentlyVisitedGrid(
             GuiGraphics graphics,
-            int y
+            int startX,
+            int availableWidth,
+            int startY
     ) {
         List<QuickSite> frequent = new ArrayList<>();
-        frequent.add(new QuickSite("Lab", "", 0xFFC03A2B, 0xFFFFFFFF, QuickIcon.TOWER, QuickAction.QUICK_DOMAIN_LAB));
-        frequent.add(new QuickSite("Server", "", 0xFFE0552E, 0xFFFFFFFF, QuickIcon.V, QuickAction.QUICK_DOMAIN_SERVER));
-        frequent.add(new QuickSite("Rack", "", 0xFFF0F0F1, 0xFF5B5B60, QuickIcon.RACK, QuickAction.QUICK_DOMAIN_RACK));
-        frequent.add(new QuickSite("Video", "", 0xFFF04C3E, 0xFFFFFFFF, QuickIcon.PLAY, QuickAction.NONE));
+        frequent.add(new QuickSite("Lab", 0xFFC03A2B, 0xFFFFFFFF, QuickIcon.TOWER, QuickAction.QUICK_DOMAIN_LAB));
+        frequent.add(new QuickSite("Server", 0xFFE0552E, 0xFFFFFFFF, QuickIcon.V, QuickAction.QUICK_DOMAIN_SERVER));
+        frequent.add(new QuickSite("Rack", 0xFFF0F0F1, 0xFF5B5B60, QuickIcon.RACK, QuickAction.QUICK_DOMAIN_RACK));
+        frequent.add(new QuickSite("Video", 0xFFF04C3E, 0xFFFFFFFF, QuickIcon.PLAY, QuickAction.NONE));
 
-        int columns = 4;
-        int cardWidth = 50;
-        int cardHeight = 50;
-        int gapX = 18;
-        int startX = contentX + 14;
+        GridMetrics grid = createGridMetrics(availableWidth, 4, 40, 10);
+        int cardHeight = 40;
+        int textOffset = 6;
 
         for (int i = 0; i < frequent.size(); i++) {
-            int x = startX + i * (cardWidth + gapX);
+            int x = startX + i * (grid.cellWidth + grid.gap);
 
             drawQuickSiteSquare(
                     graphics,
                     x,
-                    y,
-                    cardWidth,
+                    startY,
+                    grid.cellWidth,
                     cardHeight,
                     frequent.get(i)
             );
@@ -382,28 +371,29 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             drawMultiLineCentered(
                     graphics,
                     frequent.get(i).title(),
-                    x + cardWidth / 2,
-                    y + cardHeight + 7,
+                    x + grid.cellWidth / 2,
+                    startY + cardHeight + textOffset,
                     COLOR_TEXT_PRIMARY
             );
         }
 
-        return y + cardHeight + 42;
+        return startY + cardHeight + 28;
     }
 
-    private void drawSharedWithYouCards(
+    private int drawSharedWithYouCards(
             GuiGraphics graphics,
-            int y
+            int startX,
+            int availableWidth,
+            int startY
     ) {
-        int cardWidth = 102;
-        int cardHeight = 98;
-        int gap = 18;
-        int leftX = contentX + 14;
+        int gap = 10;
+        int cardWidth = (availableWidth - gap) / 2;
+        int cardHeight = 84;
 
         drawSharedCard(
                 graphics,
-                leftX,
-                y,
+                startX,
+                startY,
                 cardWidth,
                 cardHeight,
                 0xFFE6EEF7,
@@ -414,8 +404,8 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
 
         drawSharedCard(
                 graphics,
-                leftX + cardWidth + gap,
-                y,
+                startX + cardWidth + gap,
+                startY,
                 cardWidth,
                 cardHeight,
                 0xFFE8F0E7,
@@ -423,6 +413,8 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
                 "rack.vsia",
                 "From Player"
         );
+
+        return startY + cardHeight + 10;
     }
 
     private void drawSharedCard(
@@ -436,18 +428,18 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             String site,
             String source
     ) {
-        roundedRect(graphics, x, y, width, height, 14, COLOR_CARD);
+        roundedRect(graphics, x, y, width, height, 12, COLOR_CARD);
         drawBorder(graphics, x, y, width, height, COLOR_BORDER);
 
-        roundedRect(graphics, x, y, width, 52, 14, thumbColor);
-        roundedRect(graphics, x + 33, y + 10, 36, 26, 12, 0x77000000);
-        drawPlayTriangle(graphics, x + 47, y + 18, 0xFFFFFFFF);
+        roundedRect(graphics, x, y, width, 42, 12, thumbColor);
+        roundedRect(graphics, x + width / 2 - 14, y + 8, 28, 22, 10, 0x66000000);
+        drawPlayTriangle(graphics, x + width / 2 - 3, y + 13, 0xFFFFFFFF);
 
-        PhoneText.draw(graphics, font, fitText(title, width - 14), x + 7, y + 58, COLOR_TEXT_PRIMARY);
-        PhoneText.draw(graphics, font, fitText(site, width - 14), x + 7, y + 72, COLOR_TEXT_TERTIARY);
+        PhoneText.draw(graphics, font, fitText(title, width - 12), x + 6, y + 48, COLOR_TEXT_PRIMARY);
+        PhoneText.draw(graphics, font, fitText(site, width - 12), x + 6, y + 61, COLOR_TEXT_TERTIARY);
 
-        roundedRect(graphics, x + 7, y + 84, 58, 11, 5, 0xFFEFEFF3);
-        PhoneText.draw(graphics, font, fitText(source, 50), x + 11, y + 86, COLOR_TEXT_SECONDARY);
+        roundedRect(graphics, x + 6, y + 72, Math.min(width - 12, 54), 10, 5, 0xFFEFEFF3);
+        PhoneText.draw(graphics, font, fitText(source, Math.min(width - 18, 48)), x + 9, y + 74, COLOR_TEXT_SECONDARY);
     }
 
     private void renderNetworkError(
@@ -473,6 +465,7 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
         if (!response.body().isBlank()) {
             roundedRect(graphics, phoneX + 28, y + 6, PHONE_WIDTH - 56, 74, 14, COLOR_CARD_ALT);
             y += 18;
+
             for (String line : response.body().split("\n")) {
                 PhoneText.drawCentered(graphics, font, line, phoneX + PHONE_WIDTH / 2, y, COLOR_TEXT_SECONDARY);
                 y += 15;
@@ -491,15 +484,15 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
     private void renderBottomChrome(
             GuiGraphics graphics
     ) {
-        drawSoftShadow(graphics, phoneX + 6, browserPanelY, PHONE_WIDTH - 12, 92, 22);
+        drawSoftShadow(graphics, phoneX + 10, browserPanelY, PHONE_WIDTH - 20, 90, 18);
 
         roundedRect(
                 graphics,
-                phoneX + 6,
+                phoneX + 10,
                 browserPanelY,
-                PHONE_WIDTH - 12,
-                92,
-                22,
+                PHONE_WIDTH - 20,
+                90,
+                18,
                 COLOR_CHROME
         );
 
@@ -528,11 +521,11 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
         int iconColorEnabled = COLOR_ACCENT;
         int iconColorDisabled = 0xFFB8B9BF;
 
-        drawBackChevron(graphics, phoneX + 33, toolbarY + 10, browser.canGoBack() ? iconColorEnabled : iconColorDisabled);
-        drawForwardChevron(graphics, phoneX + 78, toolbarY + 10, browser.canGoForward() ? iconColorEnabled : iconColorDisabled);
-        drawShareOutline(graphics, phoneX + 123, toolbarY + 9, COLOR_ACCENT);
-        drawBookmarksOutline(graphics, phoneX + 168, toolbarY + 9, COLOR_ACCENT);
-        drawTabsOutline(graphics, phoneX + 212, toolbarY + 9, COLOR_ACCENT, browser.tabCount());
+        drawBackChevron(graphics, phoneX + 30, toolbarY + 10, browser.canGoBack() ? iconColorEnabled : iconColorDisabled);
+        drawForwardChevron(graphics, phoneX + 70, toolbarY + 10, browser.canGoForward() ? iconColorEnabled : iconColorDisabled);
+        drawShareOutline(graphics, phoneX + 115, toolbarY + 9, COLOR_ACCENT);
+        drawBookmarksOutline(graphics, phoneX + 160, toolbarY + 9, COLOR_ACCENT);
+        drawTabsOutline(graphics, phoneX + 203, toolbarY + 9, COLOR_ACCENT, browser.tabCount());
 
         graphics.fill(phoneX + 18, browserPanelY + 44, phoneX + PHONE_WIDTH - 18, browserPanelY + 45, 0x22B4B4BA);
     }
@@ -617,6 +610,7 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
         PhoneText.drawCentered(graphics, font, "Bookmarks", phoneX + PHONE_WIDTH / 2, y + 16, COLOR_TEXT_PRIMARY);
 
         String current = browser.currentUrl();
+
         if (!current.isBlank()) {
             PhoneText.draw(graphics, font,
                     browser.isBookmarked(current) ? "Remove Current" : "Add Current",
@@ -696,7 +690,7 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
 
             PhoneText.draw(graphics, font, fitText(tab.title(), width - 96), x + 22, cardY + 10, COLOR_TEXT_PRIMARY);
             PhoneText.draw(graphics, font, fitText(shownUrl, width - 96), x + 22, cardY + 27, COLOR_TEXT_TERTIARY);
-            PhoneText.draw(graphics, font, tab.loading() ? "Loading…" : tab.active() ? "Current Tab" : "Tap to switch",
+            PhoneText.draw(graphics, font, tab.loading() ? "Loading..." : tab.active() ? "Current Tab" : "Tap to switch",
                     x + 22, cardY + 44, COLOR_TEXT_TERTIARY);
 
             PhoneText.draw(graphics, font, "Close", x + width - 46, cardY + 10, COLOR_RED);
@@ -748,10 +742,8 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
                 }
             }
 
-            if (browser.response() == null) {
-                if (handleQuickSiteClick(mouseX, mouseY)) {
-                    return true;
-                }
+            if (browser.response() == null && handleQuickSiteClick(mouseX, mouseY)) {
+                return true;
             }
 
             for (PhoneHtmlRenderer.LinkRegion link : lastRender.links()) {
@@ -770,29 +762,29 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
                 return true;
             }
 
-            if (inside(mouseX, mouseY, phoneX + 24, toolbarY + 1, 22, 20)) {
+            if (inside(mouseX, mouseY, phoneX + 22, toolbarY + 1, 20, 20)) {
                 browser.back();
                 forcePageRefresh();
                 return true;
             }
 
-            if (inside(mouseX, mouseY, phoneX + 69, toolbarY + 1, 22, 20)) {
+            if (inside(mouseX, mouseY, phoneX + 63, toolbarY + 1, 20, 20)) {
                 browser.forward();
                 forcePageRefresh();
                 return true;
             }
 
-            if (inside(mouseX, mouseY, phoneX + 112, toolbarY - 1, 26, 24)) {
+            if (inside(mouseX, mouseY, phoneX + 106, toolbarY - 1, 24, 24)) {
                 openOverlay(BrowserOverlay.SHARE);
                 return true;
             }
 
-            if (inside(mouseX, mouseY, phoneX + 156, toolbarY - 1, 26, 24)) {
+            if (inside(mouseX, mouseY, phoneX + 151, toolbarY - 1, 24, 24)) {
                 openOverlay(BrowserOverlay.BOOKMARKS);
                 return true;
             }
 
-            if (inside(mouseX, mouseY, phoneX + 201, toolbarY - 1, 28, 24)) {
+            if (inside(mouseX, mouseY, phoneX + 194, toolbarY - 1, 26, 24)) {
                 openOverlay(BrowserOverlay.TABS);
                 return true;
             }
@@ -817,77 +809,82 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             double mouseX,
             double mouseY
     ) {
-        int startX = contentX + 14;
-        int favoritesY = contentY + 38;
-        int frequentY = favoritesY + 152;
-        int cardWidth = 50;
-        int cardHeight = 50;
-        int gapX = 18;
-        int gapY = 26;
+        int innerX = contentX + 12;
+        int innerWidth = contentWidth - 24;
+        int baseY = contentY + 16 - scrollY;
 
-        QuickSite[] favorites = new QuickSite[] {
-                new QuickSite("Saved\nTabs", "", 0, 0, QuickIcon.TABS, QuickAction.SAVED_TABS),
-                new QuickSite("Apple", "", 0, 0, QuickIcon.CIRCLE, QuickAction.NONE),
-                new QuickSite("Bing", "", 0, 0, QuickIcon.B, QuickAction.NONE),
-                new QuickSite("Google", "", 0, 0, QuickIcon.G, QuickAction.NONE),
-                new QuickSite("Yahoo", "", 0, 0, QuickIcon.TEXT, QuickAction.NONE),
-                new QuickSite("VSIA", "", 0, 0, QuickIcon.OMEGA, QuickAction.NONE)
-        };
+        int favoritesTitleY = baseY;
+        int favoritesGridY = favoritesTitleY + 20;
 
-        for (int i = 0; i < favorites.length; i++) {
+        List<QuickSite> favorites = new ArrayList<>();
+        favorites.add(new QuickSite("Saved\nTabs", 0xFFEFF2F8, COLOR_ACCENT, QuickIcon.TABS, QuickAction.SAVED_TABS));
+        favorites.add(new QuickSite("Apple", 0xFFF6F6F8, 0xFF8E8E93, QuickIcon.CIRCLE, QuickAction.NONE));
+        favorites.add(new QuickSite("Bing", 0xFFF6F6F8, 0xFF2E9BFF, QuickIcon.B, QuickAction.NONE));
+        favorites.add(new QuickSite("Google", 0xFFF6F6F8, 0xFF4285F4, QuickIcon.G, QuickAction.NONE));
+        favorites.add(new QuickSite("Yahoo", 0xFF4C1FB8, 0xFFFFFFFF, QuickIcon.TEXT, QuickAction.NONE));
+        favorites.add(new QuickSite("VSIA", 0xFF2D7CFF, 0xFFFFFFFF, QuickIcon.OMEGA, QuickAction.NONE));
+
+        GridMetrics grid = createGridMetrics(innerWidth, 4, 40, 10);
+        int cardHeight = 40;
+        int rowGap = 22;
+
+        for (int i = 0; i < favorites.size(); i++) {
             int row = i / 4;
             int col = i % 4;
-            int x = startX + col * (cardWidth + gapX);
-            int y = favoritesY + row * (cardHeight + gapY);
+            int x = innerX + col * (grid.cellWidth + grid.gap);
+            int y = favoritesGridY + row * (cardHeight + rowGap + 20);
 
-            if (inside(mouseX, mouseY, x, y, cardWidth, cardHeight + 24)) {
-                if (favorites[i].action() == QuickAction.SAVED_TABS) {
+            if (inside(mouseX, mouseY, x, y, grid.cellWidth, cardHeight + 24)) {
+                if (favorites.get(i).action() == QuickAction.SAVED_TABS) {
                     openOverlay(BrowserOverlay.TABS);
                     return true;
                 }
 
-                if (favorites[i].action() != QuickAction.NONE) {
-                    navigateQuickAction(favorites[i].action());
-                    return true;
-                }
-            }
-        }
-
-        QuickSite[] frequent = new QuickSite[] {
-                new QuickSite("Lab", "", 0, 0, QuickIcon.TOWER, QuickAction.QUICK_DOMAIN_LAB),
-                new QuickSite("Server", "", 0, 0, QuickIcon.V, QuickAction.QUICK_DOMAIN_SERVER),
-                new QuickSite("Rack", "", 0, 0, QuickIcon.RACK, QuickAction.QUICK_DOMAIN_RACK),
-                new QuickSite("Video", "", 0, 0, QuickIcon.PLAY, QuickAction.NONE)
-        };
-
-        for (int i = 0; i < frequent.length; i++) {
-            int x = startX + i * (cardWidth + gapX);
-
-            if (inside(mouseX, mouseY, x, frequentY, cardWidth, cardHeight + 24)) {
-                navigateQuickAction(frequent[i].action());
+                navigateQuickAction(favorites.get(i).action());
                 return true;
             }
         }
 
-        int sharedY = frequentY + 114;
-        int sharedWidth = 102;
-        int sharedHeight = 98;
-        int sharedGap = 18;
-        int leftX = contentX + 14;
+        int favoritesRows = (favorites.size() + 3) / 4;
+        int afterFavoritesY = favoritesGridY + favoritesRows * cardHeight + (favoritesRows - 1) * (rowGap + 20) + 20;
+        int frequentTitleY = afterFavoritesY + 10;
+        int frequentGridY = frequentTitleY + 20;
 
-        if (inside(mouseX, mouseY, leftX, sharedY, sharedWidth, sharedHeight)) {
+        List<QuickSite> frequent = new ArrayList<>();
+        frequent.add(new QuickSite("Lab", 0xFFC03A2B, 0xFFFFFFFF, QuickIcon.TOWER, QuickAction.QUICK_DOMAIN_LAB));
+        frequent.add(new QuickSite("Server", 0xFFE0552E, 0xFFFFFFFF, QuickIcon.V, QuickAction.QUICK_DOMAIN_SERVER));
+        frequent.add(new QuickSite("Rack", 0xFFF0F0F1, 0xFF5B5B60, QuickIcon.RACK, QuickAction.QUICK_DOMAIN_RACK));
+        frequent.add(new QuickSite("Video", 0xFFF04C3E, 0xFFFFFFFF, QuickIcon.PLAY, QuickAction.NONE));
+
+        for (int i = 0; i < frequent.size(); i++) {
+            int x = innerX + i * (grid.cellWidth + grid.gap);
+
+            if (inside(mouseX, mouseY, x, frequentGridY, grid.cellWidth, cardHeight + 24)) {
+                navigateQuickAction(frequent.get(i).action());
+                return true;
+            }
+        }
+
+        int sharedHeaderY = frequentGridY + cardHeight + 28 + 10;
+        int sharedCardsY = sharedHeaderY + 20;
+
+        int gap = 10;
+        int sharedWidth = (innerWidth - gap) / 2;
+        int sharedHeight = 84;
+
+        if (inside(mouseX, mouseY, innerX, sharedCardsY, sharedWidth, sharedHeight)) {
             browser.navigate("a.w128lab.com");
             syncAddressFromBrowser();
             return true;
         }
 
-        if (inside(mouseX, mouseY, leftX + sharedWidth + sharedGap, sharedY, sharedWidth, sharedHeight)) {
+        if (inside(mouseX, mouseY, innerX + sharedWidth + gap, sharedCardsY, sharedWidth, sharedHeight)) {
             browser.navigate("demo.w128lab.com");
             syncAddressFromBrowser();
             return true;
         }
 
-        if (inside(mouseX, mouseY, contentX + contentWidth - 70, sharedY - 20, 60, 18)) {
+        if (inside(mouseX, mouseY, contentX + contentWidth - 70, sharedHeaderY, 60, 18)) {
             openOverlay(BrowserOverlay.BOOKMARKS);
             return true;
         }
@@ -931,31 +928,39 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
         int width = PHONE_WIDTH - 32;
 
         int rowY = y + 58;
+
         if (inside(mouseX, mouseY, x + 12, rowY, width - 24, 40)) {
             String current = browser.currentUrl();
+
             if (!current.isBlank()) {
                 Minecraft.getInstance().keyboardHandler.setClipboard(displayAddress(current));
                 showToast("Address Copied");
             }
+
             closeOverlay();
             return true;
         }
 
         rowY += 46;
+
         if (inside(mouseX, mouseY, x + 12, rowY, width - 24, 40)) {
             String current = browser.currentUrl();
+
             if (!current.isBlank()) {
                 boolean added = browser.toggleBookmark(current);
                 showToast(added ? "Bookmark Added" : "Bookmark Removed");
             }
+
             closeOverlay();
             return true;
         }
 
         rowY += 46;
+
         if (inside(mouseX, mouseY, x + 12, rowY, width - 24, 40)) {
             String current = browser.currentUrl();
             boolean opened = browser.newTab(current);
+
             if (opened) {
                 closeOverlay();
                 forcePageRefresh();
@@ -963,6 +968,7 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             } else {
                 showToast("Maximum Tabs Reached");
             }
+
             return true;
         }
 
@@ -989,10 +995,12 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
 
         if (inside(mouseX, mouseY, x + width - 102, y + 8, 92, 24)) {
             String current = browser.currentUrl();
+
             if (!current.isBlank()) {
                 boolean added = browser.toggleBookmark(current);
                 showToast(added ? "Bookmark Added" : "Bookmark Removed");
             }
+
             return true;
         }
 
@@ -1038,12 +1046,14 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
 
         if (inside(mouseX, mouseY, x + width - 44, y + 8, 34, 24)) {
             boolean opened = browser.newTab();
+
             if (opened) {
                 closeOverlay();
                 forcePageRefresh();
             } else {
                 showToast("Maximum Tabs Reached");
             }
+
             return true;
         }
 
@@ -1083,6 +1093,7 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
                 closeOverlay();
                 return true;
             }
+
             return true;
         }
 
@@ -1134,7 +1145,14 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
         }
 
         if (inside(mouseX, mouseY, contentX, contentY, contentWidth, contentHeight)) {
-            int maximum = Math.max(0, lastRender.totalHeight() - contentHeight);
+            int maximum;
+
+            if (browser.response() == null) {
+                maximum = Math.max(0, startPageTotalHeight - contentHeight);
+            } else {
+                maximum = Math.max(0, lastRender.totalHeight() - contentHeight);
+            }
+
             scrollY = clampScroll(scrollY - (int) Math.round(delta * 20.0D), maximum);
             return true;
         }
@@ -1173,9 +1191,11 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
     private void openOverlay(BrowserOverlay next) {
         overlay = next;
         overlayScroll = 0;
+
         if (addressField != null) {
             addressField.setFocused(false);
         }
+
         setFocused(null);
     }
 
@@ -1216,9 +1236,22 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             int color
     ) {
         String[] lines = text.split("\n");
+
         for (int i = 0; i < lines.length; i++) {
             PhoneText.drawCentered(graphics, font, lines[i], centerX, startY + i * 11, color);
         }
+    }
+
+    private GridMetrics createGridMetrics(
+            int availableWidth,
+            int columns,
+            int preferredCellWidth,
+            int minGap
+    ) {
+        int cellWidth = Math.min(preferredCellWidth, (availableWidth - minGap * (columns - 1)) / columns);
+        cellWidth = Math.max(34, cellWidth);
+        int gap = columns > 1 ? Math.max(6, (availableWidth - cellWidth * columns) / (columns - 1)) : 0;
+        return new GridMetrics(cellWidth, gap);
     }
 
     private void drawQuickSiteSquare(
@@ -1248,39 +1281,25 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
                 roundedRect(graphics, centerX - 8, centerY - 4, 5, 8, 3, 0xFFFFFFFF);
                 roundedRect(graphics, centerX + 3, centerY - 4, 5, 8, 3, 0xFFFFFFFF);
             }
-            case CIRCLE -> {
-                roundedRect(graphics, centerX - 10, centerY - 10, 20, 20, 10, color);
-            }
-            case B -> {
-                PhoneText.drawCentered(graphics, font, "b", centerX, centerY - 4, color);
-            }
-            case G -> {
-                PhoneText.drawCentered(graphics, font, "G", centerX, centerY - 4, color);
-            }
-            case TEXT -> {
-                PhoneText.drawCentered(graphics, font, "Y!", centerX, centerY - 4, color);
-            }
-            case OMEGA -> {
-                PhoneText.drawCentered(graphics, font, "Ω", centerX, centerY - 4, color);
-            }
+            case CIRCLE -> roundedRect(graphics, centerX - 9, centerY - 9, 18, 18, 9, color);
+            case B -> PhoneText.drawCentered(graphics, font, "b", centerX, centerY - 4, color);
+            case G -> PhoneText.drawCentered(graphics, font, "G", centerX, centerY - 4, color);
+            case TEXT -> PhoneText.drawCentered(graphics, font, "Y!", centerX, centerY - 4, color);
+            case OMEGA -> PhoneText.drawCentered(graphics, font, "O", centerX, centerY - 4, color);
             case TOWER -> {
                 graphics.fill(centerX - 3, centerY - 10, centerX + 3, centerY + 8, color);
                 graphics.fill(centerX - 6, centerY - 7, centerX - 3, centerY - 4, color);
                 graphics.fill(centerX + 3, centerY - 7, centerX + 6, centerY - 4, color);
                 graphics.fill(centerX - 7, centerY + 8, centerX + 7, centerY + 10, color);
             }
-            case V -> {
-                PhoneText.drawCentered(graphics, font, "V", centerX, centerY - 4, color);
-            }
+            case V -> PhoneText.drawCentered(graphics, font, "V", centerX, centerY - 4, color);
             case RACK -> {
                 roundedRect(graphics, centerX - 8, centerY - 10, 16, 20, 4, color);
                 graphics.fill(centerX - 5, centerY - 6, centerX + 5, centerY - 4, 0xFFFFFFFF);
                 graphics.fill(centerX - 5, centerY - 1, centerX + 5, centerY + 1, 0xFFFFFFFF);
                 graphics.fill(centerX - 5, centerY + 4, centerX + 5, centerY + 6, 0xFFFFFFFF);
             }
-            case PLAY -> {
-                drawPlayTriangle(graphics, centerX - 4, centerY - 6, color);
-            }
+            case PLAY -> drawPlayTriangle(graphics, centerX - 4, centerY - 6, color);
         }
     }
 
@@ -1456,11 +1475,16 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
 
     private record QuickSite(
             String title,
-            String url,
             int bgColor,
             int iconColor,
             QuickIcon icon,
             QuickAction action
+    ) {
+    }
+
+    private record GridMetrics(
+            int cellWidth,
+            int gap
     ) {
     }
 }
