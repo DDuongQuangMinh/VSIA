@@ -1,6 +1,8 @@
 package com.k1ngtle.vsia.signality.engineering.channel;
 
 import com.k1ngtle.vsia.signality.engineering.math.RfMath;
+import com.k1ngtle.vsia.signality.engineering.reality.RfMicroTiming;
+import com.k1ngtle.vsia.signality.engineering.reality.RfMicroTimingRegistry;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
 
@@ -54,6 +56,12 @@ public final class RfChannelEnvironment {
                 RfTransmissionRegistry.get(
                         desiredTransmissionId,
                         tick
+                );
+
+        // CELLULAR_MICROSECOND_TEMPORAL_OVERLAP_V1
+        RfMicroTiming desiredMicroTiming =
+                RfMicroTimingRegistry.get(
+                        desiredTransmissionId
                 );
 
         double materialLossDb = 0.0;
@@ -209,8 +217,28 @@ public final class RfChannelEnvironment {
                                         : 0.0
                         );
 
+                RfMicroTiming interfererMicroTiming =
+                        RfMicroTimingRegistry.get(
+                                interferer.transmissionId()
+                        );
+
+                /*
+                 * Prefer microsecond RF overlap whenever both transmissions
+                 * have registered RF micro-timing. Minecraft still executes
+                 * networking on 50 ms server ticks, but cellular TDD/PRACH
+                 * must not be treated as colliding merely because DL and UL
+                 * occupy different micro-slots inside the same game tick.
+                 */
                 double temporalOverlap =
-                        desired == null
+                        desiredMicroTiming != null
+                                && interfererMicroTiming != null
+                                ? TemporalOverlap.fractionOfDesired(
+                                desiredMicroTiming.startMicros(),
+                                desiredMicroTiming.endMicros(),
+                                interfererMicroTiming.startMicros(),
+                                interfererMicroTiming.endMicros()
+                        )
+                                : desired == null
                                 ? (
                                 interferer.activeAt(
                                         tick
