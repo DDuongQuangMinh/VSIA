@@ -35,12 +35,12 @@ public final class PhoneBrowserServerService {
     ) {
         BrowserRequest request = new BrowserRequest(rawUrl);
 
-        if (request.host().isBlank()) {
+        if (request.authority().isBlank()) {
             return ServerPage.error(
-                    request.url(),
+                    request.displayUrl(),
                     400,
                     "Bad Request",
-                    "Invalid website hostname.",
+                    "Invalid website address.",
                     transport
             );
         }
@@ -48,43 +48,34 @@ public final class PhoneBrowserServerService {
         ServerLevel level = player.serverLevel();
         long now = System.currentTimeMillis();
 
-        Optional<InternetDnsAnswer> answer =
-                InternetRegistrySavedData.get(level)
-                        .resolveFirst(
-                                request.host(),
-                                "A",
-                                now
-                        );
+        RequestTarget target =
+                resolveTarget(level, request, now);
 
-        if (answer.isEmpty()) {
+        if (!target.success()) {
             return ServerPage.error(
-                    request.url(),
-                    404,
-                    "Server Not Found",
-                    "ISP1 DNS has no A record for "
-                            + request.host()
-                            + ".",
+                    target.canonicalUrl(),
+                    target.statusCode(),
+                    target.reason(),
+                    target.body(),
                     transport
             );
         }
 
-        String rackIp = answer.get().value();
-
         W128HttpResponse http =
                 W128WebHostService.serve(
                         level,
-                        rackIp,
-                        request.host(),
-                        request.path(),
+                        target.rackIp(),
+                        target.host(),
+                        target.path(),
                         now
                 );
 
         if (http == null) {
             return ServerPage.error(
-                    request.url(),
+                    target.canonicalUrl(),
                     404,
                     "Not Found",
-                    "No W1.28+ published website is available for this host.",
+                    "No W1.28 published website is available for this address.",
                     transport
             );
         }
@@ -98,29 +89,128 @@ public final class PhoneBrowserServerService {
                 .contains("html")) {
             styleSheet = loadStyleSheets(
                     level,
-                    rackIp,
-                    request,
+                    target,
                     http.body(),
                     now
             );
         }
 
         return new ServerPage(
-                request.url(),
+                target.canonicalUrl(),
                 http.status(),
                 http.reason(),
                 http.contentType(),
                 http.body(),
                 styleSheet,
                 normalizeTransport(transport),
-                routeSummary(transport)
+                routeSummary(
+                        transport,
+                        target
+                )
+        );
+    }
+
+    private static RequestTarget resolveTarget(
+            ServerLevel level,
+            BrowserRequest request,
+            long now
+    ) {
+        if (request.isPureRackAddress()) {
+            BrowserRequest.DirectRackTarget target =
+                    request.directRackTarget();
+
+            if (target == null) {
+                return RequestTarget.error(
+                        request.displayUrl(),
+                        400,
+                        "Bad Request",
+                        "Direct Server Rack browsing needs a domain target.\n"
+                                + "Use either:\n"
+                                + "domain.com@10.0.1.20\n"
+                                + "or\n"
+                                + "10.0.1.20/domain.com"
+                );
+            }
+
+            return RequestTarget.success(
+                    canonicalDirectUrl(
+                            target.host(),
+                            target.rackIp(),
+                            target.path()
+                    ),
+                    target.rackIp(),
+                    target.host(),
+                    target.path()
+            );
+        }
+
+        if (request.usesDirectRack()) {
+            String rackIp = request.directRackIp();
+            String host = request.host();
+            String path = request.path();
+
+            if (host.isBlank()) {
+                return RequestTarget.error(
+                        request.displayUrl(),
+                        400,
+                        "Bad Request",
+                        "The direct address is missing the website hostname."
+                );
+            }
+
+            return RequestTarget.success(
+                    canonicalDirectUrl(
+                            host,
+                            rackIp,
+                            path
+                    ),
+                    rackIp,
+                    host,
+                    path
+            );
+        }
+
+        String host = request.host();
+
+        if (host.isBlank()) {
+            return RequestTarget.error(
+                    request.displayUrl(),
+                    400,
+                    "Bad Request",
+                    "Invalid website hostname."
+            );
+        }
+
+        Optional<InternetDnsAnswer> answer =
+                InternetRegistrySavedData.get(level)
+                        .resolveFirst(
+                                host,
+                                "A",
+                                now
+                        );
+
+        if (answer.isEmpty()) {
+            return RequestTarget.error(
+                    request.displayUrl(),
+                    404,
+                    "Server Not Found",
+                    "ISP1 DNS has no A record for "
+                            + host
+                            + "."
+            );
+        }
+
+        return RequestTarget.success(
+                request.displayUrl(),
+                answer.get().value(),
+                host,
+                request.path()
         );
     }
 
     private static String loadStyleSheets(
             ServerLevel level,
-            String rackIp,
-            BrowserRequest request,
+            RequestTarget target,
             String html,
             long now
     ) {
@@ -132,29 +222,58 @@ public final class PhoneBrowserServerService {
 
         StringBuilder combined = new StringBuilder();
         int loaded = 0;
+        String baseUrl = target.canonicalUrl();
 
         for (String href : hrefs) {
             if (loaded >= 4) {
                 break;
             }
 
-            String resolved = BrowserRequest.resolve(
-                    request.url(),
-                    href
-            );
+            String resolved =
+                    BrowserRequest.resolve(
+                            baseUrl,
+                            href
+                    );
 
-            BrowserRequest cssRequest = new BrowserRequest(resolved);
+            BrowserRequest cssRequest =
+                    new BrowserRequest(resolved);
 
-            if (!request.host().equals(cssRequest.host())) {
+            String cssHost;
+            String cssPath;
+            String cssRackIp;
+
+            if (cssRequest.usesDirectRack()) {
+                cssHost = cssRequest.host();
+                cssPath = cssRequest.path();
+                cssRackIp = cssRequest.directRackIp();
+            } else if (cssRequest.isPureRackAddress()) {
+                BrowserRequest.DirectRackTarget direct =
+                        cssRequest.directRackTarget();
+
+                if (direct == null) {
+                    continue;
+                }
+
+                cssHost = direct.host();
+                cssPath = direct.path();
+                cssRackIp = direct.rackIp();
+            } else {
+                cssHost = cssRequest.host();
+                cssPath = cssRequest.path();
+                cssRackIp = target.rackIp();
+            }
+
+            if (!target.host().equals(cssHost)
+                    || !target.rackIp().equals(cssRackIp)) {
                 continue;
             }
 
             W128HttpResponse css =
                     W128WebHostService.serve(
                             level,
-                            rackIp,
-                            cssRequest.host(),
-                            cssRequest.path(),
+                            cssRackIp,
+                            cssHost,
+                            cssPath,
                             now
                     );
 
@@ -196,9 +315,10 @@ public final class PhoneBrowserServerService {
     private static List<String> styleSheetHrefs(String html) {
         List<String> result = new ArrayList<>();
 
-        Matcher matcher = LINK_TAG.matcher(
-                html == null ? "" : html
-        );
+        Matcher matcher =
+                LINK_TAG.matcher(
+                        html == null ? "" : html
+                );
 
         while (matcher.find()) {
             String tag = matcher.group();
@@ -219,9 +339,10 @@ public final class PhoneBrowserServerService {
     }
 
     private static String attribute(String source, String name) {
-        Matcher matcher = ATTRIBUTE.matcher(
-                source == null ? "" : source
-        );
+        Matcher matcher =
+                ATTRIBUTE.matcher(
+                        source == null ? "" : source
+                );
 
         while (matcher.find()) {
             if (!matcher.group(1).equalsIgnoreCase(name)) {
@@ -236,6 +357,27 @@ public final class PhoneBrowserServerService {
         return "";
     }
 
+    private static String canonicalDirectUrl(
+            String host,
+            String rackIp,
+            String path
+    ) {
+        if (host == null || host.isBlank() || rackIp == null || rackIp.isBlank()) {
+            return "";
+        }
+
+        String normalizedPath =
+                path == null || path.isBlank()
+                        ? "/"
+                        : path;
+
+        if ("/".equals(normalizedPath)) {
+            return host + "@" + rackIp;
+        }
+
+        return host + "@" + rackIp + normalizedPath;
+    }
+
     private static String normalizeTransport(String transport) {
         if ("CELLULAR".equalsIgnoreCase(transport)) {
             return "CELLULAR";
@@ -244,12 +386,22 @@ public final class PhoneBrowserServerService {
         return "WIFI";
     }
 
-    private static String routeSummary(String transport) {
+    private static String routeSummary(
+            String transport,
+            RequestTarget target
+    ) {
+        String destination =
+                target.host()
+                        + " @ "
+                        + target.rackIp();
+
         if ("CELLULAR".equalsIgnoreCase(transport)) {
-            return "Browser → Cellular → UE → gNB → 5G Core → UPF → DNS → HTTP";
+            return "Browser → Cellular → UE → gNB → 5G Core → UPF → DNS/Direct → HTTP → "
+                    + destination;
         }
 
-        return "Browser → Wi-Fi → 802.11 → AP → Router → DNS → HTTP";
+        return "Browser → Wi-Fi → 802.11 → AP → Router → DNS/Direct → HTTP → "
+                + destination;
     }
 
     public record ServerPage(
@@ -277,7 +429,62 @@ public final class PhoneBrowserServerService {
                     body,
                     "",
                     normalizeTransport(transport),
-                    PhoneBrowserServerService.routeSummary(transport)
+                    PhoneBrowserServerService.routeSummary(
+                            transport,
+                            RequestTarget.error(
+                                    url,
+                                    statusCode,
+                                    reason,
+                                    ""
+                            )
+                    )
+            );
+        }
+    }
+
+    private record RequestTarget(
+            boolean success,
+            String canonicalUrl,
+            String rackIp,
+            String host,
+            String path,
+            int statusCode,
+            String reason,
+            String body
+    ) {
+        private static RequestTarget success(
+                String canonicalUrl,
+                String rackIp,
+                String host,
+                String path
+        ) {
+            return new RequestTarget(
+                    true,
+                    canonicalUrl,
+                    rackIp,
+                    host,
+                    path == null || path.isBlank() ? "/" : path,
+                    200,
+                    "",
+                    ""
+            );
+        }
+
+        private static RequestTarget error(
+                String canonicalUrl,
+                int statusCode,
+                String reason,
+                String body
+        ) {
+            return new RequestTarget(
+                    false,
+                    canonicalUrl == null ? "" : canonicalUrl,
+                    "unresolved",
+                    "unresolved",
+                    "/",
+                    statusCode,
+                    reason,
+                    body
             );
         }
     }
