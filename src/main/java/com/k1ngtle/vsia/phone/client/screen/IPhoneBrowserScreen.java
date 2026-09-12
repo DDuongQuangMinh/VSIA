@@ -15,18 +15,27 @@ import org.lwjgl.glfw.GLFW;
 import java.util.List;
 
 public class IPhoneBrowserScreen extends IPhoneScreen {
-    private final PhoneBrowser browser =
-            PhoneBrowser.get();
+    private static final int COLOR_PHONE_SHELL = 0xFF0D0D10;
+    private static final int COLOR_SURFACE = 0xFFF2F2F7;
+    private static final int COLOR_SURFACE_2 = 0xFFE9E9EF;
+    private static final int COLOR_CARD = 0xFFFFFFFF;
+    private static final int COLOR_TEXT_PRIMARY = 0xFF111111;
+    private static final int COLOR_TEXT_SECONDARY = 0xFF55565B;
+    private static final int COLOR_TEXT_TERTIARY = 0xFF8E8E93;
+    private static final int COLOR_ACCENT = 0xFF007AFF;
+    private static final int COLOR_ACCENT_SOFT = 0x22007AFF;
+    private static final int COLOR_RED = 0xFFFF5D57;
+    private static final int COLOR_DIVIDER = 0xFFD6D6DC;
+    private static final int COLOR_SHADOW = 0x22000000;
+
+    private final PhoneBrowser browser = PhoneBrowser.get();
 
     private PhoneAddressField addressField;
     private BrowserResponse lastResponse;
     private PhoneHtmlDocument document;
+    private PhoneHtmlRenderer.RenderResult lastRender = PhoneHtmlRenderer.RenderResult.empty();
 
-    private PhoneHtmlRenderer.RenderResult lastRender =
-            PhoneHtmlRenderer.RenderResult.empty();
-
-    private BrowserOverlay overlay =
-            BrowserOverlay.NONE;
+    private BrowserOverlay overlay = BrowserOverlay.NONE;
 
     private int overlayScroll;
     private int scrollY;
@@ -44,67 +53,36 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
     private long toastUntil;
 
     public IPhoneBrowserScreen() {
-        super(
-                Component.literal(
-                        "Browser"
-                )
-        );
+        super(Component.literal("Browser"));
     }
 
     @Override
     protected void init() {
         super.init();
 
-        contentX =
-                phoneX + 8;
+        contentX = phoneX + 10;
+        contentY = phoneY + 40;
+        contentWidth = PHONE_WIDTH - 20;
 
-        contentY =
-                phoneY + 38;
+        browserPanelY = phoneY + PHONE_HEIGHT - 120;
+        controlsY = browserPanelY + 12;
+        addressY = browserPanelY + 42;
 
-        contentWidth =
-                PHONE_WIDTH - 16;
+        contentHeight = browserPanelY - contentY - 6;
 
-        browserPanelY =
-                phoneY
-                        + PHONE_HEIGHT
-                        - 118;
-
-        controlsY =
-                browserPanelY + 8;
-
-        addressY =
-                browserPanelY + 39;
-
-        contentHeight =
-                browserPanelY
-                        - contentY;
-
-        addressField =
-                new PhoneAddressField(
-                        font,
-                        phoneX + 43,
-                        addressY + 7,
-                        PHONE_WIDTH - 82,
-                        20
-                );
-
-        addressField.setMaxLength(
-                512
+        addressField = new PhoneAddressField(
+                font,
+                phoneX + 43,
+                addressY + 6,
+                PHONE_WIDTH - 82,
+                22
         );
 
-        addressField.setPlaceholder(
-                "Search or enter website"
-        );
+        addressField.setMaxLength(512);
+        addressField.setPlaceholder("Search or enter website");
+        addressField.setValue(displayAddress(browser.currentUrl()));
 
-        addressField.setValue(
-                displayAddress(
-                        browser.currentUrl()
-                )
-        );
-
-        addRenderableWidget(
-                addressField
-        );
+        addRenderableWidget(addressField);
     }
 
     @Override
@@ -115,28 +93,15 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             return;
         }
 
-        if (overlay
-                != BrowserOverlay.NONE) {
-            addressField.setFocused(
-                    false
-            );
-
+        if (overlay != BrowserOverlay.NONE) {
+            addressField.setFocused(false);
             return;
         }
 
-        if (!addressField
-                .isFocused()) {
-            String current =
-                    displayAddress(
-                            browser.currentUrl()
-                    );
-
-            if (!addressField
-                    .getValue()
-                    .equals(current)) {
-                addressField.setValue(
-                        current
-                );
+        if (!addressField.isFocused()) {
+            String current = displayAddress(browser.currentUrl());
+            if (!addressField.getValue().equals(current)) {
+                addressField.setValue(current);
             }
         }
     }
@@ -148,112 +113,73 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             int mouseY,
             float partialTick
     ) {
-        renderPhoneShell(
-                graphics,
-                0xFF0D0D0F
-        );
-
-        renderStatusBar(
-                graphics
-        );
+        renderPhoneShell(graphics, COLOR_PHONE_SHELL);
+        renderStatusBar(graphics);
 
         refreshDocument();
 
-        graphics.fill(
+        drawSoftShadow(
+                graphics,
                 contentX,
                 contentY,
-                contentX + contentWidth,
-                contentY + contentHeight,
-                0xFFFFFFFF
+                contentWidth,
+                contentHeight + 2,
+                18
+        );
+
+        roundedRect(
+                graphics,
+                contentX,
+                contentY,
+                contentWidth,
+                contentHeight,
+                16,
+                COLOR_CARD
         );
 
         if (browser.loading()) {
-            renderLoading(
-                    graphics
-            );
-        } else if (browser.response()
-                == null) {
-            renderStartPage(
-                    graphics
-            );
+            renderLoading(graphics);
+        } else if (browser.response() == null) {
+            renderStartPage(graphics);
         } else {
-            BrowserResponse response =
-                    browser.response();
+            BrowserResponse response = browser.response();
 
-            if (response.statusCode()
-                    == 0) {
-                renderNetworkError(
-                        graphics,
-                        response
-                );
+            if (response.statusCode() == 0) {
+                renderNetworkError(graphics, response);
             } else {
-                renderWebsite(
-                        graphics,
-                        response
-                );
+                renderWebsite(graphics, response);
             }
         }
 
-        renderBrowserChrome(
-                graphics
-        );
+        renderBrowserChrome(graphics);
+        renderHomeIndicator(graphics);
 
-        renderHomeIndicator(
-                graphics
-        );
+        super.render(graphics, mouseX, mouseY, partialTick);
 
-        super.render(
-                graphics,
-                mouseX,
-                mouseY,
-                partialTick
-        );
-
-        if (overlay
-                != BrowserOverlay.NONE) {
-            renderOverlay(
-                    graphics,
-                    mouseX,
-                    mouseY
-            );
+        if (overlay != BrowserOverlay.NONE) {
+            renderOverlay(graphics, mouseX, mouseY);
         }
 
-        renderToast(
-                graphics
-        );
+        renderToast(graphics);
     }
 
     private void refreshDocument() {
-        BrowserResponse response =
-                browser.response();
+        BrowserResponse response = browser.response();
 
-        if (response
-                == lastResponse) {
+        if (response == lastResponse) {
             return;
         }
 
-        lastResponse =
-                response;
-
+        lastResponse = response;
         scrollY = 0;
 
-        if (response == null
-                || response.statusCode()
-                == 0) {
+        if (response == null || response.statusCode() == 0) {
             document = null;
-
-            lastRender =
-                    PhoneHtmlRenderer
-                            .RenderResult
-                            .empty();
-
+            lastRender = PhoneHtmlRenderer.RenderResult.empty();
             return;
         }
 
-        document =
-                PhoneHtmlDocument.from(
-                        response
-                );
+        document = PhoneHtmlDocument.from(response);
     }
 
     private void forcePageRefresh() {
@@ -261,7 +187,6 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
         document = null;
         scrollY = 0;
         overlayScroll = 0;
-
         syncAddressFromBrowser();
     }
 
@@ -273,41 +198,34 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             return;
         }
 
-        lastRender =
-                PhoneHtmlRenderer.render(
-                        graphics,
-                        font,
-                        document,
-                        contentX,
-                        contentY,
-                        contentWidth,
-                        contentHeight,
-                        scrollY
-                );
+        lastRender = PhoneHtmlRenderer.render(
+                graphics,
+                font,
+                document,
+                contentX,
+                contentY,
+                contentWidth,
+                contentHeight,
+                scrollY
+        );
 
         if (!response.success()) {
-            String status =
-                    response.statusCode()
-                            + " "
-                            + response.reason();
-
-            graphics.fill(
-                    contentX,
-                    contentY,
-                    contentX
-                            + contentWidth,
-                    contentY + 20,
-                    0xF2FF6961
+            roundedRect(
+                    graphics,
+                    contentX + 8,
+                    contentY + 8,
+                    contentWidth - 16,
+                    28,
+                    10,
+                    COLOR_RED
             );
 
             PhoneText.drawCentered(
                     graphics,
                     font,
-                    status,
-                    phoneX
-                            + PHONE_WIDTH
-                            / 2,
-                    contentY + 6,
+                    response.statusCode() + " " + response.reason(),
+                    phoneX + PHONE_WIDTH / 2,
+                    contentY + 17,
                     0xFFFFFFFF
             );
         }
@@ -316,128 +234,195 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
     private void renderLoading(
             GuiGraphics graphics
     ) {
-        graphics.fill(
+        roundedRect(
+                graphics,
                 contentX,
                 contentY,
-                contentX
-                        + contentWidth,
-                contentY
-                        + contentHeight,
-                0xFFF2F2F7
+                contentWidth,
+                contentHeight,
+                16,
+                0xFFFAFAFC
         );
 
-        int centerX =
-                phoneX
-                        + PHONE_WIDTH
-                        / 2;
+        int centerX = phoneX + PHONE_WIDTH / 2;
+        int centerY = contentY + contentHeight / 2 - 22;
 
-        int centerY =
-                contentY
-                        + contentHeight
-                        / 2;
-
-        drawCompass(
-                graphics,
-                centerX,
-                centerY - 30,
-                36
-        );
+        drawCompass(graphics, centerX, centerY - 28, 42);
 
         PhoneText.drawCentered(
                 graphics,
                 font,
                 "Loading Website",
                 centerX,
-                centerY + 14,
-                0xFF1C1C1E
+                centerY + 20,
+                COLOR_TEXT_PRIMARY
         );
 
-        int progressWidth =
-                PHONE_WIDTH - 30;
-
-        int phase =
-                (int) (
-                        System.currentTimeMillis()
-                                / 80L
-                                % progressWidth
-                );
-
-        graphics.fill(
-                phoneX + 15,
-                contentY,
-                phoneX
-                        + 15
-                        + phase,
-                contentY + 2,
-                0xFF0A84FF
+        PhoneText.drawCentered(
+                graphics,
+                font,
+                "Please wait…",
+                centerX,
+                centerY + 38,
+                COLOR_TEXT_TERTIARY
         );
+
+        int barX = phoneX + 38;
+        int barY = centerY + 60;
+        int barWidth = PHONE_WIDTH - 76;
+
+        roundedRect(
+                graphics,
+                barX,
+                barY,
+                barWidth,
+                5,
+                3,
+                0xFFE1E1E7
+        );
+
+        int animated = (int) (System.currentTimeMillis() / 12L % (barWidth + 24)) - 24;
+        int fillStart = Math.max(0, animated);
+        int fillEnd = Math.min(barWidth, animated + 24);
+
+        if (fillEnd > fillStart) {
+            roundedRect(
+                    graphics,
+                    barX + fillStart,
+                    barY,
+                    fillEnd - fillStart,
+                    5,
+                    3,
+                    COLOR_ACCENT
+            );
+        }
     }
 
     private void renderStartPage(
             GuiGraphics graphics
     ) {
-        graphics.fill(
+        roundedRect(
+                graphics,
                 contentX,
                 contentY,
-                contentX
-                        + contentWidth,
-                contentY
-                        + contentHeight,
-                0xFFF7F7FA
+                contentWidth,
+                contentHeight,
+                16,
+                0xFFFBFBFD
         );
 
-        int centerX =
-                phoneX
-                        + PHONE_WIDTH
-                        / 2;
+        int centerX = phoneX + PHONE_WIDTH / 2;
+        int topY = contentY + 42;
 
-        int centerY =
-                contentY
-                        + contentHeight
-                        / 2
-                        - 28;
-
-        drawCompass(
-                graphics,
-                centerX,
-                centerY - 34,
-                44
-        );
+        drawCompass(graphics, centerX, topY + 14, 46);
 
         PhoneText.drawCentered(
                 graphics,
                 font,
                 "Safari",
                 centerX,
-                centerY + 14,
-                0xFF111111
+                topY + 54,
+                COLOR_TEXT_PRIMARY
         );
 
         PhoneText.drawCentered(
                 graphics,
                 font,
-                "Browse published VS:IA websites",
+                "Clean browser for VS:IA websites",
                 centerX,
-                centerY + 37,
-                0xFF48484A
+                topY + 76,
+                COLOR_TEXT_SECONDARY
+        );
+
+        roundedRect(
+                graphics,
+                phoneX + 34,
+                topY + 104,
+                PHONE_WIDTH - 68,
+                74,
+                16,
+                COLOR_SURFACE
         );
 
         PhoneText.drawCentered(
                 graphics,
                 font,
-                "by domain or direct Server Rack.",
+                "Quick Start",
                 centerX,
-                centerY + 52,
-                0xFF6E6E73
+                topY + 116,
+                COLOR_TEXT_PRIMARY
         );
 
         PhoneText.drawCentered(
                 graphics,
                 font,
-                "Tap the address field below.",
+                "• Type a website in the address bar",
                 centerX,
-                centerY + 82,
-                0xFF8E8E93
+                topY + 136,
+                COLOR_TEXT_SECONDARY
+        );
+
+        PhoneText.drawCentered(
+                graphics,
+                font,
+                "• Use host@rack-ip for direct rack access",
+                centerX,
+                topY + 151,
+                COLOR_TEXT_SECONDARY
+        );
+
+        roundedRect(
+                graphics,
+                phoneX + 34,
+                topY + 192,
+                PHONE_WIDTH - 68,
+                82,
+                16,
+                COLOR_CARD
+        );
+        drawSoftShadow(
+                graphics,
+                phoneX + 34,
+                topY + 192,
+                PHONE_WIDTH - 68,
+                82,
+                16
+        );
+
+        PhoneText.draw(
+                graphics,
+                font,
+                "Examples",
+                phoneX + 48,
+                topY + 204,
+                COLOR_TEXT_PRIMARY
+        );
+
+        PhoneText.draw(
+                graphics,
+                font,
+                "a.w128lab.com",
+                phoneX + 48,
+                topY + 223,
+                COLOR_ACCENT
+        );
+
+        PhoneText.draw(
+                graphics,
+                font,
+                "a.w128lab.com@192.168.1.2",
+                phoneX + 48,
+                topY + 239,
+                COLOR_ACCENT
+        );
+
+        PhoneText.draw(
+                graphics,
+                font,
+                "192.168.1.2/a.w128lab.com",
+                phoneX + 48,
+                topY + 255,
+                COLOR_ACCENT
         );
     }
 
@@ -445,100 +430,104 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             GuiGraphics graphics,
             BrowserResponse response
     ) {
-        graphics.fill(
+        roundedRect(
+                graphics,
                 contentX,
                 contentY,
-                contentX
-                        + contentWidth,
-                contentY
-                        + contentHeight,
-                0xFFF7F7FA
+                contentWidth,
+                contentHeight,
+                16,
+                0xFFFBFBFD
         );
 
-        int centerX =
-                phoneX
-                        + PHONE_WIDTH
-                        / 2;
-
-        int y =
-                contentY + 48;
+        roundedRect(
+                graphics,
+                contentX + 12,
+                contentY + 16,
+                contentWidth - 24,
+                28,
+                10,
+                COLOR_RED
+        );
 
         PhoneText.drawCentered(
                 graphics,
                 font,
                 "Safari cannot open the page",
-                centerX,
-                y,
-                0xFF111111
+                phoneX + PHONE_WIDTH / 2,
+                contentY + 56,
+                COLOR_TEXT_PRIMARY
         );
 
-        y += 28;
+        PhoneText.drawCentered(
+                graphics,
+                font,
+                response.statusCode() + " " + response.reason(),
+                phoneX + PHONE_WIDTH / 2,
+                contentY + 22,
+                0xFFFFFFFF
+        );
 
-        for (String line
-                : response
-                .reason()
-                .split("\n")) {
+        int y = contentY + 82;
+
+        for (String line : response.reason().split("\n")) {
             PhoneText.drawCentered(
                     graphics,
                     font,
                     line,
-                    centerX,
+                    phoneX + PHONE_WIDTH / 2,
                     y,
-                    0xFF48484A
+                    COLOR_TEXT_SECONDARY
             );
-
             y += 15;
         }
 
-        if (!response.body()
-                .isBlank()) {
-            y += 8;
+        if (!response.body().isBlank()) {
+            y += 10;
 
-            for (String line
-                    : response
-                    .body()
-                    .split("\n")) {
+            roundedRect(
+                    graphics,
+                    phoneX + 30,
+                    y - 6,
+                    PHONE_WIDTH - 60,
+                    72,
+                    14,
+                    COLOR_SURFACE
+            );
+
+            for (String line : response.body().split("\n")) {
                 PhoneText.drawCentered(
                         graphics,
                         font,
                         line,
-                        centerX,
+                        phoneX + PHONE_WIDTH / 2,
                         y,
-                        0xFF6E6E73
+                        COLOR_TEXT_SECONDARY
                 );
-
-                y += 14;
+                y += 15;
             }
         }
 
-        if (response
-                .openWifiSettingsSuggested()) {
-            int buttonX =
-                    phoneX + 45;
-
-            int buttonY =
-                    contentY
-                            + contentHeight
-                            - 55;
+        if (response.openWifiSettingsSuggested()) {
+            int buttonX = phoneX + 46;
+            int buttonY = contentY + contentHeight - 58;
 
             roundedRect(
                     graphics,
                     buttonX,
                     buttonY,
-                    PHONE_WIDTH - 90,
-                    32,
-                    10,
-                    0xFF0A84FF
+                    PHONE_WIDTH - 92,
+                    34,
+                    12,
+                    COLOR_ACCENT
             );
 
             PhoneText.drawCentered(
                     graphics,
                     font,
                     "Open Wi-Fi Settings",
-                    phoneX
-                            + PHONE_WIDTH
-                            / 2,
-                    buttonY + 11,
+                    phoneX + PHONE_WIDTH / 2,
+                    buttonY + 12,
                     0xFFFFFFFF
             );
         }
@@ -547,83 +536,75 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
     private void renderBrowserChrome(
             GuiGraphics graphics
     ) {
-        roundedRect(
+        drawSoftShadow(
                 graphics,
-                phoneX + 7,
-                browserPanelY,
-                PHONE_WIDTH - 14,
-                86,
-                16,
-                0xF7F2F2F7
+                phoneX + 14,
+                browserPanelY + 4,
+                PHONE_WIDTH - 28,
+                88,
+                18
         );
 
-        int enabled =
-                0xFF007AFF;
+        roundedRect(
+                graphics,
+                phoneX + 14,
+                browserPanelY + 4,
+                PHONE_WIDTH - 28,
+                88,
+                18,
+                0xF7FFFFFF
+        );
 
-        int disabled =
-                0xFFB4B4B9;
+        roundedRect(
+                graphics,
+                phoneX + 24,
+                controlsY + 2,
+                34,
+                28,
+                11,
+                browser.canGoBack() ? COLOR_ACCENT_SOFT : 0x00000000
+        );
+
+        roundedRect(
+                graphics,
+                phoneX + 68,
+                controlsY + 2,
+                34,
+                28,
+                11,
+                browser.canGoForward() ? COLOR_ACCENT_SOFT : 0x00000000
+        );
 
         drawBackArrow(
                 graphics,
-                phoneX + 39,
-                controlsY + 9,
-                browser.canGoBack()
-                        ? enabled
-                        : disabled
+                phoneX + 41,
+                controlsY + 16,
+                browser.canGoBack() ? COLOR_ACCENT : 0xFFBCBCC4
         );
 
         drawForwardArrow(
                 graphics,
-                phoneX + 83,
-                controlsY + 9,
-                browser.canGoForward()
-                        ? enabled
-                        : disabled
+                phoneX + 85,
+                controlsY + 16,
+                browser.canGoForward() ? COLOR_ACCENT : 0xFFBCBCC4
         );
 
-        drawShare(
-                graphics,
-                phoneX + 128,
-                controlsY + 9,
-                enabled
-        );
-
-        drawBookmarks(
-                graphics,
-                phoneX + 172,
-                controlsY + 9,
-                enabled
-        );
-
-        drawTabs(
-                graphics,
-                phoneX + 214,
-                controlsY + 9,
-                enabled,
-                browser.tabCount()
-        );
+        drawShare(graphics, phoneX + 128, controlsY + 16, COLOR_ACCENT);
+        drawBookmarks(graphics, phoneX + 172, controlsY + 16, COLOR_ACCENT);
+        drawTabs(graphics, phoneX + 214, controlsY + 16, COLOR_ACCENT, browser.tabCount());
 
         roundedRect(
                 graphics,
-                phoneX + 15,
-                addressY,
-                PHONE_WIDTH - 30,
+                phoneX + 22,
+                addressY + 1,
+                PHONE_WIDTH - 44,
                 34,
-                12,
-                0xFFE4E4E9
+                15,
+                COLOR_SURFACE_2
         );
 
-        drawLock(
-                graphics,
-                phoneX + 26,
-                addressY + 10,
-                browser.response() != null
-                        && browser
-                        .response()
-                        .success()
-                        ? 0xFF5F6368
-                        : 0xFF8E8E93
-        );
+        graphics.vLine(phoneX + 43, addressY + 8, addressY + 26, COLOR_DIVIDER);
+        drawLock(graphics, phoneX + 28, addressY + 11, 0xFF6B6C72);
     }
 
     private void renderOverlay(
@@ -634,31 +615,15 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
         graphics.fill(
                 phoneX + 6,
                 phoneY + 36,
-                phoneX
-                        + PHONE_WIDTH
-                        - 6,
-                phoneY
-                        + PHONE_HEIGHT
-                        - 26,
-                0x77000000
+                phoneX + PHONE_WIDTH - 6,
+                phoneY + PHONE_HEIGHT - 22,
+                0x66000000
         );
 
         switch (overlay) {
-            case SHARE ->
-                    renderShareSheet(
-                            graphics
-                    );
-
-            case BOOKMARKS ->
-                    renderBookmarksPanel(
-                            graphics
-                    );
-
-            case TABS ->
-                    renderTabsPanel(
-                            graphics
-                    );
-
+            case SHARE -> renderShareSheet(graphics);
+            case BOOKMARKS -> renderBookmarksPanel(graphics);
+            case TABS -> renderTabsPanel(graphics);
             default -> {
             }
         }
@@ -667,125 +632,64 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
     private void renderShareSheet(
             GuiGraphics graphics
     ) {
-        int sheetX =
-                phoneX + 14;
+        int sheetX = phoneX + 16;
+        int sheetY = phoneY + PHONE_HEIGHT - 264;
+        int sheetWidth = PHONE_WIDTH - 32;
 
-        int sheetY =
-                phoneY
-                        + PHONE_HEIGHT
-                        - 260;
+        drawSoftShadow(graphics, sheetX, sheetY, sheetWidth, 226, 20);
+        roundedRect(graphics, sheetX, sheetY, sheetWidth, 226, 20, 0xFFF8F8FB);
 
-        int sheetWidth =
-                PHONE_WIDTH - 28;
-
-        roundedRect(
-                graphics,
-                sheetX,
-                sheetY,
-                sheetWidth,
-                222,
-                18,
-                0xFFF7F7FA
-        );
-
-        String host =
-                browser.currentUrl()
-                        .isBlank()
-                        ? "Start Page"
-                        : new BrowserRequest(
-                        browser.currentUrl()
-                ).host();
+        String host = browser.currentUrl().isBlank()
+                ? "Start Page"
+                : new BrowserRequest(browser.currentUrl()).host();
 
         PhoneText.drawCentered(
                 graphics,
                 font,
                 host,
-                phoneX
-                        + PHONE_WIDTH
-                        / 2,
-                sheetY + 15,
-                0xFF111111
+                phoneX + PHONE_WIDTH / 2,
+                sheetY + 16,
+                COLOR_TEXT_PRIMARY
         );
-
-        String url =
-                displayAddress(
-                        browser.currentUrl()
-                );
 
         PhoneText.drawCentered(
                 graphics,
                 font,
-                fitText(
-                        url,
-                        sheetWidth - 32
-                ),
-                phoneX
-                        + PHONE_WIDTH
-                        / 2,
-                sheetY + 33,
-                0xFF6E6E73
+                fitText(displayAddress(browser.currentUrl()), sheetWidth - 42),
+                phoneX + PHONE_WIDTH / 2,
+                sheetY + 34,
+                COLOR_TEXT_TERTIARY
         );
 
-        int rowY =
-                sheetY + 58;
+        int rowY = sheetY + 58;
 
-        drawSheetRow(
-                graphics,
-                sheetX + 10,
-                rowY,
-                sheetWidth - 20,
-                "Copy",
-                "Copy website address"
-        );
+        drawSheetRow(graphics, sheetX + 12, rowY, sheetWidth - 24, "Copy Link", "Copy website address");
+        rowY += 46;
+        drawSheetRow(graphics, sheetX + 12, rowY, sheetWidth - 24,
+                browser.isBookmarked(browser.currentUrl()) ? "Remove Bookmark" : "Add Bookmark",
+                "Save this page");
+        rowY += 46;
+        drawSheetRow(graphics, sheetX + 12, rowY, sheetWidth - 24, "Open in New Tab", "Keep this page open");
 
-        rowY += 44;
-
-        drawSheetRow(
-                graphics,
-                sheetX + 10,
-                rowY,
-                sheetWidth - 20,
-                browser.isBookmarked(
-                        browser.currentUrl()
-                )
-                        ? "Remove Bookmark"
-                        : "Add Bookmark",
-                "Save this website"
-        );
-
-        rowY += 44;
-
-        drawSheetRow(
-                graphics,
-                sheetX + 10,
-                rowY,
-                sheetWidth - 20,
-                "Open in New Tab",
-                "Keep this page open"
-        );
-
-        int cancelY =
-                sheetY + 190;
+        int cancelY = sheetY + 194;
 
         roundedRect(
                 graphics,
-                sheetX + 10,
+                sheetX + 12,
                 cancelY,
-                sheetWidth - 20,
+                sheetWidth - 24,
                 24,
-                8,
-                0xFFE5E5EA
+                9,
+                COLOR_SURFACE_2
         );
 
         PhoneText.drawCentered(
                 graphics,
                 font,
                 "Cancel",
-                phoneX
-                        + PHONE_WIDTH
-                        / 2,
+                phoneX + PHONE_WIDTH / 2,
                 cancelY + 8,
-                0xFF007AFF
+                COLOR_ACCENT
         );
     }
 
@@ -797,196 +701,109 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             String title,
             String subtitle
     ) {
-        roundedRect(
-                graphics,
-                x,
-                y,
-                width,
-                38,
-                10,
-                0xFFFFFFFF
-        );
-
-        PhoneText.draw(
-                graphics,
-                font,
-                title,
-                x + 12,
-                y + 7,
-                0xFF111111
-        );
-
-        PhoneText.draw(
-                graphics,
-                font,
-                subtitle,
-                x + 12,
-                y + 21,
-                0xFF8E8E93
-        );
+        roundedRect(graphics, x, y, width, 40, 12, COLOR_CARD);
+        PhoneText.draw(graphics, font, title, x + 13, y + 8, COLOR_TEXT_PRIMARY);
+        PhoneText.draw(graphics, font, subtitle, x + 13, y + 22, COLOR_TEXT_TERTIARY);
     }
 
     private void renderBookmarksPanel(
             GuiGraphics graphics
     ) {
-        int panelX =
-                phoneX + 14;
+        int panelX = phoneX + 16;
+        int panelY = phoneY + 58;
+        int panelWidth = PHONE_WIDTH - 32;
+        int panelHeight = PHONE_HEIGHT - 116;
 
-        int panelY =
-                phoneY + 62;
+        drawSoftShadow(graphics, panelX, panelY, panelWidth, panelHeight, 20);
+        roundedRect(graphics, panelX, panelY, panelWidth, panelHeight, 20, 0xFFF9F9FB);
 
-        int panelWidth =
-                PHONE_WIDTH - 28;
+        PhoneText.draw(graphics, font, "Done", panelX + 16, panelY + 16, COLOR_ACCENT);
+        PhoneText.drawCentered(graphics, font, "Bookmarks", phoneX + PHONE_WIDTH / 2, panelY + 16, COLOR_TEXT_PRIMARY);
 
-        int panelHeight =
-                PHONE_HEIGHT - 120;
-
-        roundedRect(
-                graphics,
-                panelX,
-                panelY,
-                panelWidth,
-                panelHeight,
-                18,
-                0xFFF7F7FA
-        );
-
-        PhoneText.draw(
-                graphics,
-                font,
-                "Done",
-                panelX + 14,
-                panelY + 15,
-                0xFF007AFF
-        );
-
-        PhoneText.drawCentered(
-                graphics,
-                font,
-                "Bookmarks",
-                phoneX
-                        + PHONE_WIDTH
-                        / 2,
-                panelY + 15,
-                0xFF111111
-        );
-
-        String current =
-                browser.currentUrl();
+        String current = browser.currentUrl();
 
         if (!current.isBlank()) {
             PhoneText.draw(
                     graphics,
                     font,
-                    browser.isBookmarked(
-                            current
-                    )
-                            ? "Remove Current"
-                            : "Add Current",
-                    panelX
-                            + panelWidth
-                            - 86,
-                    panelY + 15,
-                    0xFF007AFF
+                    browser.isBookmarked(current) ? "Remove Current" : "Add Current",
+                    panelX + panelWidth - 86,
+                    panelY + 16,
+                    COLOR_ACCENT
             );
         }
 
-        List<String> bookmarks =
-                browser.bookmarks();
+        int listTop = panelY + 44;
+        int listBottom = panelY + panelHeight - 12;
 
-        int listTop =
-                panelY + 43;
+        graphics.enableScissor(panelX + 8, listTop, panelX + panelWidth - 8, listBottom);
 
-        int listBottom =
-                panelY
-                        + panelHeight
-                        - 12;
-
-        graphics.enableScissor(
-                panelX + 8,
-                listTop,
-                panelX
-                        + panelWidth
-                        - 8,
-                listBottom
-        );
+        List<String> bookmarks = browser.bookmarks();
 
         if (bookmarks.isEmpty()) {
             PhoneText.drawCentered(
                     graphics,
                     font,
-                    "No Bookmarks",
-                    phoneX
-                            + PHONE_WIDTH
-                            / 2,
-                    listTop + 40,
-                    0xFF8E8E93
+                    "No Bookmarks Yet",
+                    phoneX + PHONE_WIDTH / 2,
+                    listTop + 44,
+                    COLOR_TEXT_TERTIARY
+            );
+
+            PhoneText.drawCentered(
+                    graphics,
+                    font,
+                    "Save a page from the share menu.",
+                    phoneX + PHONE_WIDTH / 2,
+                    listTop + 60,
+                    COLOR_TEXT_TERTIARY
             );
         }
 
-        for (int i = 0;
-             i < bookmarks.size();
-             i++) {
-            int rowY =
-                    listTop
-                            + i * 48
-                            - overlayScroll;
+        for (int i = 0; i < bookmarks.size(); i++) {
+            int rowY = listTop + i * 50 - overlayScroll;
 
-            if (rowY + 42
-                    < listTop
-                    || rowY
-                    > listBottom) {
+            if (rowY + 44 < listTop || rowY > listBottom) {
                 continue;
             }
 
-            String url =
-                    bookmarks.get(i);
+            String url = bookmarks.get(i);
 
             roundedRect(
                     graphics,
                     panelX + 10,
                     rowY,
                     panelWidth - 20,
-                    42,
-                    10,
-                    0xFFFFFFFF
+                    44,
+                    12,
+                    COLOR_CARD
             );
 
             PhoneText.draw(
                     graphics,
                     font,
-                    fitText(
-                            new BrowserRequest(
-                                    url
-                            ).host(),
-                            panelWidth - 72
-                    ),
+                    fitText(new BrowserRequest(url).host(), panelWidth - 80),
                     panelX + 22,
                     rowY + 8,
-                    0xFF111111
+                    COLOR_TEXT_PRIMARY
             );
 
             PhoneText.draw(
                     graphics,
                     font,
-                    fitText(
-                            url,
-                            panelWidth - 72
-                    ),
+                    fitText(url, panelWidth - 80),
                     panelX + 22,
-                    rowY + 23,
-                    0xFF8E8E93
+                    rowY + 24,
+                    COLOR_TEXT_TERTIARY
             );
 
             PhoneText.draw(
                     graphics,
                     font,
-                    "x",
-                    panelX
-                            + panelWidth
-                            - 28,
-                    rowY + 15,
-                    0xFFFF453A
+                    "Delete",
+                    panelX + panelWidth - 54,
+                    rowY + 16,
+                    COLOR_RED
             );
         }
 
@@ -996,166 +813,84 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
     private void renderTabsPanel(
             GuiGraphics graphics
     ) {
-        int panelX =
-                phoneX + 12;
+        int panelX = phoneX + 16;
+        int panelY = phoneY + 54;
+        int panelWidth = PHONE_WIDTH - 32;
+        int panelHeight = PHONE_HEIGHT - 108;
 
-        int panelY =
-                phoneY + 54;
+        drawSoftShadow(graphics, panelX, panelY, panelWidth, panelHeight, 20);
+        roundedRect(graphics, panelX, panelY, panelWidth, panelHeight, 20, 0xFFF4F4F8);
 
-        int panelWidth =
-                PHONE_WIDTH - 24;
+        PhoneText.draw(graphics, font, "Done", panelX + 16, panelY + 16, COLOR_ACCENT);
+        PhoneText.drawCentered(graphics, font, "Tabs", phoneX + PHONE_WIDTH / 2, panelY + 16, COLOR_TEXT_PRIMARY);
+        PhoneText.draw(graphics, font, "New", panelX + panelWidth - 32, panelY + 16, COLOR_ACCENT);
 
-        int panelHeight =
-                PHONE_HEIGHT - 106;
+        int listTop = panelY + 44;
+        int listBottom = panelY + panelHeight - 12;
 
-        roundedRect(
-                graphics,
-                panelX,
-                panelY,
-                panelWidth,
-                panelHeight,
-                18,
-                0xFFF2F2F7
-        );
+        graphics.enableScissor(panelX + 8, listTop, panelX + panelWidth - 8, listBottom);
 
-        PhoneText.draw(
-                graphics,
-                font,
-                "Done",
-                panelX + 14,
-                panelY + 15,
-                0xFF007AFF
-        );
+        List<PhoneBrowser.TabSnapshot> tabs = browser.tabs();
 
-        PhoneText.drawCentered(
-                graphics,
-                font,
-                "Tabs",
-                phoneX
-                        + PHONE_WIDTH
-                        / 2,
-                panelY + 15,
-                0xFF111111
-        );
+        for (int i = 0; i < tabs.size(); i++) {
+            PhoneBrowser.TabSnapshot tab = tabs.get(i);
 
-        PhoneText.draw(
-                graphics,
-                font,
-                "+",
-                panelX
-                        + panelWidth
-                        - 23,
-                panelY + 13,
-                0xFF007AFF
-        );
+            int cardY = listTop + i * 74 - overlayScroll;
 
-        int listTop =
-                panelY + 42;
-
-        int listBottom =
-                panelY
-                        + panelHeight
-                        - 10;
-
-        graphics.enableScissor(
-                panelX + 6,
-                listTop,
-                panelX
-                        + panelWidth
-                        - 6,
-                listBottom
-        );
-
-        List<PhoneBrowser.TabSnapshot> tabs =
-                browser.tabs();
-
-        for (int i = 0;
-             i < tabs.size();
-             i++) {
-            PhoneBrowser.TabSnapshot tab =
-                    tabs.get(i);
-
-            int cardY =
-                    listTop
-                            + i * 70
-                            - overlayScroll;
-
-            if (cardY + 62
-                    < listTop
-                    || cardY
-                    > listBottom) {
+            if (cardY + 64 < listTop || cardY > listBottom) {
                 continue;
             }
 
-            int background =
-                    tab.active()
-                            ? 0xFFFFFFFF
-                            : 0xFFE5E5EA;
+            int cardColor = tab.active() ? COLOR_CARD : 0xFFEAEAF0;
 
             roundedRect(
                     graphics,
                     panelX + 10,
                     cardY,
                     panelWidth - 20,
-                    62,
-                    12,
-                    background
+                    64,
+                    14,
+                    cardColor
             );
 
             PhoneText.draw(
                     graphics,
                     font,
-                    fitText(
-                            tab.title(),
-                            panelWidth - 72
-                    ),
+                    fitText(tab.title(), panelWidth - 92),
                     panelX + 22,
-                    cardY + 9,
-                    0xFF111111
+                    cardY + 10,
+                    COLOR_TEXT_PRIMARY
             );
 
-            String url =
-                    tab.url()
-                            .isBlank()
-                            ? "Start Page"
-                            : displayAddress(
-                            tab.url()
-                    );
+            String shownUrl = tab.url().isBlank() ? "Start Page" : displayAddress(tab.url());
 
             PhoneText.draw(
                     graphics,
                     font,
-                    fitText(
-                            url,
-                            panelWidth - 72
-                    ),
+                    fitText(shownUrl, panelWidth - 92),
                     panelX + 22,
                     cardY + 27,
-                    0xFF6E6E73
+                    COLOR_TEXT_TERTIARY
             );
+
+            String state = tab.loading() ? "Loading…" : (tab.active() ? "Current Tab" : "Tap to switch");
 
             PhoneText.draw(
                     graphics,
                     font,
-                    tab.loading()
-                            ? "Loading..."
-                            : tab.active()
-                            ? "Current Tab"
-                            : "",
+                    state,
                     panelX + 22,
-                    cardY + 43,
-                    0xFF8E8E93
+                    cardY + 44,
+                    COLOR_TEXT_TERTIARY
             );
 
             PhoneText.draw(
                     graphics,
                     font,
-                    "x",
-                    panelX
-                            + panelWidth
-                            - 29,
-                    cardY + 9,
-                    0xFFFF453A
+                    "Close",
+                    panelX + panelWidth - 46,
+                    cardY + 10,
+                    COLOR_RED
             );
         }
 
@@ -1165,32 +900,13 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
     private void renderToast(
             GuiGraphics graphics
     ) {
-        if (toast.isBlank()
-                || System.currentTimeMillis()
-                > toastUntil) {
+        if (toast.isBlank() || System.currentTimeMillis() > toastUntil) {
             return;
         }
 
-        int toastWidth =
-                Math.min(
-                        PHONE_WIDTH - 54,
-                        PhoneText.width(
-                                font,
-                                toast
-                        )
-                                + 28
-                );
-
-        int toastX =
-                phoneX
-                        + (
-                        PHONE_WIDTH
-                                - toastWidth
-                )
-                        / 2;
-
-        int toastY =
-                browserPanelY - 34;
+        int toastWidth = Math.min(PHONE_WIDTH - 58, PhoneText.width(font, toast) + 30);
+        int toastX = phoneX + (PHONE_WIDTH - toastWidth) / 2;
+        int toastY = browserPanelY - 36;
 
         roundedRect(
                 graphics,
@@ -1199,100 +915,61 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
                 toastWidth,
                 25,
                 12,
-                0xE61C1C1E
+                0xE61D1D20
         );
 
         PhoneText.drawCentered(
                 graphics,
                 font,
                 toast,
-                phoneX
-                        + PHONE_WIDTH
-                        / 2,
+                phoneX + PHONE_WIDTH / 2,
                 toastY + 8,
                 0xFFFFFFFF
         );
     }
 
-    private void showToast(
-            String text
-    ) {
-        toast =
-                text == null
-                        ? ""
-                        : text;
-
-        toastUntil =
-                System.currentTimeMillis()
-                        + 1600L;
+    private void showToast(String text) {
+        toast = text == null ? "" : text;
+        toastUntil = System.currentTimeMillis() + 1600L;
     }
 
     private String fitText(
             String value,
             int maxWidth
     ) {
-        String text =
-                value == null
-                        ? ""
-                        : value;
+        String text = value == null ? "" : value;
 
-        if (PhoneText.width(
-                font,
-                text
-        ) <= maxWidth) {
+        if (PhoneText.width(font, text) <= maxWidth) {
             return text;
         }
 
-        String suffix =
-                "...";
+        String suffix = "...";
 
-        while (!text.isEmpty()
-                && PhoneText.width(
-                font,
-                text + suffix
-        ) > maxWidth) {
-            text =
-                    text.substring(
-                            0,
-                            text.length() - 1
-                    );
+        while (!text.isEmpty() && PhoneText.width(font, text + suffix) > maxWidth) {
+            text = text.substring(0, text.length() - 1);
         }
 
         return text + suffix;
     }
 
-    private String displayAddress(
-            String raw
-    ) {
-        BrowserRequest request =
-                new BrowserRequest(
-                        raw
-                );
-
+    private String displayAddress(String raw) {
+        BrowserRequest request = new BrowserRequest(raw);
         return request.displayUrl();
     }
 
-    private void openOverlay(
-            BrowserOverlay next
-    ) {
-        overlay =
-                next;
-
+    private void openOverlay(BrowserOverlay next) {
+        overlay = next;
         overlayScroll = 0;
 
         if (addressField != null) {
-            addressField.setFocused(
-                    false
-            );
+            addressField.setFocused(false);
         }
 
         setFocused(null);
     }
 
     private void closeOverlay() {
-        overlay =
-                BrowserOverlay.NONE;
-
+        overlay = BrowserOverlay.NONE;
         overlayScroll = 0;
     }
 
@@ -1302,188 +979,80 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             double mouseY,
             int button
     ) {
-        if (button == 0
-                && overlay
-                != BrowserOverlay.NONE) {
-            return handleOverlayClick(
-                    mouseX,
-                    mouseY
-            );
+        if (button == 0 && overlay != BrowserOverlay.NONE) {
+            return handleOverlayClick(mouseX, mouseY);
         }
 
         if (button == 0) {
-            BrowserResponse response =
-                    browser.response();
+            BrowserResponse response = browser.response();
 
-            if (response != null
-                    && response
-                    .openWifiSettingsSuggested()) {
-                int buttonX =
-                        phoneX + 45;
+            if (response != null && response.openWifiSettingsSuggested()) {
+                int buttonX = phoneX + 46;
+                int buttonY = contentY + contentHeight - 58;
 
-                int buttonY =
-                        contentY
-                                + contentHeight
-                                - 55;
-
-                if (inside(
-                        mouseX,
-                        mouseY,
-                        buttonX,
-                        buttonY,
-                        PHONE_WIDTH - 90,
-                        32
-                )) {
-                    minecraft.setScreen(
-                            new IPhoneWifiScreen()
-                    );
-
+                if (inside(mouseX, mouseY, buttonX, buttonY, PHONE_WIDTH - 92, 34)) {
+                    minecraft.setScreen(new IPhoneWifiScreen());
                     return true;
                 }
             }
 
-            for (PhoneHtmlRenderer.LinkRegion link
-                    : lastRender.links()) {
-                if (!link.contains(
-                        mouseX,
-                        mouseY
-                )) {
+            for (PhoneHtmlRenderer.LinkRegion link : lastRender.links()) {
+                if (!link.contains(mouseX, mouseY)) {
                     continue;
                 }
 
-                String target =
-                        BrowserRequest.resolve(
-                                browser.currentUrl(),
-                                link.href()
-                        );
-
-                browser.navigate(
-                        target
-                );
+                String target = BrowserRequest.resolve(browser.currentUrl(), link.href());
+                browser.navigate(target);
 
                 if (addressField != null) {
-                    addressField.setValue(
-                            displayAddress(
-                                    target
-                            )
-                    );
-
-                    addressField.setFocused(
-                            false
-                    );
+                    addressField.setValue(displayAddress(target));
+                    addressField.setFocused(false);
                 }
 
                 return true;
             }
 
-            if (inside(
-                    mouseX,
-                    mouseY,
-                    phoneX + 23,
-                    controlsY - 2,
-                    31,
-                    24
-            )) {
+            if (inside(mouseX, mouseY, phoneX + 24, controlsY + 2, 34, 28)) {
                 browser.back();
                 forcePageRefresh();
                 return true;
             }
 
-            if (inside(
-                    mouseX,
-                    mouseY,
-                    phoneX + 68,
-                    controlsY - 2,
-                    31,
-                    24
-            )) {
+            if (inside(mouseX, mouseY, phoneX + 68, controlsY + 2, 34, 28)) {
                 browser.forward();
                 forcePageRefresh();
                 return true;
             }
 
-            if (inside(
-                    mouseX,
-                    mouseY,
-                    phoneX + 113,
-                    controlsY - 4,
-                    31,
-                    28
-            )) {
-                openOverlay(
-                        BrowserOverlay.SHARE
-                );
-
+            if (inside(mouseX, mouseY, phoneX + 112, controlsY + 2, 32, 28)) {
+                openOverlay(BrowserOverlay.SHARE);
                 return true;
             }
 
-            if (inside(
-                    mouseX,
-                    mouseY,
-                    phoneX + 157,
-                    controlsY - 4,
-                    31,
-                    28
-            )) {
-                openOverlay(
-                        BrowserOverlay.BOOKMARKS
-                );
-
+            if (inside(mouseX, mouseY, phoneX + 157, controlsY + 2, 32, 28)) {
+                openOverlay(BrowserOverlay.BOOKMARKS);
                 return true;
             }
 
-            if (inside(
-                    mouseX,
-                    mouseY,
-                    phoneX + 198,
-                    controlsY - 4,
-                    32,
-                    28
-            )) {
-                openOverlay(
-                        BrowserOverlay.TABS
-                );
-
+            if (inside(mouseX, mouseY, phoneX + 198, controlsY + 2, 34, 28)) {
+                openOverlay(BrowserOverlay.TABS);
                 return true;
             }
 
-            if (inside(
-                    mouseX,
-                    mouseY,
-                    phoneX + 15,
-                    addressY,
-                    PHONE_WIDTH - 30,
-                    34
-            )) {
-                setFocused(
-                        addressField
-                );
+            if (inside(mouseX, mouseY, phoneX + 22, addressY + 1, PHONE_WIDTH - 44, 34)) {
+                setFocused(addressField);
+                addressField.setFocused(true);
 
-                addressField.setFocused(
-                        true
-                );
-
-                if (addressField
-                        .getValue()
-                        .isBlank()) {
-                    addressField.setValue(
-                            displayAddress(
-                                    browser.currentUrl()
-                            )
-                    );
+                if (addressField.getValue().isBlank()) {
+                    addressField.setValue(displayAddress(browser.currentUrl()));
                 }
 
                 addressField.moveCursorToEnd();
-
                 return true;
             }
         }
 
-        return super.mouseClicked(
-                mouseX,
-                mouseY,
-                button
-        );
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
     private boolean handleOverlayClick(
@@ -1491,24 +1060,9 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             double mouseY
     ) {
         return switch (overlay) {
-            case SHARE ->
-                    handleShareClick(
-                            mouseX,
-                            mouseY
-                    );
-
-            case BOOKMARKS ->
-                    handleBookmarksClick(
-                            mouseX,
-                            mouseY
-                    );
-
-            case TABS ->
-                    handleTabsClick(
-                            mouseX,
-                            mouseY
-                    );
-
+            case SHARE -> handleShareClick(mouseX, mouseY);
+            case BOOKMARKS -> handleBookmarksClick(mouseX, mouseY);
+            case TABS -> handleTabsClick(mouseX, mouseY);
             default -> false;
         };
     }
@@ -1517,123 +1071,58 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             double mouseX,
             double mouseY
     ) {
-        int sheetX =
-                phoneX + 14;
+        int sheetX = phoneX + 16;
+        int sheetY = phoneY + PHONE_HEIGHT - 264;
+        int sheetWidth = PHONE_WIDTH - 32;
 
-        int sheetY =
-                phoneY
-                        + PHONE_HEIGHT
-                        - 260;
+        int rowY = sheetY + 58;
 
-        int sheetWidth =
-                PHONE_WIDTH - 28;
-
-        int rowY =
-                sheetY + 58;
-
-        if (inside(
-                mouseX,
-                mouseY,
-                sheetX + 10,
-                rowY,
-                sheetWidth - 20,
-                38
-        )) {
-            String current =
-                    browser.currentUrl();
+        if (inside(mouseX, mouseY, sheetX + 12, rowY, sheetWidth - 24, 40)) {
+            String current = browser.currentUrl();
 
             if (!current.isBlank()) {
-                Minecraft.getInstance()
-                        .keyboardHandler
-                        .setClipboard(
-                                displayAddress(
-                                        current
-                                )
-                        );
-
-                showToast(
-                        "Address Copied"
-                );
+                Minecraft.getInstance().keyboardHandler.setClipboard(displayAddress(current));
+                showToast("Address Copied");
             }
 
             closeOverlay();
             return true;
         }
 
-        rowY += 44;
+        rowY += 46;
 
-        if (inside(
-                mouseX,
-                mouseY,
-                sheetX + 10,
-                rowY,
-                sheetWidth - 20,
-                38
-        )) {
-            String current =
-                    browser.currentUrl();
+        if (inside(mouseX, mouseY, sheetX + 12, rowY, sheetWidth - 24, 40)) {
+            String current = browser.currentUrl();
 
             if (!current.isBlank()) {
-                boolean added =
-                        browser.toggleBookmark(
-                                current
-                        );
-
-                showToast(
-                        added
-                                ? "Bookmark Added"
-                                : "Bookmark Removed"
-                );
+                boolean added = browser.toggleBookmark(current);
+                showToast(added ? "Bookmark Added" : "Bookmark Removed");
             }
 
             closeOverlay();
             return true;
         }
 
-        rowY += 44;
+        rowY += 46;
 
-        if (inside(
-                mouseX,
-                mouseY,
-                sheetX + 10,
-                rowY,
-                sheetWidth - 20,
-                38
-        )) {
-            String current =
-                    browser.currentUrl();
-
-            boolean opened =
-                    browser.newTab(
-                            current
-                    );
+        if (inside(mouseX, mouseY, sheetX + 12, rowY, sheetWidth - 24, 40)) {
+            String current = browser.currentUrl();
+            boolean opened = browser.newTab(current);
 
             if (opened) {
                 closeOverlay();
                 forcePageRefresh();
-                showToast(
-                        "Opened New Tab"
-                );
+                showToast("Opened New Tab");
             } else {
-                showToast(
-                        "Maximum Tabs Reached"
-                );
+                showToast("Maximum Tabs Reached");
             }
 
             return true;
         }
 
-        int cancelY =
-                sheetY + 190;
+        int cancelY = sheetY + 194;
 
-        if (inside(
-                mouseX,
-                mouseY,
-                sheetX + 10,
-                cancelY,
-                sheetWidth - 20,
-                24
-        )) {
+        if (inside(mouseX, mouseY, sheetX + 12, cancelY, sheetWidth - 24, 24)) {
             closeOverlay();
             return true;
         }
@@ -1645,110 +1134,47 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             double mouseX,
             double mouseY
     ) {
-        int panelX =
-                phoneX + 14;
+        int panelX = phoneX + 16;
+        int panelY = phoneY + 58;
+        int panelWidth = PHONE_WIDTH - 32;
 
-        int panelY =
-                phoneY + 62;
-
-        int panelWidth =
-                PHONE_WIDTH - 28;
-
-        int panelHeight =
-                PHONE_HEIGHT - 120;
-
-        if (inside(
-                mouseX,
-                mouseY,
-                panelX + 8,
-                panelY + 7,
-                48,
-                28
-        )) {
+        if (inside(mouseX, mouseY, panelX + 10, panelY + 8, 48, 24)) {
             closeOverlay();
             return true;
         }
 
-        if (inside(
-                mouseX,
-                mouseY,
-                panelX
-                        + panelWidth
-                        - 94,
-                panelY + 7,
-                88,
-                28
-        )) {
-            String current =
-                    browser.currentUrl();
+        if (inside(mouseX, mouseY, panelX + panelWidth - 102, panelY + 8, 92, 24)) {
+            String current = browser.currentUrl();
 
             if (!current.isBlank()) {
-                boolean added =
-                        browser.toggleBookmark(
-                                current
-                        );
-
-                showToast(
-                        added
-                                ? "Bookmark Added"
-                                : "Bookmark Removed"
-                );
+                boolean added = browser.toggleBookmark(current);
+                showToast(added ? "Bookmark Added" : "Bookmark Removed");
             }
 
             return true;
         }
 
-        List<String> bookmarks =
-                browser.bookmarks();
+        List<String> bookmarks = browser.bookmarks();
+        int listTop = panelY + 44;
 
-        int listTop =
-                panelY + 43;
+        for (int i = 0; i < bookmarks.size(); i++) {
+            int rowY = listTop + i * 50 - overlayScroll;
 
-        for (int i = 0;
-             i < bookmarks.size();
-             i++) {
-            int rowY =
-                    listTop
-                            + i * 48
-                            - overlayScroll;
-
-            if (!inside(
-                    mouseX,
-                    mouseY,
-                    panelX + 10,
-                    rowY,
-                    panelWidth - 20,
-                    42
-            )) {
+            if (!inside(mouseX, mouseY, panelX + 10, rowY, panelWidth - 20, 44)) {
                 continue;
             }
 
-            String url =
-                    bookmarks.get(i);
+            String url = bookmarks.get(i);
 
-            if (mouseX
-                    >= panelX
-                    + panelWidth
-                    - 45) {
-                browser.removeBookmark(
-                        url
-                );
-
-                showToast(
-                        "Bookmark Removed"
-                );
-
+            if (mouseX >= panelX + panelWidth - 66) {
+                browser.removeBookmark(url);
+                showToast("Bookmark Removed");
                 return true;
             }
 
             closeOverlay();
-
-            browser.navigate(
-                    url
-            );
-
+            browser.navigate(url);
             forcePageRefresh();
-
             return true;
         }
 
@@ -1759,93 +1185,47 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             double mouseX,
             double mouseY
     ) {
-        int panelX =
-                phoneX + 12;
+        int panelX = phoneX + 16;
+        int panelY = phoneY + 54;
+        int panelWidth = PHONE_WIDTH - 32;
 
-        int panelY =
-                phoneY + 54;
-
-        int panelWidth =
-                PHONE_WIDTH - 24;
-
-        if (inside(
-                mouseX,
-                mouseY,
-                panelX + 8,
-                panelY + 6,
-                48,
-                28
-        )) {
+        if (inside(mouseX, mouseY, panelX + 10, panelY + 8, 48, 24)) {
             closeOverlay();
             return true;
         }
 
-        if (inside(
-                mouseX,
-                mouseY,
-                panelX
-                        + panelWidth
-                        - 46,
-                panelY + 6,
-                40,
-                28
-        )) {
-            boolean opened =
-                    browser.newTab();
+        if (inside(mouseX, mouseY, panelX + panelWidth - 44, panelY + 8, 34, 24)) {
+            boolean opened = browser.newTab();
 
             if (opened) {
                 closeOverlay();
                 forcePageRefresh();
             } else {
-                showToast(
-                        "Maximum Tabs Reached"
-                );
+                showToast("Maximum Tabs Reached");
             }
 
             return true;
         }
 
-        int listTop =
-                panelY + 42;
+        int listTop = panelY + 44;
+        List<PhoneBrowser.TabSnapshot> tabs = browser.tabs();
 
-        List<PhoneBrowser.TabSnapshot> tabs =
-                browser.tabs();
+        for (int i = 0; i < tabs.size(); i++) {
+            int cardY = listTop + i * 74 - overlayScroll;
 
-        for (int i = 0;
-             i < tabs.size();
-             i++) {
-            int cardY =
-                    listTop
-                            + i * 70
-                            - overlayScroll;
-
-            if (!inside(
-                    mouseX,
-                    mouseY,
-                    panelX + 10,
-                    cardY,
-                    panelWidth - 20,
-                    62
-            )) {
+            if (!inside(mouseX, mouseY, panelX + 10, cardY, panelWidth - 20, 64)) {
                 continue;
             }
 
-            if (mouseX
-                    >= panelX
-                    + panelWidth
-                    - 46
-                    && mouseY
-                    <= cardY + 30) {
+            if (mouseX >= panelX + panelWidth - 62 && mouseY <= cardY + 28) {
                 browser.closeTab(i);
                 forcePageRefresh();
-
                 return true;
             }
 
             browser.selectTab(i);
             closeOverlay();
             forcePageRefresh();
-
             return true;
         }
 
@@ -1857,16 +1237,8 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             return;
         }
 
-        addressField.setValue(
-                displayAddress(
-                        browser.currentUrl()
-                )
-        );
-
-        addressField.setFocused(
-                false
-        );
-
+        addressField.setValue(displayAddress(browser.currentUrl()));
+        addressField.setFocused(false);
         setFocused(null);
     }
 
@@ -1876,10 +1248,8 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             int scanCode,
             int modifiers
     ) {
-        if (overlay
-                != BrowserOverlay.NONE) {
-            if (keyCode
-                    == GLFW.GLFW_KEY_ESCAPE) {
+        if (overlay != BrowserOverlay.NONE) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 closeOverlay();
                 return true;
             }
@@ -1887,39 +1257,29 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             return true;
         }
 
-        if ((
-                keyCode
-                        == GLFW.GLFW_KEY_ENTER
-                        || keyCode
-                        == GLFW.GLFW_KEY_KP_ENTER
-        )
+        if ((keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)
                 && addressField != null
-                && addressField
-                .isFocused()) {
+                && addressField.isFocused()) {
             navigateAddressBar();
             return true;
         }
 
-        if (keyCode
-                == GLFW.GLFW_KEY_ESCAPE
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE
                 && addressField != null
-                && addressField
-                .isFocused()) {
-            addressField.setFocused(
-                    false
-            );
-
+                && addressField.isFocused()) {
+            addressField.setFocused(false);
             setFocused(null);
             syncAddressFromBrowser();
-
             return true;
         }
 
-        return super.keyPressed(
-                keyCode,
-                scanCode,
-                modifiers
-        );
+        if (keyCode == GLFW.GLFW_KEY_F5) {
+            browser.reload();
+            forcePageRefresh();
+            return true;
+        }
+
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
@@ -1928,102 +1288,36 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             double mouseY,
             double delta
     ) {
-        if (overlay
-                == BrowserOverlay.BOOKMARKS) {
-            int maximum =
-                    Math.max(
-                            0,
-                            browser.bookmarks()
-                                    .size()
-                                    * 48
-                                    - 260
-                    );
-
-            overlayScroll =
-                    clampScroll(
-                            overlayScroll
-                                    - (int) Math.round(
-                                    delta * 24.0D
-                            ),
-                            maximum
-                    );
-
+        if (overlay == BrowserOverlay.BOOKMARKS) {
+            int maximum = Math.max(0, browser.bookmarks().size() * 50 - 270);
+            overlayScroll = clampScroll(overlayScroll - (int) Math.round(delta * 24.0D), maximum);
             return true;
         }
 
-        if (overlay
-                == BrowserOverlay.TABS) {
-            int maximum =
-                    Math.max(
-                            0,
-                            browser.tabCount()
-                                    * 70
-                                    - 290
-                    );
-
-            overlayScroll =
-                    clampScroll(
-                            overlayScroll
-                                    - (int) Math.round(
-                                    delta * 24.0D
-                            ),
-                            maximum
-                    );
-
+        if (overlay == BrowserOverlay.TABS) {
+            int maximum = Math.max(0, browser.tabCount() * 74 - 294);
+            overlayScroll = clampScroll(overlayScroll - (int) Math.round(delta * 24.0D), maximum);
             return true;
         }
 
-        if (overlay
-                != BrowserOverlay.NONE) {
+        if (overlay != BrowserOverlay.NONE) {
             return true;
         }
 
-        if (inside(
-                mouseX,
-                mouseY,
-                contentX,
-                contentY,
-                contentWidth,
-                contentHeight
-        )) {
-            int maximum =
-                    Math.max(
-                            0,
-                            lastRender
-                                    .totalHeight()
-                                    - contentHeight
-                    );
-
-            scrollY =
-                    clampScroll(
-                            scrollY
-                                    - (int) Math.round(
-                                    delta * 20.0D
-                            ),
-                            maximum
-                    );
-
+        if (inside(mouseX, mouseY, contentX, contentY, contentWidth, contentHeight)) {
+            int maximum = Math.max(0, lastRender.totalHeight() - contentHeight);
+            scrollY = clampScroll(scrollY - (int) Math.round(delta * 20.0D), maximum);
             return true;
         }
 
-        return super.mouseScrolled(
-                mouseX,
-                mouseY,
-                delta
-        );
+        return super.mouseScrolled(mouseX, mouseY, delta);
     }
 
     private int clampScroll(
             int value,
             int maximum
     ) {
-        return Math.max(
-                0,
-                Math.min(
-                        maximum,
-                        value
-                )
-        );
+        return Math.max(0, Math.min(maximum, value));
     }
 
     private void navigateAddressBar() {
@@ -2031,18 +1325,9 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             return;
         }
 
-        String value =
-                addressField
-                        .getValue();
+        browser.navigate(addressField.getValue());
 
-        browser.navigate(
-                value
-        );
-
-        addressField.setFocused(
-                false
-        );
-
+        addressField.setFocused(false);
         setFocused(null);
         scrollY = 0;
     }
@@ -2053,8 +1338,7 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             int centerY,
             int size
     ) {
-        int radius =
-                size / 2;
+        int radius = size / 2;
 
         roundedRect(
                 graphics,
@@ -2063,14 +1347,10 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
                 size,
                 size,
                 radius,
-                0xFF0A84FF
+                COLOR_ACCENT
         );
 
-        int inner =
-                Math.max(
-                        6,
-                        radius - 4
-                );
+        int inner = Math.max(6, radius - 5);
 
         roundedRect(
                 graphics,
@@ -2079,24 +1359,11 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
                 inner * 2,
                 inner * 2,
                 inner,
-                0xFFFFFFFF
+                COLOR_CARD
         );
 
-        graphics.fill(
-                centerX - 1,
-                centerY - inner + 4,
-                centerX + 1,
-                centerY + 1,
-                0xFFFF453A
-        );
-
-        graphics.fill(
-                centerX,
-                centerY,
-                centerX + 2,
-                centerY + inner - 3,
-                0xFF0A84FF
-        );
+        graphics.fill(centerX - 1, centerY - inner + 5, centerX + 1, centerY + 1, 0xFFFF5B52);
+        graphics.fill(centerX, centerY, centerX + 2, centerY + inner - 4, COLOR_ACCENT);
     }
 
     private void drawBackArrow(
@@ -2105,36 +1372,10 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             int y,
             int color
     ) {
-        graphics.hLine(
-                x - 7,
-                x + 6,
-                y,
-                color
-        );
-
-        graphics.fill(
-                x - 8,
-                y - 1,
-                x - 5,
-                y + 2,
-                color
-        );
-
-        graphics.fill(
-                x - 7,
-                y - 4,
-                x - 5,
-                y - 1,
-                color
-        );
-
-        graphics.fill(
-                x - 7,
-                y + 2,
-                x - 5,
-                y + 5,
-                color
-        );
+        graphics.hLine(x - 7, x + 6, y, color);
+        graphics.fill(x - 8, y - 1, x - 5, y + 2, color);
+        graphics.fill(x - 7, y - 4, x - 5, y - 1, color);
+        graphics.fill(x - 7, y + 2, x - 5, y + 5, color);
     }
 
     private void drawForwardArrow(
@@ -2143,36 +1384,10 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             int y,
             int color
     ) {
-        graphics.hLine(
-                x - 6,
-                x + 7,
-                y,
-                color
-        );
-
-        graphics.fill(
-                x + 5,
-                y - 1,
-                x + 8,
-                y + 2,
-                color
-        );
-
-        graphics.fill(
-                x + 4,
-                y - 4,
-                x + 6,
-                y - 1,
-                color
-        );
-
-        graphics.fill(
-                x + 4,
-                y + 2,
-                x + 6,
-                y + 5,
-                color
-        );
+        graphics.hLine(x - 6, x + 7, y, color);
+        graphics.fill(x + 5, y - 1, x + 8, y + 2, color);
+        graphics.fill(x + 4, y - 4, x + 6, y - 1, color);
+        graphics.fill(x + 4, y + 2, x + 6, y + 5, color);
     }
 
     private void drawShare(
@@ -2181,44 +1396,11 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             int y,
             int color
     ) {
-        graphics.fill(
-                x - 6,
-                y + 1,
-                x + 6,
-                y + 8,
-                color
-        );
-
-        graphics.fill(
-                x - 4,
-                y + 3,
-                x + 4,
-                y + 7,
-                0xFFF2F2F7
-        );
-
-        graphics.vLine(
-                x,
-                y - 7,
-                y + 3,
-                color
-        );
-
-        graphics.fill(
-                x - 3,
-                y - 5,
-                x,
-                y - 3,
-                color
-        );
-
-        graphics.fill(
-                x + 1,
-                y - 5,
-                x + 4,
-                y - 3,
-                color
-        );
+        graphics.fill(x - 6, y + 1, x + 6, y + 9, color);
+        graphics.fill(x - 4, y + 3, x + 4, y + 8, COLOR_CARD);
+        graphics.vLine(x, y - 8, y + 3, color);
+        graphics.fill(x - 3, y - 5, x, y - 3, color);
+        graphics.fill(x + 1, y - 5, x + 4, y - 3, color);
     }
 
     private void drawBookmarks(
@@ -2227,29 +1409,9 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             int y,
             int color
     ) {
-        graphics.fill(
-                x - 6,
-                y - 7,
-                x + 6,
-                y + 7,
-                color
-        );
-
-        graphics.fill(
-                x - 4,
-                y - 5,
-                x + 4,
-                y + 3,
-                0xFFF2F2F7
-        );
-
-        graphics.fill(
-                x - 2,
-                y + 3,
-                x + 2,
-                y + 7,
-                color
-        );
+        graphics.fill(x - 6, y - 8, x + 6, y + 7, color);
+        graphics.fill(x - 4, y - 6, x + 4, y + 3, COLOR_CARD);
+        graphics.fill(x - 2, y + 3, x + 2, y + 7, color);
     }
 
     private void drawTabs(
@@ -2259,48 +1421,19 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             int color,
             int count
     ) {
-        graphics.fill(
-                x - 7,
-                y - 6,
-                x + 4,
-                y + 5,
-                color
-        );
-
-        graphics.fill(
-                x - 5,
-                y - 4,
-                x + 2,
-                y + 3,
-                0xFFF2F2F7
-        );
-
-        graphics.fill(
-                x - 3,
-                y - 8,
-                x + 8,
-                y + 3,
-                color
-        );
-
-        graphics.fill(
-                x - 1,
-                y - 6,
-                x + 6,
-                y + 1,
-                0xFFF2F2F7
-        );
+        graphics.fill(x - 7, y - 6, x + 4, y + 5, color);
+        graphics.fill(x - 5, y - 4, x + 2, y + 3, COLOR_CARD);
+        graphics.fill(x - 3, y - 8, x + 8, y + 3, color);
+        graphics.fill(x - 1, y - 6, x + 6, y + 1, COLOR_CARD);
 
         if (count > 1) {
             PhoneText.drawCentered(
                     graphics,
                     font,
-                    Integer.toString(
-                            count
-                    ),
+                    Integer.toString(count),
                     x,
                     y - 1,
-                    0xFF007AFF
+                    color
             );
         }
     }
@@ -2311,37 +1444,21 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             int y,
             int color
     ) {
-        graphics.fill(
-                x,
-                y + 4,
-                x + 9,
-                y + 12,
-                color
-        );
+        graphics.fill(x, y + 4, x + 9, y + 12, color);
+        graphics.fill(x + 2, y, x + 7, y + 2, color);
+        graphics.fill(x + 1, y + 1, x + 3, y + 6, color);
+        graphics.fill(x + 6, y + 1, x + 8, y + 6, color);
+    }
 
-        graphics.fill(
-                x + 2,
-                y,
-                x + 7,
-                y + 2,
-                color
-        );
-
-        graphics.fill(
-                x + 1,
-                y + 1,
-                x + 3,
-                y + 6,
-                color
-        );
-
-        graphics.fill(
-                x + 6,
-                y + 1,
-                x + 8,
-                y + 6,
-                color
-        );
+    private void drawSoftShadow(
+            GuiGraphics graphics,
+            int x,
+            int y,
+            int width,
+            int height,
+            int radius
+    ) {
+        roundedRect(graphics, x + 1, y + 2, width, height, radius, COLOR_SHADOW);
     }
 
     private enum BrowserOverlay {
