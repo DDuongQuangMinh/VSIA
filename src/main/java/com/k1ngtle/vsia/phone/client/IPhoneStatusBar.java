@@ -25,40 +25,60 @@ public final class IPhoneStatusBar {
                 false
         );
 
-        int islandWidth = 72;
+        int islandWidth = 60;
+        int islandHeight = 18;
         int islandX = x + (width - islandWidth) / 2;
-        roundedRect(graphics, islandX, y + 10, islandWidth, 18, 9, 0xFF000000);
+        int islandY = y + 10;
+        roundedRect(graphics, islandX, islandY, islandWidth, islandHeight, 9, 0xFF000000);
 
-        int batteryX = x + width - 42;
-        drawBattery(graphics, batteryX, y + 14, state.getBatteryPercent());
+        int islandRight = islandX + islandWidth;
 
-        int wifiX = batteryX - 22;
-        if (state.isWifiUsable()) {
+        int batteryX = x + width - 31;
+        int batteryY = y + 14;
+        drawBattery(graphics, batteryX, batteryY, state.getBatteryPercent());
+
+        int wifiX = batteryX - 18;
+        int wifiY = y + 14;
+
+        boolean wifiEnabled = state.getWifi().enabled();
+        boolean wifiUsable = state.isWifiUsable();
+
+        if (wifiEnabled) {
             drawWifiIcon(
                     graphics,
                     wifiX,
-                    y + 14,
-                    wifiStrength(state.getWifi().rssiDbm())
+                    wifiY,
+                    wifiUsable ? 0xFFFFFFFF : 0xFF8D8D93
             );
         }
 
-        int cellularX = wifiX - 27;
-        if (state.getCellular().enabled() && state.getCellular().registered()) {
+        boolean cellularEnabled = state.getCellular().enabled();
+
+        if (cellularEnabled) {
+            int bars = cellularBars(
+                    state.getCellular().rsrpDbm(),
+                    state.getCellular().sinrDb()
+            );
+
+            int cellularX = wifiEnabled ? wifiX - 24 : batteryX - 24;
+            int minCellularX = islandRight + 8;
+
+            if (cellularX < minCellularX) {
+                cellularX = minCellularX;
+            }
+
             drawCellularBars(
                     graphics,
                     cellularX,
-                    y + 14,
-                    cellularBars(
-                            state.getCellular().rsrpDbm(),
-                            state.getCellular().sinrDb()
-                    )
+                    y + 15,
+                    bars,
+                    0xFFFFFFFF
             );
-        } else {
-            String sos = "SOS";
+        } else if (!wifiEnabled) {
             graphics.drawString(
                     font,
-                    sos,
-                    cellularX - font.width(sos) + 19,
+                    "SOS",
+                    islandRight + 10,
                     y + 16,
                     0xFFFFFFFF,
                     false
@@ -66,90 +86,81 @@ public final class IPhoneStatusBar {
         }
     }
 
-    private static int wifiStrength(int rssi) {
-        if (rssi >= -55) return 3;
-        if (rssi >= -67) return 2;
-        if (rssi >= -80) return 1;
-        return 0;
-    }
-
     private static int cellularBars(int rsrp, double sinr) {
-        int bars;
+        int rsrpBars;
 
-        if (rsrp >= -80) bars = 4;
-        else if (rsrp >= -90) bars = 3;
-        else if (rsrp >= -100) bars = 2;
-        else if (rsrp >= -110) bars = 1;
-        else bars = 0;
+        if (rsrp >= -80) {
+            rsrpBars = 4;
+        } else if (rsrp >= -90) {
+            rsrpBars = 3;
+        } else if (rsrp >= -100) {
+            rsrpBars = 2;
+        } else if (rsrp >= -110) {
+            rsrpBars = 1;
+        } else {
+            rsrpBars = 0;
+        }
 
-        if (sinr < 0.0) return Math.min(bars, 1);
-        if (sinr < 10.0) return Math.min(bars, 2);
-        if (sinr < 20.0) return Math.min(bars, 3);
-        return bars;
+        if (sinr < 0.0D) {
+            return Math.min(rsrpBars, 1);
+        }
+        if (sinr < 10.0D) {
+            return Math.min(rsrpBars, 2);
+        }
+        if (sinr < 20.0D) {
+            return Math.min(rsrpBars, 3);
+        }
+        return rsrpBars;
     }
 
-    private static void drawCellularBars(GuiGraphics graphics, int x, int y, int bars) {
+    private static void drawCellularBars(
+            GuiGraphics graphics,
+            int x,
+            int y,
+            int bars,
+            int onColor
+    ) {
+        int offColor = 0xFF666666;
+
         for (int i = 0; i < 4; i++) {
-            int barHeight = 3 + i * 2;
-            int color = i < bars ? 0xFFFFFFFF : 0xFF666970;
+            int barHeight = 3 + i * 3;
+            int left = x + i * 4;
+            int top = y + 9 - barHeight;
+            int color = i < bars ? onColor : offColor;
 
-            graphics.fill(
-                    x + i * 5,
-                    y + 9 - barHeight,
-                    x + i * 5 + 3,
-                    y + 9,
-                    color
-            );
+            graphics.fill(left, top, left + 2, y + 9, color);
         }
     }
 
-    private static void drawWifiIcon(GuiGraphics graphics, int x, int y, int strength) {
-        int active = 0xFFFFFFFF;
-        int inactive = 0xFF666970;
+    private static void drawWifiIcon(
+            GuiGraphics graphics,
+            int x,
+            int y,
+            int color
+    ) {
+        graphics.fill(x + 5, y + 8, x + 7, y + 10, color);
 
-        int topColor = strength >= 3 ? active : inactive;
-        int middleColor = strength >= 2 ? active : inactive;
-        int lowerColor = strength >= 1 ? active : inactive;
+        graphics.fill(x + 3, y + 6, x + 9, y + 7, color);
+        graphics.fill(x + 2, y + 5, x + 3, y + 8, color);
+        graphics.fill(x + 9, y + 5, x + 10, y + 8, color);
 
-        graphics.fill(x + 1, y + 1, x + 12, y + 2, topColor);
-        graphics.fill(x, y + 2, x + 2, y + 4, topColor);
-        graphics.fill(x + 11, y + 2, x + 13, y + 4, topColor);
-
-        graphics.fill(x + 3, y + 5, x + 10, y + 6, middleColor);
-        graphics.fill(x + 2, y + 6, x + 4, y + 8, middleColor);
-        graphics.fill(x + 9, y + 6, x + 11, y + 8, middleColor);
-
-        graphics.fill(x + 5, y + 9, x + 8, y + 11, lowerColor);
+        graphics.fill(x + 1, y + 3, x + 11, y + 4, color);
+        graphics.fill(x, y + 2, x + 1, y + 5, color);
+        graphics.fill(x + 11, y + 2, x + 12, y + 5, color);
     }
 
-    private static void drawBattery(GuiGraphics graphics, int x, int y, int percent) {
-        int outline = 0xFFFFFFFF;
-        int inside = 0xFF16181D;
+    private static void drawBattery(
+            GuiGraphics graphics,
+            int x,
+            int y,
+            int percent
+    ) {
+        graphics.fill(x, y, x + 19, y + 9, 0xFFFFFFFF);
+        graphics.fill(x + 1, y + 1, x + 18, y + 8, 0xFF16181D);
+        graphics.fill(x + 19, y + 3, x + 21, y + 6, 0xFFFFFFFF);
 
-        roundedRect(graphics, x, y, 24, 11, 3, outline);
-        roundedRect(graphics, x + 2, y + 2, 20, 7, 2, inside);
-
-        graphics.fill(x + 24, y + 3, x + 26, y + 8, outline);
-
-        int fillWidth = Math.max(
-                0,
-                Math.min(
-                        18,
-                        Math.round(18.0F * percent / 100.0F)
-                )
-        );
-
-        if (fillWidth > 0) {
-            roundedRect(
-                    graphics,
-                    x + 3,
-                    y + 3,
-                    fillWidth,
-                    5,
-                    1,
-                    percent <= 20 ? 0xFFFF453A : 0xFFFFFFFF
-            );
-        }
+        int fill = Math.max(1, Math.min(16, (int) Math.round(percent / 100.0D * 16.0D)));
+        graphics.fill(x + 2, y + 2, x + 2 + fill, y + 7, 0xFFFFFFFF);
     }
 
     private static void roundedRect(
@@ -165,11 +176,9 @@ public final class IPhoneStatusBar {
         graphics.fill(x, y + radius, x + width, y + height - radius, color);
 
         for (int i = 0; i < radius; i++) {
+            int dy = radius - i;
             int inset = (int) Math.ceil(
-                    radius - Math.sqrt(
-                            radius * radius
-                                    - (radius - i) * (radius - i)
-                    )
+                    radius - Math.sqrt(Math.max(0, radius * radius - dy * dy))
             );
 
             graphics.fill(x + inset, y + i, x + width - inset, y + i + 1, color);
