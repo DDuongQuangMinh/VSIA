@@ -11424,19 +11424,28 @@ private final WifiPhyController wifiPhy =
                     )
                             : 0L;
 
+            /* CELLULAR_RF_MICROSLOT_ALIGNMENT_V1 */
+            long scheduledDeliveryTickForMicros =
+                    currentTick
+                            + Math.max(
+                                    1L,
+                                    RfChannelSettings
+                                            .MIN_EVENT_LATENCY_TICKS
+                            );
+
             long microStart =
                     rawPayload.contains(
                             "rf_absolute_start_us"
                     )
                             ? Math.max(
-                            0L,
-                            rawPayload.getLong(
-                                    "rf_absolute_start_us"
+                                    0L,
+                                    rawPayload.getLong(
+                                            "rf_absolute_start_us"
+                                    )
                             )
-                    )
-                            : NetworkTimebase.nowMicros(
-                            serverLevel
-                    )
+                            : NetworkTimebase.tickStartMicros(
+                                    scheduledDeliveryTickForMicros
+                            )
                             + startDelayMicros;
 
             long microEnd =
