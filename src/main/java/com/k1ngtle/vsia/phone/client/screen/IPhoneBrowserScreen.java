@@ -58,7 +58,7 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
 
         addressBox.setBordered(false);
         addressBox.setMaxLength(512);
-        addressBox.setTextColor(0xFFFFFFFF);
+        addressBox.setTextColor(0xFF1C1C1E);
         addressBox.setValue(browser.currentUrl());
 
         addRenderableWidget(addressBox);
@@ -313,21 +313,21 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
                 toolbarY - 5,
                 phoneX + PHONE_WIDTH - 7,
                 phoneY + PHONE_HEIGHT - 27,
-                0xF21C1C1E
+                0xF7F2F2F7
         );
 
         int backColor = browser.canGoBack()
-                ? 0xFFFFFFFF
-                : 0xFF636366;
+                ? 0xFF0A84FF
+                : 0xFFB2B2B7;
 
         int forwardColor = browser.canGoForward()
-                ? 0xFFFFFFFF
-                : 0xFF636366;
+                ? 0xFF0A84FF
+                : 0xFFB2B2B7;
 
         drawBackArrow(graphics, phoneX + 37, toolbarY + 7, backColor);
         drawForwardArrow(graphics, phoneX + 82, toolbarY + 7, forwardColor);
-        drawReload(graphics, phoneX + 127, toolbarY + 7, 0xFFFFFFFF);
-        drawTabs(graphics, phoneX + 174, toolbarY + 7, 0xFFFFFFFF);
+        drawReload(graphics, phoneX + 127, toolbarY + 7, 0xFF0A84FF);
+        drawTabs(graphics, phoneX + 174, toolbarY + 7, 0xFF0A84FF);
 
         roundedRect(
                 graphics,
@@ -336,7 +336,7 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
                 PHONE_WIDTH - 30,
                 32,
                 11,
-                0xFF2C2C2E
+                0xFFE5E5EA
         );
 
         drawLock(
@@ -345,7 +345,7 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
                 addressBackgroundY + 9,
                 browser.response() != null
                         && browser.response().success()
-                        ? 0xFFFFFFFF
+                        ? 0xFF34C759
                         : 0xFF8E8E93
         );
 
@@ -425,9 +425,9 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
 
     private void drawTabs(GuiGraphics graphics, int x, int y, int color) {
         graphics.fill(x - 7, y - 6, x + 5, y + 6, color);
-        graphics.fill(x - 5, y - 4, x + 3, y + 4, 0xFF1C1C1E);
+        graphics.fill(x - 5, y - 4, x + 3, y + 4, 0xFFF2F2F7);
         graphics.fill(x - 3, y - 8, x + 8, y + 3, color);
-        graphics.fill(x - 1, y - 6, x + 6, y + 1, 0xFF1C1C1E);
+        graphics.fill(x - 1, y - 6, x + 6, y + 1, 0xFFF2F2F7);
     }
 
     private void drawLock(GuiGraphics graphics, int x, int y, int color) {

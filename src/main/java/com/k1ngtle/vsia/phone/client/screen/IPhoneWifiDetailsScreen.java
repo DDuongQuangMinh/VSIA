@@ -5,46 +5,94 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
 public class IPhoneWifiDetailsScreen extends IPhoneScreen {
+    private int contentX;
+    private int contentWidth;
+
     public IPhoneWifiDetailsScreen() {
         super(Component.literal("Wi-Fi Details"));
     }
 
     @Override
+    protected void init() {
+        super.init();
+        contentX = phoneX + 14;
+        contentWidth = PHONE_WIDTH - 28;
+    }
+
+    @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderPhoneBase(graphics);
-        renderHeader(graphics, "Wi-Fi", "Network");
+        renderPhoneShell(graphics, 0xFF1C1C1E);
+        renderStatusBar(graphics);
+        renderHeaderLocal(graphics);
 
         var wifi = PhoneNetworkState.get().getWifi();
+        int titleY = phoneY + 78;
 
-        int x = phoneX + 18;
-        int y = phoneY + 82;
+        graphics.drawCenteredString(font, wifi.ssid().isBlank() ? "No Network" : wifi.ssid(), phoneX + PHONE_WIDTH / 2, titleY, 0xFFFFFFFF);
+        if (wifi.connected()) {
+            graphics.drawCenteredString(font, "Connected", phoneX + PHONE_WIDTH / 2, titleY + 18, 0xFF30D158);
+        }
 
-        graphics.drawString(font, wifi.ssid().isBlank() ? "No Network" : wifi.ssid(), x, y, 0xFFFFFFFF, false);
+        int ipv4Y = titleY + 44;
+        sectionLabel(graphics, "IPV4 ADDRESS", ipv4Y - 17);
+        roundedRect(graphics, contentX, ipv4Y, contentWidth, 112, 14, 0xFF2C2C2E);
+        pair(graphics, ipv4Y, "Configure IP", "DHCP");
+        divider(graphics, ipv4Y + 28);
+        pair(graphics, ipv4Y + 28, "IP Address", wifi.ipAddress());
+        divider(graphics, ipv4Y + 56);
+        pair(graphics, ipv4Y + 56, "Subnet Mask", wifi.subnetMask());
+        divider(graphics, ipv4Y + 84);
+        pair(graphics, ipv4Y + 84, "Router", wifi.gateway());
 
-        int line = y + 30;
-        line = pair(graphics, x, line, "Configure IP", "DHCP");
-        line = pair(graphics, x, line, "IP Address", wifi.ipAddress());
-        line = pair(graphics, x, line, "Subnet Mask", wifi.subnetMask());
-        line = pair(graphics, x, line, "Router", wifi.gateway());
+        int dnsY = ipv4Y + 132;
+        sectionLabel(graphics, "DNS", dnsY - 17);
+        roundedRect(graphics, contentX, dnsY, contentWidth, 56, 14, 0xFF2C2C2E);
+        pair(graphics, dnsY, "Configure DNS", "Automatic");
+        divider(graphics, dnsY + 28);
+        pair(graphics, dnsY + 28, "DNS", wifi.dns());
 
-        line += 12;
-        line = pair(graphics, x, line, "Configure DNS", "Automatic");
-        line = pair(graphics, x, line, "DNS", wifi.dns());
-
-        line += 12;
-        line = pair(graphics, x, line, "BSSID", wifi.bssid());
-        line = pair(graphics, x, line, "Channel", Integer.toString(wifi.channel()));
-        line = pair(graphics, x, line, "RSSI", wifi.rssiDbm() + " dBm");
-        line = pair(graphics, x, line, "PHY", wifi.phy());
+        int radioY = dnsY + 76;
+        sectionLabel(graphics, "RADIO", radioY - 17);
+        roundedRect(graphics, contentX, radioY, contentWidth, 112, 14, 0xFF2C2C2E);
+        pair(graphics, radioY, "BSSID", wifi.bssid());
+        divider(graphics, radioY + 28);
+        pair(graphics, radioY + 28, "Channel", Integer.toString(wifi.channel()));
+        divider(graphics, radioY + 56);
+        pair(graphics, radioY + 56, "RSSI", wifi.rssiDbm() + " dBm");
+        divider(graphics, radioY + 84);
+        pair(graphics, radioY + 84, "PHY", wifi.phy());
 
         renderHomeIndicator(graphics);
     }
 
-    private int pair(GuiGraphics g, int x, int y, String key, String value) {
-        g.drawString(font, key, x, y, 0xFFA8A8AD, false);
-        int vw = font.width(value);
-        g.drawString(font, value, phoneX + PHONE_WIDTH - 18 - vw, y, 0xFFFFFFFF, false);
-        return y + 22;
+    private void renderHeaderLocal(GuiGraphics g) {
+        g.drawString(font, "< Wi-Fi", phoneX + 16, phoneY + 49, 0xFF0A84FF, false);
+        int tw = font.width("Network");
+        g.drawString(font, "Network", phoneX + (PHONE_WIDTH - tw) / 2, phoneY + 49, 0xFFFFFFFF, false);
+    }
+
+    private void sectionLabel(GuiGraphics g, String text, int y) {
+        g.drawString(font, text, contentX + 4, y, 0xFF8E8E93, false);
+    }
+
+    private void pair(GuiGraphics g, int y, String key, String value) {
+        g.drawString(font, key, contentX + 13, y + 10, 0xFFFFFFFF, false);
+        String shown = fit(value, 90);
+        int vw = font.width(shown);
+        g.drawString(font, shown, contentX + contentWidth - vw - 13, y + 10, 0xFFAEAEB2, false);
+    }
+
+    private void divider(GuiGraphics g, int y) {
+        g.fill(contentX + 13, y, contentX + contentWidth - 13, y + 1, 0xFF3A3A3C);
+    }
+
+    private String fit(String value, int maxWidth) {
+        String text = value == null ? "" : value;
+        if (font.width(text) <= maxWidth) return text;
+        while (!text.isEmpty() && font.width(text + "...") > maxWidth) {
+            text = text.substring(0, text.length() - 1);
+        }
+        return text + "...";
     }
 
     @Override
