@@ -5,26 +5,55 @@ import java.util.Collections;
 import java.util.List;
 
 public final class BrowserHistory {
-    private final List<String> entries = new ArrayList<>();
+    private final List<String> entries =
+            new ArrayList<>();
+
     private int index = -1;
 
     public void visit(String url) {
-        if (url == null || url.isBlank()) {
+        if (url == null
+                || url.isBlank()) {
             return;
         }
 
         if (index >= 0
                 && index < entries.size()
-                && entries.get(index).equals(url)) {
+                && entries
+                .get(index)
+                .equals(url)) {
             return;
         }
 
-        while (entries.size() > index + 1) {
-            entries.remove(entries.size() - 1);
+        while (entries.size()
+                > index + 1) {
+            entries.remove(
+                    entries.size() - 1
+            );
         }
 
         entries.add(url);
-        index = entries.size() - 1;
+        index =
+                entries.size() - 1;
+    }
+
+    public void replaceCurrent(
+            String url
+    ) {
+        if (url == null
+                || url.isBlank()) {
+            return;
+        }
+
+        if (index < 0
+                || index >= entries.size()) {
+            visit(url);
+            return;
+        }
+
+        entries.set(
+                index,
+                url
+        );
     }
 
     public boolean canGoBack() {
@@ -32,7 +61,9 @@ public final class BrowserHistory {
     }
 
     public boolean canGoForward() {
-        return index >= 0 && index < entries.size() - 1;
+        return index >= 0
+                && index
+                < entries.size() - 1;
     }
 
     public String back() {
@@ -54,7 +85,8 @@ public final class BrowserHistory {
     }
 
     public String current() {
-        if (index < 0 || index >= entries.size()) {
+        if (index < 0
+                || index >= entries.size()) {
             return "";
         }
 
@@ -62,6 +94,9 @@ public final class BrowserHistory {
     }
 
     public List<String> entries() {
-        return Collections.unmodifiableList(entries);
+        return Collections
+                .unmodifiableList(
+                        entries
+                );
     }
 }
