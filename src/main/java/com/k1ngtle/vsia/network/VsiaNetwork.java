@@ -22,6 +22,8 @@ import com.k1ngtle.vsia.network.wifi.WifiMultiEngineeringDeviceRequestPacket;
 import com.k1ngtle.vsia.network.wifi.WifiMultiEngineeringDeviceActionPacket;
 import com.k1ngtle.vsia.network.wifi.WifiMultiEngineeringDeviceSnapshotPacket;
 import com.k1ngtle.vsia.network.wifi.WifiMultiEngineeringOpenPacket;
+import com.k1ngtle.vsia.phone.network.packet.C2SPhoneBrowserRequestPacket;
+import com.k1ngtle.vsia.phone.network.packet.S2CPhoneBrowserResponsePacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkDirection;
@@ -47,19 +49,31 @@ public class VsiaNetwork {
 
         INSTANCE = net;
 
-        net.messageBuilder(UploadFilePacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
+        net.messageBuilder(
+                        UploadFilePacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
                 .decoder(UploadFilePacket::new)
                 .encoder(UploadFilePacket::toBytes)
                 .consumerMainThread(UploadFilePacket::handle)
                 .add();
 
-        net.messageBuilder(DeleteFilePacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
+        net.messageBuilder(
+                        DeleteFilePacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
                 .decoder(DeleteFilePacket::new)
                 .encoder(DeleteFilePacket::toBytes)
                 .consumerMainThread(DeleteFilePacket::handle)
                 .add();
 
-        net.messageBuilder(DeviceCommandPacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
+        net.messageBuilder(
+                        DeviceCommandPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
                 .decoder(DeviceCommandPacket::new)
                 .encoder(DeviceCommandPacket::toBytes)
                 .consumerMainThread(DeviceCommandPacket::handle)
@@ -274,6 +288,26 @@ public class VsiaNetwork {
                 .encoder(W129IdeEventPacket::toBytes)
                 .consumerMainThread(W129IdeEventPacket::handle)
                 .add();
+
+        net.messageBuilder(
+                        C2SPhoneBrowserRequestPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
+                .decoder(C2SPhoneBrowserRequestPacket::new)
+                .encoder(C2SPhoneBrowserRequestPacket::toBytes)
+                .consumerMainThread(C2SPhoneBrowserRequestPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        S2CPhoneBrowserResponsePacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_CLIENT
+                )
+                .decoder(S2CPhoneBrowserResponsePacket::new)
+                .encoder(S2CPhoneBrowserResponsePacket::toBytes)
+                .consumerMainThread(S2CPhoneBrowserResponsePacket::handle)
+                .add();
     }
 
     public static <MSG> void sendToServer(MSG message) {
@@ -285,9 +319,7 @@ public class VsiaNetwork {
             MSG message
     ) {
         INSTANCE.send(
-                PacketDistributor.PLAYER.with(
-                        () -> player
-                ),
+                PacketDistributor.PLAYER.with(() -> player),
                 message
         );
     }

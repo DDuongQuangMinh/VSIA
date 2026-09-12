@@ -31,25 +31,34 @@ public abstract class IPhoneScreen extends Screen {
     }
 
     protected void renderPhoneBase(GuiGraphics graphics) {
+        renderPhoneShell(graphics, 0xFF16181D);
+        renderStatusBar(graphics);
+    }
+
+    protected void renderPhoneShell(GuiGraphics graphics, int screenColor) {
         renderBackground(graphics);
         roundedRect(graphics, phoneX, phoneY, PHONE_WIDTH, PHONE_HEIGHT, 24, 0xFF050505);
-        roundedRect(graphics, phoneX + 4, phoneY + 4, PHONE_WIDTH - 8, PHONE_HEIGHT - 8, 21, 0xFF16181D);
+        roundedRect(graphics, phoneX + 4, phoneY + 4, PHONE_WIDTH - 8, PHONE_HEIGHT - 8, 21, screenColor);
+    }
+
+    protected void renderStatusBar(GuiGraphics graphics) {
         IPhoneStatusBar.render(graphics, font, phoneX, phoneY, PHONE_WIDTH);
     }
 
     protected void renderHomeIndicator(GuiGraphics graphics) {
-        int w = 78;
-        int x = phoneX + (PHONE_WIDTH - w) / 2;
+        int indicatorWidth = 78;
+        int x = phoneX + (PHONE_WIDTH - indicatorWidth) / 2;
         int y = phoneY + PHONE_HEIGHT - 18;
-        roundedRect(graphics, x, y, w, 4, 2, 0xFFFFFFFF);
+        roundedRect(graphics, x, y, indicatorWidth, 4, 2, 0xFFFFFFFF);
     }
 
     protected void renderHeader(GuiGraphics graphics, String back, String title) {
         if (back != null && !back.isBlank()) {
             graphics.drawString(font, "‹ " + back, phoneX + 16, phoneY + 47, 0xFF5FA9FF, false);
         }
-        int tw = font.width(title);
-        graphics.drawString(font, title, phoneX + (PHONE_WIDTH - tw) / 2, phoneY + 47, 0xFFFFFFFF, false);
+
+        int titleWidth = font.width(title);
+        graphics.drawString(font, title, phoneX + (PHONE_WIDTH - titleWidth) / 2, phoneY + 47, 0xFFFFFFFF, false);
     }
 
     protected boolean clickedHome(double mouseX, double mouseY) {
@@ -100,19 +109,40 @@ public abstract class IPhoneScreen extends Screen {
         return false;
     }
 
-    protected static void roundedRect(GuiGraphics g, int x, int y, int w, int h, int r, int color) {
-        g.fill(x + r, y, x + w - r, y + h, color);
-        g.fill(x, y + r, x + w, y + h - r, color);
+    protected static void roundedRect(
+            GuiGraphics graphics,
+            int x,
+            int y,
+            int width,
+            int height,
+            int radius,
+            int color
+    ) {
+        graphics.fill(x + radius, y, x + width - radius, y + height, color);
+        graphics.fill(x, y + radius, x + width, y + height - radius, color);
 
-        for (int i = 0; i < r; i++) {
-            int dy = r - i;
-            int inset = (int)Math.ceil(r - Math.sqrt(Math.max(0, r * r - dy * dy)));
-            g.fill(x + inset, y + i, x + w - inset, y + i + 1, color);
-            g.fill(x + inset, y + h - i - 1, x + w - inset, y + h - i, color);
+        for (int i = 0; i < radius; i++) {
+            int dy = radius - i;
+            int inset = (int) Math.ceil(
+                    radius - Math.sqrt(Math.max(0, radius * radius - dy * dy))
+            );
+
+            graphics.fill(x + inset, y + i, x + width - inset, y + i + 1, color);
+            graphics.fill(x + inset, y + height - i - 1, x + width - inset, y + height - i, color);
         }
     }
 
-    protected static boolean inside(double mx, double my, int x, int y, int w, int h) {
-        return mx >= x && mx < x + w && my >= y && my < y + h;
+    protected static boolean inside(
+            double mouseX,
+            double mouseY,
+            int x,
+            int y,
+            int width,
+            int height
+    ) {
+        return mouseX >= x
+                && mouseX < x + width
+                && mouseY >= y
+                && mouseY < y + height;
     }
 }

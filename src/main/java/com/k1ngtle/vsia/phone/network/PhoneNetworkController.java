@@ -1,9 +1,6 @@
 package com.k1ngtle.vsia.phone.network;
 
-import com.k1ngtle.vsia.phone.browser.BrowserRequest;
 import com.k1ngtle.vsia.phone.browser.BrowserResponse;
-
-import java.util.List;
 
 public final class PhoneNetworkController {
     private static final PhoneNetworkController INSTANCE = new PhoneNetworkController();
@@ -34,20 +31,45 @@ public final class PhoneNetworkController {
         PhoneNetworkState.get().setCellularEnabled(enabled);
     }
 
-    public BrowserResponse request(BrowserRequest request) {
-        PhoneNetworkState state = PhoneNetworkState.get();
+    public PhoneNetworkRoute selectBrowserRoute() {
+        PhoneNetworkRoute wifiRoute = wifi.browserRoute();
 
-        if (state.isWifiUsable()) {
-            return wifi.request(request);
+        if (wifiRoute != null) {
+            return wifiRoute;
         }
 
-        if (state.isCellularUsable() || state.getCellular().enabled()) {
-            return cellular.request(request);
+        return cellular.browserRoute();
+    }
+
+    public BrowserResponse browserUnavailable(String url) {
+        PhoneNetworkState state = PhoneNetworkState.get();
+
+        if (state.getWifi().enabled()
+                && !state.isWifiUsable()
+                && !state.isCellularUsable()) {
+            return BrowserResponse.networkError(
+                    url,
+                    "Your iPhone is not connected to the Internet.",
+                    "Wi-Fi is enabled but is not connected to a usable network.",
+                    true
+            );
+        }
+
+        if (state.getCellular().enabled() && !state.isCellularUsable()) {
+            return BrowserResponse.networkError(
+                    url,
+                    "Cellular data is unavailable.",
+                    "RRC: " + state.getCellular().rrcState()
+                            + "\nNAS: " + state.getCellular().nasState()
+                            + "\nPDU: " + state.getCellular().pduState(),
+                    false
+            );
         }
 
         return BrowserResponse.networkError(
-                "Your iPhone is not connected",
-                List.of("to the Internet."),
+                url,
+                "Your iPhone is not connected to the Internet.",
+                "Turn on Wi-Fi or Cellular Data and connect to a network.",
                 true
         );
     }

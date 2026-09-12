@@ -1,45 +1,140 @@
 package com.k1ngtle.vsia.phone.browser;
 
+import com.k1ngtle.vsia.network.VsiaNetwork;
 import com.k1ngtle.vsia.phone.network.PhoneNetworkController;
+import com.k1ngtle.vsia.phone.network.PhoneNetworkRoute;
+import com.k1ngtle.vsia.phone.network.packet.C2SPhoneBrowserRequestPacket;
+import com.k1ngtle.vsia.phone.network.packet.S2CPhoneBrowserResponsePacket;
 
 public final class PhoneBrowser {
+    private static final PhoneBrowser INSTANCE = new PhoneBrowser();
+
     private final BrowserHistory history = new BrowserHistory();
 
-    public BrowserResponse open(String url) {
-        String normalized = normalize(url);
-        BrowserRequest request = new BrowserRequest(normalized);
+    private BrowserResponse response;
+    private String currentUrl = "";
+    private boolean loading;
 
-        BrowserResponse response = PhoneNetworkController.get().request(request);
+    private int nextRequestId = 1;
+    private int activeRequestId;
 
-        if (response.success()) {
-            history.visit(normalized);
+    private PhoneBrowser() {
+    }
+
+    public static PhoneBrowser get() {
+        return INSTANCE;
+    }
+
+    public void navigate(String rawUrl) {
+        navigateInternal(rawUrl, true);
+    }
+
+    public void reload() {
+        if (currentUrl.isBlank()) {
+            return;
         }
 
-        return response;
+        navigateInternal(currentUrl, false);
+    }
+
+    public void back() {
+        if (!history.canGoBack()) {
+            return;
+        }
+
+        navigateInternal(history.back(), false);
+    }
+
+    public void forward() {
+        if (!history.canGoForward()) {
+            return;
+        }
+
+        navigateInternal(history.forward(), false);
+    }
+
+    private void navigateInternal(String rawUrl, boolean addHistory) {
+        BrowserRequest request = new BrowserRequest(rawUrl);
+        int requestId = nextRequestId++;
+        activeRequestId = requestId;
+
+        if (request.host().isBlank()) {
+            loading = false;
+            response = BrowserResponse.networkError(
+                    request.url(),
+                    "Invalid address.",
+                    "Enter a VS:IA website hostname such as example.com.",
+                    false
+            );
+            return;
+        }
+
+        PhoneNetworkRoute route = PhoneNetworkController.get().selectBrowserRoute();
+        currentUrl = request.url();
+
+        if (addHistory) {
+            history.visit(currentUrl);
+        }
+
+        if (route == null) {
+            loading = false;
+            response = PhoneNetworkController.get().browserUnavailable(currentUrl);
+            return;
+        }
+
+        loading = true;
+        response = null;
+
+        VsiaNetwork.sendToServer(
+                new C2SPhoneBrowserRequestPacket(
+                        requestId,
+                        currentUrl,
+                        route.transport().name()
+                )
+        );
+    }
+
+    public void acceptServerResponse(S2CPhoneBrowserResponsePacket packet) {
+        if (packet.requestId() != activeRequestId) {
+            return;
+        }
+
+        loading = false;
+        currentUrl = packet.url();
+
+        response = BrowserResponse.http(
+                packet.url(),
+                packet.statusCode(),
+                packet.reason(),
+                packet.contentType(),
+                packet.body(),
+                packet.styleSheet(),
+                packet.transport(),
+                packet.routeSummary()
+        );
     }
 
     public BrowserHistory history() {
         return history;
     }
 
-    private String normalize(String url) {
-        if (url == null || url.isBlank()) {
-            return "intranet.vsia";
-        }
+    public BrowserResponse response() {
+        return response;
+    }
 
-        String value = url.trim();
+    public String currentUrl() {
+        return currentUrl;
+    }
 
-        if (value.startsWith("https://")) {
-            value = value.substring("https://".length());
-        } else if (value.startsWith("http://")) {
-            value = value.substring("http://".length());
-        }
+    public boolean loading() {
+        return loading;
+    }
 
-        int slash = value.indexOf('/');
-        if (slash >= 0) {
-            value = value.substring(0, slash);
-        }
+    public boolean canGoBack() {
+        return history.canGoBack();
+    }
 
-        return value.toLowerCase();
+    public boolean canGoForward() {
+        return history.canGoForward();
     }
 }
