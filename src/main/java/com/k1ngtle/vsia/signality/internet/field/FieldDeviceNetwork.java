@@ -10,6 +10,8 @@ import com.k1ngtle.vsia.signality.internet.radio.voice.network.S2CRadioVoiceFram
 import com.k1ngtle.vsia.signality.internet.satellite.network.C2SSatelliteGuiActionPacket;
 import com.k1ngtle.vsia.signality.internet.satellite.network.C2SSatelliteGuiRequestPacket;
 import com.k1ngtle.vsia.signality.internet.satellite.network.S2CSatelliteGuiSnapshotPacket;
+import com.k1ngtle.vsia.phone.network.realism.packet.C2SPhoneWirelessActionPacket;
+import com.k1ngtle.vsia.phone.network.realism.packet.S2CPhoneWirelessSnapshotPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkDirection;
@@ -19,7 +21,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class FieldDeviceNetwork {
     private static final String PROTOCOL =
-            "1.2";
+            "1.3";
 
     private static SimpleChannel channel;
     private static int packetId;
@@ -193,6 +195,38 @@ public final class FieldDeviceNetwork {
                 )
                 .consumerMainThread(
                         S2CSatelliteGuiSnapshotPacket::handle
+                )
+                .add();
+
+        channel.messageBuilder(
+                        C2SPhoneWirelessActionPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
+                .decoder(
+                        C2SPhoneWirelessActionPacket::new
+                )
+                .encoder(
+                        C2SPhoneWirelessActionPacket::toBytes
+                )
+                .consumerMainThread(
+                        C2SPhoneWirelessActionPacket::handle
+                )
+                .add();
+
+        channel.messageBuilder(
+                        S2CPhoneWirelessSnapshotPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_CLIENT
+                )
+                .decoder(
+                        S2CPhoneWirelessSnapshotPacket::new
+                )
+                .encoder(
+                        S2CPhoneWirelessSnapshotPacket::toBytes
+                )
+                .consumerMainThread(
+                        S2CPhoneWirelessSnapshotPacket::handle
                 )
                 .add();
 

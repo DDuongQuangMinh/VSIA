@@ -265,9 +265,13 @@ public final class RadioAudioPlayback {
 
                     applyGain(
                             pcm,
-                            0.70
-                                    + 0.30
-                                    * frame.intelligibility()
+                            (
+                                    0.70
+                                            + 0.30
+                                            * frame.intelligibility()
+                            )
+                                    * RadioAudioSettings
+                                    .outputVolume()
                     );
 
                     writeFully(
@@ -359,6 +363,83 @@ public final class RadioAudioPlayback {
 
     private void openLine()
             throws LineUnavailableException {
+        String selection =
+                RadioAudioSettings
+                        .outputDevice();
+
+        List<String> failures =
+                new ArrayList<>();
+
+        if (selection != null
+                && !selection.isBlank()
+                && !RadioAudioSettings
+                .OUTPUT_FOLLOW_MINECRAFT
+                .equals(
+                        selection
+                )
+                && !RadioAudioSettings
+                .OUTPUT_SYSTEM_DEFAULT
+                .equals(
+                        selection
+                )) {
+            if (tryOpenNamedMixer(
+                    selection,
+                    failures
+            )) {
+                return;
+            }
+
+            throw new LineUnavailableException(
+                    failures.isEmpty()
+                            ? "Selected output device was not found: "
+                            + selection
+                            : "Selected output device could not be opened: "
+                            + selection
+                            + " | "
+                            + String.join(
+                            " | ",
+                            failures
+                    )
+            );
+        }
+
+        if (RadioAudioSettings
+                .OUTPUT_SYSTEM_DEFAULT
+                .equals(
+                        selection
+                )) {
+            if (tryOpenSystemDefault(
+                    failures
+            )) {
+                return;
+            }
+
+            List<Mixer.Info> mixers =
+                    sortedMixers(
+                            ""
+                    );
+
+            for (Mixer.Info info
+                    : mixers) {
+                if (tryOpenMixer(
+                        info,
+                        failures
+                )) {
+                    return;
+                }
+            }
+
+            throw new LineUnavailableException(
+                    failures.isEmpty()
+                            ? "System default audio output is unavailable"
+                            : "No usable output device. "
+                            + String.join(
+                            " | ",
+                            failures
+                    )
+            );
+        }
+
         String preferredMinecraftDevice =
                 minecraftSoundDevice();
 
@@ -366,9 +447,6 @@ public final class RadioAudioPlayback {
                 sortedMixers(
                         preferredMinecraftDevice
                 );
-
-        List<String> failures =
-                new ArrayList<>();
 
         if (!preferredMinecraftDevice.isBlank()) {
             for (Mixer.Info info
@@ -414,6 +492,33 @@ public final class RadioAudioPlayback {
                         failures
                 )
         );
+    }
+
+    private boolean tryOpenNamedMixer(
+            String selectedName,
+            List<String> failures
+    ) {
+        for (Mixer.Info info
+                : AudioSystem.getMixerInfo()) {
+            if (!info.getName()
+                    .equals(
+                            selectedName
+                    )) {
+                continue;
+            }
+
+            return tryOpenMixer(
+                    info,
+                    failures
+            );
+        }
+
+        failures.add(
+                "device not found: "
+                        + selectedName
+        );
+
+        return false;
     }
 
     private boolean tryOpenSystemDefault(

@@ -5,5 +5,6 @@
     "block.vsia.temporary_satellite_terminal": "Temporary Satellite Terminal",
     "item.vsia.temporary_satellite_terminal": "Temporary Satellite Terminal",
     "key.vsia.radio_ptt": "Radio Push-to-Talk",
-    "key.categories.vsia": "VS:IA"
+    "key.categories.vsia": "VS:IA",
+    "key.vsia.radio_audio_settings": "Radio Audio Settings"
 }

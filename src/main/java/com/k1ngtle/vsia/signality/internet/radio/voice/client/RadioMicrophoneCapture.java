@@ -6,6 +6,7 @@ import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.DataLine;
 import javax.sound.sampled.LineUnavailableException;
+import javax.sound.sampled.Mixer;
 import javax.sound.sampled.TargetDataLine;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -442,21 +443,55 @@ public final class RadioMicrophoneCapture {
 
     private static CaptureLine openCaptureLine()
             throws LineUnavailableException {
+        String selection =
+                RadioAudioSettings
+                        .inputDevice();
+
+        if (selection != null
+                && !selection.isBlank()
+                && !RadioAudioSettings
+                .INPUT_SYSTEM_DEFAULT
+                .equals(
+                        selection
+                )) {
+            Mixer mixer =
+                    RadioAudioDevices
+                            .findMixerByName(
+                                    selection
+                            );
+
+            if (mixer == null) {
+                throw new LineUnavailableException(
+                        "Selected microphone was not found: "
+                                + selection
+                );
+            }
+
+            CaptureLine selected =
+                    tryOpenMixer(
+                            mixer
+                    );
+
+            if (selected != null) {
+                return selected;
+            }
+
+            throw new LineUnavailableException(
+                    "Selected microphone could not be opened: "
+                            + selection
+            );
+        }
+
         LineUnavailableException last =
                 null;
 
         for (float rate
                 : CAPTURE_RATES) {
             AudioFormat format =
-                    new AudioFormat(
-                            AudioFormat.Encoding.PCM_SIGNED,
-                            rate,
-                            16,
-                            1,
-                            2,
-                            rate,
-                            false
-                    );
+                    RadioAudioDevices
+                            .inputFormat(
+                                    rate
+                            );
 
             DataLine.Info info =
                     new DataLine.Info(
@@ -477,21 +512,9 @@ public final class RadioMicrophoneCapture {
                                         info
                                 );
 
-                int frameBytes =
-                        Math.max(
-                                1,
-                                Math.round(
-                                        rate
-                                                * FRAME_MILLIS
-                                                / 1_000.0F
-                                )
-                        )
-                                * 2;
-
-                target.open(
-                        format,
-                        frameBytes
-                                * 12
+                openTarget(
+                        target,
+                        format
                 );
 
                 return new CaptureLine(
@@ -510,6 +533,74 @@ public final class RadioMicrophoneCapture {
 
         throw new LineUnavailableException(
                 "No compatible default microphone was found"
+        );
+    }
+
+    private static CaptureLine tryOpenMixer(
+            Mixer mixer
+    ) {
+        for (float rate
+                : CAPTURE_RATES) {
+            AudioFormat format =
+                    RadioAudioDevices
+                            .inputFormat(
+                                    rate
+                            );
+
+            DataLine.Info info =
+                    new DataLine.Info(
+                            TargetDataLine.class,
+                            format
+                    );
+
+            if (!mixer.isLineSupported(
+                    info
+            )) {
+                continue;
+            }
+
+            try {
+                TargetDataLine target =
+                        (TargetDataLine) mixer
+                                .getLine(
+                                        info
+                                );
+
+                openTarget(
+                        target,
+                        format
+                );
+
+                return new CaptureLine(
+                        target,
+                        format
+                );
+            } catch (Exception ignored) {
+            }
+        }
+
+        return null;
+    }
+
+    private static void openTarget(
+            TargetDataLine target,
+            AudioFormat format
+    ) throws LineUnavailableException {
+        int frameBytes =
+                Math.max(
+                        1,
+                        Math.round(
+                                format.getSampleRate()
+                                        * FRAME_MILLIS
+                                        / 1_000.0F
+                        )
+                )
+                        * 2;
+
+        target.open(
+                format,
+                frameBytes
+                        * 12
         );
     }
 

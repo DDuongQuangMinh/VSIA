@@ -5,185 +5,695 @@ import com.k1ngtle.vsia.phone.network.PhoneNetworkState;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
-public class IPhoneWifiScreen extends IPhoneScreen {
-    private static final NetworkEntry[] NETWORKS = {
-            new NetworkEntry("VSIA-LAB-WIFI", false, -51),
-            new NetworkEntry("HomeNetwork", false, -64),
-            new NetworkEntry("Engineering-AP", true, -72),
-            new NetworkEntry("GuestNetwork", true, -83)
-    };
+import java.util.List;
+
+public class IPhoneWifiScreen
+        extends IPhoneScreen {
+
+    private static final int ROW_HEIGHT =
+            40;
 
     private int contentX;
     private int contentWidth;
-    private int toggleY;
     private int listY;
+    private int scroll;
 
     public IPhoneWifiScreen() {
-        super(Component.literal("Wi-Fi"));
+        super(
+                Component.literal(
+                        "Wi-Fi"
+                )
+        );
     }
 
     @Override
     protected void init() {
         super.init();
-        contentX = phoneX + 14;
-        contentWidth = PHONE_WIDTH - 28;
-        toggleY = phoneY + 80;
-        listY = toggleY + 78;
+
+        contentX =
+                phoneX + 14;
+
+        contentWidth =
+                PHONE_WIDTH - 28;
+
+        listY =
+                phoneY + 160;
+
+        PhoneNetworkController
+                .get()
+                .requestRefresh();
     }
 
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderPhoneShell(graphics, 0xFF1C1C1E);
-        renderStatusBar(graphics);
-        renderHeaderLocal(graphics);
+    public void render(
+            GuiGraphics graphics,
+            int mouseX,
+            int mouseY,
+            float partialTick
+    ) {
+        renderPhoneShell(
+                graphics,
+                0xFF1C1C1E
+        );
 
-        PhoneNetworkState state = PhoneNetworkState.get();
+        renderStatusBar(
+                graphics
+        );
 
-        roundedRect(graphics, contentX, toggleY, contentWidth, 50, 14, 0xFF2C2C2E);
-        graphics.drawString(font, "Wi-Fi", contentX + 14, toggleY + 20, 0xFFFFFFFF, false);
-        drawToggle(graphics, contentX + contentWidth - 52, toggleY + 13, state.getWifi().enabled());
+        renderHeader(
+                graphics,
+                "Settings",
+                "Wi-Fi"
+        );
 
-        graphics.drawString(font, "NETWORKS", contentX + 4, listY - 19, 0xFF8E8E93, false);
+        PhoneNetworkState state =
+                PhoneNetworkState.get();
 
-        if (!state.getWifi().enabled()) {
-            roundedRect(graphics, contentX, listY, contentWidth, 70, 14, 0xFF2C2C2E);
-            graphics.drawCenteredString(font, "Wi-Fi is Off", phoneX + PHONE_WIDTH / 2, listY + 20, 0xFFFFFFFF);
-            graphics.drawCenteredString(font, "Turn on Wi-Fi to discover networks.", phoneX + PHONE_WIDTH / 2, listY + 41, 0xFF8E8E93);
-            renderHomeIndicator(graphics);
+        PhoneNetworkState.WifiStatus wifi =
+                state.getWifi();
+
+        roundedRect(
+                graphics,
+                contentX,
+                phoneY + 78,
+                contentWidth,
+                52,
+                14,
+                0xFF2C2C2E
+        );
+
+        graphics.drawString(
+                font,
+                "Wi-Fi",
+                contentX + 13,
+                phoneY + 97,
+                0xFFFFFFFF,
+                false
+        );
+
+        drawToggle(
+                graphics,
+                contentX
+                        + contentWidth
+                        - 47,
+                phoneY + 91,
+                wifi.enabled()
+        );
+
+        graphics.drawString(
+                font,
+                wifi.enabled()
+                        ? statusLine(
+                        wifi
+                )
+                        : "Wi-Fi is off",
+                contentX + 4,
+                phoneY + 139,
+                wifi.connected()
+                        ? 0xFF30D158
+                        : 0xFF8E8E93,
+                false
+        );
+
+        if (wifi.enabled()) {
+            graphics.drawString(
+                    font,
+                    "NETWORKS",
+                    contentX + 4,
+                    listY - 16,
+                    0xFF8E8E93,
+                    false
+            );
+
+            renderNetworks(
+                    graphics,
+                    mouseX,
+                    mouseY
+            );
+        }
+
+        renderHomeIndicator(
+                graphics
+        );
+    }
+
+    private void renderNetworks(
+            GuiGraphics graphics,
+            int mouseX,
+            int mouseY
+    ) {
+        List<PhoneNetworkState.VisibleWifiNetwork> networks =
+                PhoneNetworkState
+                        .get()
+                        .getVisibleWifiNetworks();
+
+        int visibleRows =
+                5;
+
+        scroll =
+                Math.max(
+                        0,
+                        Math.min(
+                                scroll,
+                                Math.max(
+                                        0,
+                                        networks.size()
+                                                - visibleRows
+                                )
+                        )
+                );
+
+        if (networks.isEmpty()) {
+            roundedRect(
+                    graphics,
+                    contentX,
+                    listY,
+                    contentWidth,
+                    60,
+                    14,
+                    0xFF2C2C2E
+            );
+
+            graphics.drawCenteredString(
+                    font,
+                    "No networks in range",
+                    phoneX
+                            + PHONE_WIDTH
+                            / 2,
+                    listY + 19,
+                    0xFFAEAEB2
+            );
+
+            graphics.drawCenteredString(
+                    font,
+                    "Move closer to an access point",
+                    phoneX
+                            + PHONE_WIDTH
+                            / 2,
+                    listY + 36,
+                    0xFF636366
+            );
+
             return;
         }
 
-        int groupHeight = NETWORKS.length * 48;
-        roundedRect(graphics, contentX, listY, contentWidth, groupHeight, 14, 0xFF2C2C2E);
+        int rows =
+                Math.min(
+                        visibleRows,
+                        networks.size()
+                                - scroll
+                );
 
-        for (int i = 0; i < NETWORKS.length; i++) {
-            int rowY = listY + i * 48;
-            if (i > 0) {
-                graphics.fill(contentX + 14, rowY, contentX + contentWidth - 14, rowY + 1, 0xFF3A3A3C);
+        roundedRect(
+                graphics,
+                contentX,
+                listY,
+                contentWidth,
+                rows
+                        * ROW_HEIGHT,
+                14,
+                0xFF2C2C2E
+        );
+
+        PhoneNetworkState.WifiStatus wifi =
+                PhoneNetworkState
+                        .get()
+                        .getWifi();
+
+        for (int row = 0;
+             row < rows;
+             row++) {
+            int index =
+                    scroll + row;
+
+            PhoneNetworkState.VisibleWifiNetwork network =
+                    networks.get(
+                            index
+                    );
+
+            int y =
+                    listY
+                            + row
+                            * ROW_HEIGHT;
+
+            boolean hover =
+                    inside(
+                            mouseX,
+                            mouseY,
+                            contentX,
+                            y,
+                            contentWidth,
+                            ROW_HEIGHT
+                    );
+
+            if (hover) {
+                graphics.fill(
+                        contentX + 2,
+                        y + 2,
+                        contentX
+                                + contentWidth
+                                - 2,
+                        y
+                                + ROW_HEIGHT
+                                - 2,
+                        0xFF353538
+                );
             }
-            NetworkEntry entry = NETWORKS[i];
-            boolean selected = state.getWifi().connected() && entry.ssid().equals(state.getWifi().ssid());
-            drawNetworkRow(graphics, entry, rowY, selected);
+
+            if (row > 0) {
+                graphics.fill(
+                        contentX + 13,
+                        y,
+                        contentX
+                                + contentWidth
+                                - 13,
+                        y + 1,
+                        0xFF3A3A3C
+                );
+            }
+
+            boolean selected =
+                    wifi.connected()
+                            && wifi.bssid()
+                            .equalsIgnoreCase(
+                                    network.bssid()
+                            );
+
+            graphics.drawString(
+                    font,
+                    selected
+                            ? "✓"
+                            : "",
+                    contentX + 10,
+                    y + 14,
+                    0xFF0A84FF,
+                    false
+            );
+
+            graphics.drawString(
+                    font,
+                    fit(
+                            network.ssid(),
+                            104
+                    ),
+                    contentX + 29,
+                    y + 8,
+                    0xFFFFFFFF,
+                    false
+            );
+
+            graphics.drawString(
+                    font,
+                    network.quality()
+                            + "  "
+                            + network.rssiDbm()
+                            + " dBm",
+                    contentX + 29,
+                    y + 23,
+                    qualityColor(
+                            network.quality()
+                    ),
+                    false
+            );
+
+            int right =
+                    contentX
+                            + contentWidth
+                            - 14;
+
+            drawWifiBars(
+                    graphics,
+                    right - 22,
+                    y + 13,
+                    barsForRssi(
+                            network.rssiDbm()
+                    )
+            );
+
+            if (network.locked()) {
+                drawLock(
+                        graphics,
+                        right - 35,
+                        y + 13
+                );
+            }
+        }
+    }
+
+    private String statusLine(
+            PhoneNetworkState.WifiStatus wifi
+    ) {
+        if (wifi.connected()) {
+            return fit(
+                    wifi.ssid()
+                            + " · "
+                            + wifi.quality(),
+                    contentWidth - 8
+            );
         }
 
-        int stageY = listY + groupHeight + 24;
-        graphics.drawString(font, "CONNECTION", contentX + 4, stageY - 18, 0xFF8E8E93, false);
-        roundedRect(graphics, contentX, stageY, contentWidth, 52, 14, 0xFF2C2C2E);
-        graphics.drawString(font, "Stage", contentX + 14, stageY + 18, 0xFFFFFFFF, false);
-
-        String stage = state.getWifi().stage().displayName();
-        int sw = font.width(stage);
-        graphics.drawString(font, stage, contentX + contentWidth - sw - 14, stageY + 18, stageColor(state.getWifi().stage()), false);
-
-        renderHomeIndicator(graphics);
-    }
-
-    private void renderHeaderLocal(GuiGraphics g) {
-        g.drawString(font, "< Settings", phoneX + 16, phoneY + 49, 0xFF0A84FF, false);
-        int tw = font.width("Wi-Fi");
-        g.drawString(font, "Wi-Fi", phoneX + (PHONE_WIDTH - tw) / 2, phoneY + 49, 0xFFFFFFFF, false);
-    }
-
-    private void drawNetworkRow(GuiGraphics g, NetworkEntry entry, int y, boolean selected) {
-        int textX = contentX + 14;
-        if (selected) {
-            drawCheck(g, textX, y + 19, 0xFF0A84FF);
-            textX += 17;
+        if (!wifi.status()
+                .isBlank()) {
+            return fit(
+                    wifi.status(),
+                    contentWidth - 8
+            );
         }
 
-        g.drawString(font, entry.ssid(), textX, y + 18, 0xFFFFFFFF, false);
+        return "Scanning...";
+    }
 
-        int infoX = contentX + contentWidth - 16;
-        drawInfo(g, infoX, y + 23);
+    private void drawToggle(
+            GuiGraphics graphics,
+            int x,
+            int y,
+            boolean enabled
+    ) {
+        int color =
+                enabled
+                        ? 0xFF30D158
+                        : 0xFF636366;
 
-        int wifiX = infoX - 29;
-        drawWifiStrength(g, wifiX, y + 16, entry.rssi());
+        roundedRect(
+                graphics,
+                x,
+                y,
+                36,
+                20,
+                10,
+                color
+        );
 
-        if (entry.locked()) {
-            drawLock(g, wifiX - 15, y + 16, 0xFFD1D1D6);
+        int knobX =
+                enabled
+                        ? x + 19
+                        : x + 3;
+
+        roundedRect(
+                graphics,
+                knobX,
+                y + 3,
+                14,
+                14,
+                7,
+                0xFFFFFFFF
+        );
+    }
+
+    private void drawWifiBars(
+            GuiGraphics graphics,
+            int x,
+            int y,
+            int bars
+    ) {
+        int active =
+                0xFFFFFFFF;
+
+        int inactive =
+                0xFF636366;
+
+        graphics.fill(
+                x,
+                y + 3,
+                x + 14,
+                y + 5,
+                bars >= 3
+                        ? active
+                        : inactive
+        );
+
+        graphics.fill(
+                x + 2,
+                y + 7,
+                x + 12,
+                y + 9,
+                bars >= 2
+                        ? active
+                        : inactive
+        );
+
+        graphics.fill(
+                x + 5,
+                y + 11,
+                x + 9,
+                y + 13,
+                bars >= 1
+                        ? active
+                        : inactive
+        );
+    }
+
+    private void drawLock(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        graphics.fill(
+                x + 2,
+                y + 6,
+                x + 9,
+                y + 13,
+                0xFFAEAEB2
+        );
+
+        graphics.fill(
+                x + 3,
+                y + 2,
+                x + 8,
+                y + 4,
+                0xFFAEAEB2
+        );
+
+        graphics.fill(
+                x + 2,
+                y + 3,
+                x + 4,
+                y + 7,
+                0xFFAEAEB2
+        );
+
+        graphics.fill(
+                x + 7,
+                y + 3,
+                x + 9,
+                y + 7,
+                0xFFAEAEB2
+        );
+    }
+
+    private int barsForRssi(
+            int rssi
+    ) {
+        if (rssi >= -55) {
+            return 3;
         }
+
+        if (rssi >= -67) {
+            return 2;
+        }
+
+        if (rssi >= -80) {
+            return 1;
+        }
+
+        return 0;
     }
 
-    private void drawToggle(GuiGraphics g, int x, int y, boolean on) {
-        roundedRect(g, x, y, 40, 24, 12, on ? 0xFF34C759 : 0xFF636366);
-        int knobX = on ? x + 18 : x + 2;
-        roundedRect(g, knobX, y + 2, 20, 20, 10, 0xFFFFFFFF);
+    private int qualityColor(
+            String quality
+    ) {
+        if ("EXCELLENT".equals(
+                quality
+        )
+                || "GOOD".equals(
+                quality
+        )) {
+            return 0xFF30D158;
+        }
+
+        if ("FAIR".equals(
+                quality
+        )) {
+            return 0xFFFFD60A;
+        }
+
+        return 0xFFFF9F0A;
     }
 
-    private void drawWifiStrength(GuiGraphics g, int x, int y, int rssi) {
-        int strength = rssi >= -55 ? 3 : rssi >= -67 ? 2 : rssi >= -80 ? 1 : 0;
-        int on = 0xFFFFFFFF;
-        int off = 0xFF636366;
-        g.fill(x, y + 1, x + 14, y + 3, strength >= 3 ? on : off);
-        g.fill(x + 2, y + 5, x + 12, y + 7, strength >= 2 ? on : off);
-        g.fill(x + 5, y + 9, x + 9, y + 11, strength >= 1 ? on : off);
-        g.fill(x + 6, y + 13, x + 8, y + 15, strength >= 1 ? on : off);
-    }
+    private String fit(
+            String value,
+            int maxWidth
+    ) {
+        String text =
+                value == null
+                        ? ""
+                        : value;
 
-    private void drawLock(GuiGraphics g, int x, int y, int color) {
-        g.fill(x, y + 5, x + 9, y + 12, color);
-        g.fill(x + 2, y + 1, x + 7, y + 3, color);
-        g.fill(x + 1, y + 2, x + 3, y + 7, color);
-        g.fill(x + 6, y + 2, x + 8, y + 7, color);
-    }
+        if (font.width(
+                text
+        ) <= maxWidth) {
+            return text;
+        }
 
-    private void drawInfo(GuiGraphics g, int cx, int cy) {
-        roundedRect(g, cx - 7, cy - 7, 14, 14, 7, 0xFF0A84FF);
-        roundedRect(g, cx - 5, cy - 5, 10, 10, 5, 0xFF2C2C2E);
-        g.fill(cx, cy - 2, cx + 1, cy + 4, 0xFF0A84FF);
-        g.fill(cx, cy - 5, cx + 1, cy - 4, 0xFF0A84FF);
-    }
+        while (!text.isEmpty()
+                && font.width(
+                text + "..."
+        ) > maxWidth) {
+            text =
+                    text.substring(
+                            0,
+                            text.length() - 1
+                    );
+        }
 
-    private void drawCheck(GuiGraphics g, int x, int y, int color) {
-        g.fill(x, y, x + 3, y + 2, color);
-        g.fill(x + 2, y + 1, x + 4, y + 4, color);
-        g.fill(x + 4, y - 3, x + 6, y + 3, color);
-    }
-
-    private int stageColor(PhoneNetworkState.WifiStage stage) {
-        return switch (stage) {
-            case CONNECTED -> 0xFF30D158;
-            case FAILED -> 0xFFFF453A;
-            case IDLE -> 0xFF8E8E93;
-            default -> 0xFFFFD60A;
-        };
+        return text + "...";
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(
+            double mouseX,
+            double mouseY,
+            int button
+    ) {
         if (button == 0) {
-            if (clickedBack(mouseX, mouseY)) {
-                minecraft.setScreen(new IPhoneSettingsScreen());
+            PhoneNetworkState state =
+                    PhoneNetworkState.get();
+
+            if (clickedBack(
+                    mouseX,
+                    mouseY
+            )) {
+                minecraft.setScreen(
+                        new IPhoneSettingsScreen()
+                );
+
                 return true;
             }
 
-            if (inside(mouseX, mouseY, contentX + contentWidth - 58, toggleY + 7, 54, 38)) {
-                PhoneNetworkController.get().setWifiEnabled(!PhoneNetworkState.get().getWifi().enabled());
+            if (inside(
+                    mouseX,
+                    mouseY,
+                    contentX
+                            + contentWidth
+                            - 54,
+                    phoneY + 82,
+                    50,
+                    38
+            )) {
+                PhoneNetworkController
+                        .get()
+                        .setWifiEnabled(
+                                !state.getWifi()
+                                        .enabled()
+                        );
+
                 return true;
             }
 
-            if (!PhoneNetworkState.get().getWifi().enabled()) {
-                return super.mouseClicked(mouseX, mouseY, button);
-            }
+            if (state.getWifi()
+                    .enabled()) {
+                List<PhoneNetworkState.VisibleWifiNetwork> networks =
+                        state.getVisibleWifiNetworks();
 
-            for (int i = 0; i < NETWORKS.length; i++) {
-                int rowY = listY + i * 48;
-                if (!inside(mouseX, mouseY, contentX, rowY, contentWidth, 48)) continue;
+                int row =
+                        (
+                                (int) mouseY
+                                        - listY
+                        )
+                                / ROW_HEIGHT;
 
-                NetworkEntry entry = NETWORKS[i];
-                var wifi = PhoneNetworkState.get().getWifi();
+                int index =
+                        scroll + row;
 
-                if (wifi.connected() && entry.ssid().equals(wifi.ssid())) {
-                    minecraft.setScreen(new IPhoneWifiDetailsScreen());
-                } else {
-                    PhoneNetworkController.get().connectWifi(entry.ssid(), entry.rssi(), entry.locked());
+                if (mouseX >= contentX
+                        && mouseX
+                        < contentX
+                        + contentWidth
+                        && row >= 0
+                        && row < 5
+                        && index >= 0
+                        && index < networks.size()) {
+                    PhoneNetworkState.VisibleWifiNetwork network =
+                            networks.get(
+                                    index
+                            );
+
+                    if (state.getWifi()
+                            .connected()
+                            && state.getWifi()
+                            .bssid()
+                            .equalsIgnoreCase(
+                                    network.bssid()
+                            )) {
+                        minecraft.setScreen(
+                                new IPhoneWifiDetailsScreen()
+                        );
+                    } else {
+                        PhoneNetworkController
+                                .get()
+                                .connectWifi(
+                                        network.bssid()
+                                );
+                    }
+
+                    return true;
                 }
-                return true;
             }
         }
-        return super.mouseClicked(mouseX, mouseY, button);
+
+        return super.mouseClicked(
+                mouseX,
+                mouseY,
+                button
+        );
     }
 
-    private record NetworkEntry(String ssid, boolean locked, int rssi) {
+    @Override
+    public boolean mouseScrolled(
+            double mouseX,
+            double mouseY,
+            double delta
+    ) {
+        if (inside(
+                mouseX,
+                mouseY,
+                contentX,
+                listY,
+                contentWidth,
+                ROW_HEIGHT * 5
+        )) {
+            List<PhoneNetworkState.VisibleWifiNetwork> networks =
+                    PhoneNetworkState
+                            .get()
+                            .getVisibleWifiNetworks();
+
+            int max =
+                    Math.max(
+                            0,
+                            networks.size() - 5
+                    );
+
+            scroll =
+                    Math.max(
+                            0,
+                            Math.min(
+                                    max,
+                                    scroll
+                                            + (
+                                            delta > 0
+                                                    ? -1
+                                                    : 1
+                                    )
+                            )
+                    );
+
+            return true;
+        }
+
+        return super.mouseScrolled(
+                mouseX,
+                mouseY,
+                delta
+        );
     }
 }

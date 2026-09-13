@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.signality.internet.radio.voice.client;
 
 import com.k1ngtle.vsia.signality.internet.field.FieldDeviceNetwork;
 import com.k1ngtle.vsia.signality.internet.radio.device.TemporaryRadioItem;
+import com.k1ngtle.vsia.signality.internet.radio.voice.MuLawCodec;
 import com.k1ngtle.vsia.signality.internet.radio.voice.network.C2SRadioVoiceFramePacket;
 import com.k1ngtle.vsia.signality.internet.radio.voice.network.C2SRadioVoicePttPacket;
 import net.minecraft.client.Minecraft;
@@ -284,6 +285,110 @@ public final class RadioVoiceClient {
                             false
                     );
         }
+    }
+
+    public void reloadAudioSettings() {
+        if (transmitting
+                || microphone.running()) {
+            stopTransmit(
+                    true
+            );
+        }
+
+        playback.stop();
+
+        lastPlaybackErrorShown =
+                "";
+
+        lastPlaybackDeviceShown =
+                "";
+    }
+
+    public void playLocalTestTone() {
+        UUID sourceId =
+                UUID.nameUUIDFromBytes(
+                        "vsia-radio-local-audio-gui-test"
+                                .getBytes(
+                                        java.nio.charset.StandardCharsets.UTF_8
+                                )
+                );
+
+        int frames =
+                50;
+
+        int samplesPerFrame =
+                160;
+
+        double frequencyHz =
+                700.0;
+
+        double amplitude =
+                12_000.0;
+
+        for (int frame = 0;
+             frame < frames;
+             frame++) {
+            byte[] encoded =
+                    new byte[
+                            samplesPerFrame
+                    ];
+
+            for (int sampleIndex = 0;
+                 sampleIndex < samplesPerFrame;
+                 sampleIndex++) {
+                int absoluteSample =
+                        frame
+                                * samplesPerFrame
+                                + sampleIndex;
+
+                short pcm =
+                        (short) Math.round(
+                                Math.sin(
+                                        2.0
+                                                * Math.PI
+                                                * frequencyHz
+                                                * absoluteSample
+                                                / 8_000.0
+                                )
+                                        * amplitude
+                        );
+
+                encoded[sampleIndex] =
+                        MuLawCodec.encode(
+                                pcm
+                        );
+            }
+
+            receiveFrame(
+                    sourceId,
+                    frame,
+                    encoded,
+                    false,
+                    40.0,
+                    1.0,
+                    "DIGITAL"
+            );
+        }
+
+        receiveFrame(
+                sourceId,
+                frames,
+                new byte[0],
+                true,
+                40.0,
+                1.0,
+                "DIGITAL"
+        );
+    }
+
+    public String playbackDeviceDescription() {
+        return playback
+                .outputDeviceDescription();
+    }
+
+    public String playbackError() {
+        return playback
+                .lastError();
     }
 
     public boolean transmitting() {

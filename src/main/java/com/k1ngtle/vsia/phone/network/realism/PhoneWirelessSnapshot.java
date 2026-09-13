@@ -1,173 +1,32 @@
-package com.k1ngtle.vsia.phone.network;
-
-import com.k1ngtle.vsia.phone.network.realism.PhoneWirelessSnapshot;
+package com.k1ngtle.vsia.phone.network.realism;
 
 import java.util.List;
 
-public final class PhoneNetworkState {
-    private static final PhoneNetworkState INSTANCE =
-            new PhoneNetworkState();
-
-    private volatile WifiStatus wifi =
-            WifiStatus.initial();
-
-    private volatile CellularStatus cellular =
-            CellularStatus.initial();
-
-    private volatile List<VisibleWifiNetwork> visibleWifiNetworks =
-            List.of();
-
-    private int batteryPercent =
-            87;
-
-    private PhoneNetworkState() {
-    }
-
-    public static PhoneNetworkState get() {
-        return INSTANCE;
-    }
-
-    public WifiStatus getWifi() {
-        return wifi;
-    }
-
-    public CellularStatus getCellular() {
-        return cellular;
-    }
-
-    public List<VisibleWifiNetwork> getVisibleWifiNetworks() {
-        return visibleWifiNetworks;
-    }
-
-    public int getBatteryPercent() {
-        return batteryPercent;
-    }
-
-    public void setBatteryPercent(
-            int batteryPercent
-    ) {
-        this.batteryPercent =
-                Math.max(
-                        0,
-                        Math.min(
-                                100,
-                                batteryPercent
-                        )
+public record PhoneWirelessSnapshot(
+        List<WifiNetwork> wifiNetworks,
+        WifiStatus wifi,
+        CellularStatus cellular
+) {
+    public PhoneWirelessSnapshot {
+        wifiNetworks =
+                wifiNetworks == null
+                        ? List.of()
+                        : List.copyOf(
+                        wifiNetworks
                 );
-    }
-
-    public boolean isWifiUsable() {
-        WifiStatus value =
-                wifi;
-
-        return value.enabled()
-                && value.connected()
-                && value.rssiDbm() >= -90
-                && value.sinrDb() >= -5.0
-                && "CONNECTED".equalsIgnoreCase(
-                value.stage()
-        );
-    }
-
-    public boolean isCellularUsable() {
-        CellularStatus value =
-                cellular;
-
-        return value.enabled()
-                && value.registered()
-                && "ACTIVE".equalsIgnoreCase(
-                value.pduState()
-        )
-                && value.rsrpDbm() >= -120
-                && value.sinrDb() >= -6.0;
-    }
-
-    public void applyWirelessSnapshot(
-            PhoneWirelessSnapshot snapshot
-    ) {
-        if (snapshot == null) {
-            return;
-        }
-
-        visibleWifiNetworks =
-                snapshot.wifiNetworks()
-                        .stream()
-                        .map(
-                                value ->
-                                        new VisibleWifiNetwork(
-                                                value.ssid(),
-                                                value.bssid(),
-                                                value.security(),
-                                                value.locked(),
-                                                value.rssiDbm(),
-                                                value.sinrDb(),
-                                                value.channel(),
-                                                value.frequencyHz(),
-                                                value.phy(),
-                                                value.distanceBlocks(),
-                                                value.quality()
-                                        )
-                        )
-                        .toList();
-
-        PhoneWirelessSnapshot.WifiStatus serverWifi =
-                snapshot.wifi();
 
         wifi =
-                new WifiStatus(
-                        serverWifi.enabled(),
-                        serverWifi.connected(),
-                        serverWifi.stage(),
-                        serverWifi.ssid(),
-                        serverWifi.bssid(),
-                        serverWifi.security(),
-                        serverWifi.rssiDbm(),
-                        serverWifi.sinrDb(),
-                        serverWifi.channel(),
-                        serverWifi.frequencyHz(),
-                        serverWifi.phy(),
-                        serverWifi.distanceBlocks(),
-                        serverWifi.quality(),
-                        serverWifi.ipAddress(),
-                        serverWifi.subnetMask(),
-                        serverWifi.gateway(),
-                        serverWifi.dns(),
-                        serverWifi.status()
-                );
-
-        PhoneWirelessSnapshot.CellularStatus serverCellular =
-                snapshot.cellular();
+                wifi == null
+                        ? WifiStatus.off()
+                        : wifi;
 
         cellular =
-                new CellularStatus(
-                        serverCellular.enabled(),
-                        serverCellular.registered(),
-                        serverCellular.carrier(),
-                        serverCellular.radioLabel(),
-                        serverCellular.architecture(),
-                        serverCellular.gnbId(),
-                        serverCellular.cellId(),
-                        serverCellular.tac(),
-                        serverCellular.plmn(),
-                        serverCellular.band(),
-                        serverCellular.ipAddress(),
-                        serverCellular.dnn(),
-                        serverCellular.fiveQi(),
-                        serverCellular.rrcState(),
-                        serverCellular.nasState(),
-                        serverCellular.pduState(),
-                        serverCellular.rsrpDbm(),
-                        serverCellular.rsrqDb(),
-                        serverCellular.sinrDb(),
-                        serverCellular.distanceBlocks(),
-                        serverCellular.quality(),
-                        serverCellular.estimatedDownlinkMbps(),
-                        serverCellular.satelliteNtnStatus(),
-                        serverCellular.status()
-                );
+                cellular == null
+                        ? CellularStatus.off()
+                        : cellular;
     }
 
-    public record VisibleWifiNetwork(
+    public record WifiNetwork(
             String ssid,
             String bssid,
             String security,
@@ -180,7 +39,7 @@ public final class PhoneNetworkState {
             double distanceBlocks,
             String quality
     ) {
-        public VisibleWifiNetwork {
+        public WifiNetwork {
             ssid =
                     safe(
                             ssid
@@ -285,11 +144,11 @@ public final class PhoneNetworkState {
                     );
         }
 
-        private static WifiStatus initial() {
+        public static WifiStatus off() {
             return new WifiStatus(
-                    true,
                     false,
-                    "SCANNING",
+                    false,
+                    "IDLE",
                     "",
                     "",
                     "",
@@ -299,12 +158,12 @@ public final class PhoneNetworkState {
                     0.0,
                     "",
                     Double.POSITIVE_INFINITY,
-                    "NO SIGNAL",
+                    "OFF",
                     "",
                     "",
                     "",
                     "",
-                    "Waiting for server RF scan"
+                    "Wi-Fi is off"
             );
         }
     }
@@ -402,9 +261,9 @@ public final class PhoneNetworkState {
                     );
         }
 
-        private static CellularStatus initial() {
+        public static CellularStatus off() {
             return new CellularStatus(
-                    true,
+                    false,
                     false,
                     "No Service",
                     "",
@@ -424,10 +283,10 @@ public final class PhoneNetworkState {
                     -30.0,
                     -30.0,
                     Double.POSITIVE_INFINITY,
-                    "NO SERVICE",
+                    "OFF",
                     0.0,
-                    "Not provisioned - ground-terminal SATCOM backhaul only",
-                    "Waiting for cellular scan"
+                    "Not provisioned",
+                    "Cellular data is off"
             );
         }
     }
