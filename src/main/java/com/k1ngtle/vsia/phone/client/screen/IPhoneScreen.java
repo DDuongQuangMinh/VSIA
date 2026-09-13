@@ -15,7 +15,11 @@ public abstract class IPhoneScreen extends Screen {
     public static final int PHONE_WIDTH = 236;
     public static final int PHONE_HEIGHT = 438;
 
+    protected static final int SHELL_COLOR = 0xFF050505;
+    protected static final int SCREEN_INSET = 4;
+    protected static final int SCREEN_RADIUS = 21;
     protected static final int DISPLAY_INSET = 10;
+    protected static final int DISPLAY_RADIUS = 18;
     protected static final int CONTENT_BOTTOM_INSET = 28;
 
     protected int phoneX;
@@ -44,8 +48,52 @@ public abstract class IPhoneScreen extends Screen {
 
     protected void renderPhoneShell(GuiGraphics graphics, int screenColor) {
         renderBackground(graphics);
-        roundedRect(graphics, phoneX, phoneY, PHONE_WIDTH, PHONE_HEIGHT, 24, 0xFF050505);
-        roundedRect(graphics, phoneX + 4, phoneY + 4, PHONE_WIDTH - 8, PHONE_HEIGHT - 8, 21, screenColor);
+        roundedRect(
+                graphics,
+                phoneX,
+                phoneY,
+                PHONE_WIDTH,
+                PHONE_HEIGHT,
+                24,
+                SHELL_COLOR
+        );
+        roundedRect(
+                graphics,
+                phoneX + SCREEN_INSET,
+                phoneY + SCREEN_INSET,
+                PHONE_WIDTH - SCREEN_INSET * 2,
+                PHONE_HEIGHT - SCREEN_INSET * 2,
+                SCREEN_RADIUS,
+                screenColor
+        );
+    }
+
+    protected final int displayX() {
+        return phoneX + DISPLAY_INSET;
+    }
+
+    protected final int displayY() {
+        return phoneY + DISPLAY_INSET;
+    }
+
+    protected final int displayWidth() {
+        return PHONE_WIDTH - DISPLAY_INSET * 2;
+    }
+
+    protected final int displayHeight() {
+        return PHONE_HEIGHT - DISPLAY_INSET * 2;
+    }
+
+    protected final void maskDisplayCorners(GuiGraphics graphics) {
+        maskRoundedOutside(
+                graphics,
+                displayX(),
+                displayY(),
+                displayWidth(),
+                displayHeight(),
+                DISPLAY_RADIUS,
+                SHELL_COLOR
+        );
     }
 
     protected void renderStatusBar(GuiGraphics graphics) {
@@ -225,6 +273,38 @@ public abstract class IPhoneScreen extends Screen {
 
             graphics.fill(x + inset, y + i, x + width - inset, y + i + 1, color);
             graphics.fill(x + inset, y + height - i - 1, x + width - inset, y + height - i, color);
+        }
+    }
+
+    private static void maskRoundedOutside(
+            GuiGraphics graphics,
+            int x,
+            int y,
+            int width,
+            int height,
+            int radius,
+            int color
+    ) {
+        for (int i = 0; i < radius; i++) {
+            int dy = radius - i;
+            int inset = (int) Math.ceil(
+                    radius - Math.sqrt(Math.max(0, radius * radius - dy * dy))
+            );
+
+            if (inset <= 0) {
+                continue;
+            }
+
+            graphics.fill(x, y + i, x + inset, y + i + 1, color);
+            graphics.fill(x + width - inset, y + i, x + width, y + i + 1, color);
+            graphics.fill(x, y + height - i - 1, x + inset, y + height - i, color);
+            graphics.fill(
+                    x + width - inset,
+                    y + height - i - 1,
+                    x + width,
+                    y + height - i,
+                    color
+            );
         }
     }
 

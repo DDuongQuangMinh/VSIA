@@ -7,9 +7,9 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
-public final class IPhoneWifiPasswordScreen
-        extends IPhoneScreen {
+import java.util.Locale;
 
+public final class IPhoneWifiPasswordScreen extends IPhoneScreen {
     private final String ssid;
     private final String bssid;
     private final String security;
@@ -27,75 +27,37 @@ public final class IPhoneWifiPasswordScreen
             String bssid,
             String security
     ) {
-        super(
-                Component.literal(
-                        "Wi-Fi Password"
-                )
-        );
+        super(Component.literal("Wi-Fi Password"));
 
-        this.ssid =
-                ssid == null
-                        ? ""
-                        : ssid;
-
-        this.bssid =
-                bssid == null
-                        ? ""
-                        : bssid;
-
-        this.security =
-                security == null
-                        ? ""
-                        : security;
+        this.ssid = ssid == null ? "" : ssid;
+        this.bssid = bssid == null ? "" : bssid;
+        this.security = security == null ? "" : security;
     }
 
     @Override
     protected void init() {
         super.init();
 
-        contentX =
-                phoneX + 18;
+        contentX = phoneX + 18;
+        contentWidth = PHONE_WIDTH - 36;
+        fieldY = phoneY + 174;
+        showY = fieldY + 46;
+        joinY = showY + 52;
 
-        contentWidth =
-                PHONE_WIDTH - 36;
-
-        fieldY =
-                phoneY + 174;
-
-        showY =
-                fieldY + 46;
-
-        joinY =
-                showY + 52;
-
-        passwordField =
-                new PhonePasswordField(
-                        font,
-                        contentX + 10,
-                        fieldY + 8,
-                        contentWidth - 20,
-                        24
-                );
-
-        passwordField.setMaxLength(
-                63
+        passwordField = new PhonePasswordField(
+                font,
+                contentX + 10,
+                fieldY + 8,
+                contentWidth - 20,
+                24
         );
 
-        passwordField.setPlaceholder(
-                "Password"
-        );
+        passwordField.setMaxLength(63);
+        passwordField.setPlaceholder("Password");
+        passwordField.setFocused(true);
 
-        passwordField.setFocused(
-                true
-        );
-
-        setFocused(
-                passwordField
-        );
-
-        addRenderableWidget(
-                passwordField
-        );
+        setFocused(passwordField);
+        addRenderableWidget(passwordField);
     }
 
     @Override
@@ -105,53 +67,32 @@ public final class IPhoneWifiPasswordScreen
             int mouseY,
             float partialTick
     ) {
-        renderPhoneShell(
+        renderPhoneShell(graphics, 0xFF1C1C1E);
+        renderStatusBar(graphics);
+        renderHeader(graphics, "Wi-Fi", "Password");
+
+        beginPhoneClip(graphics, 68);
+
+        drawUiCentered(
                 graphics,
-                0xFF1C1C1E
-        );
-
-        renderStatusBar(
-                graphics
-        );
-
-        renderHeader(
-                graphics,
-                "Wi-Fi",
-                "Password"
-        );
-
-        graphics.drawCenteredString(
-                font,
                 "Enter Password",
-                phoneX
-                        + PHONE_WIDTH
-                        / 2,
+                phoneX + PHONE_WIDTH / 2,
                 phoneY + 91,
                 0xFFFFFFFF
         );
 
-        graphics.drawCenteredString(
-                font,
-                fit(
-                        ssid,
-                        PHONE_WIDTH - 50
-                ),
-                phoneX
-                        + PHONE_WIDTH
-                        / 2,
+        drawUiCentered(
+                graphics,
+                fitUi(ssid, PHONE_WIDTH - 50),
+                phoneX + PHONE_WIDTH / 2,
                 phoneY + 116,
                 0xFF0A84FF
         );
 
-        graphics.drawCenteredString(
-                font,
-                fit(
-                        securityLabel(),
-                        PHONE_WIDTH - 50
-                ),
-                phoneX
-                        + PHONE_WIDTH
-                        / 2,
+        drawUiCentered(
+                graphics,
+                fitUi(securityLabel(), PHONE_WIDTH - 50),
+                phoneX + PHONE_WIDTH / 2,
                 phoneY + 136,
                 0xFF8E8E93
         );
@@ -176,27 +117,22 @@ public final class IPhoneWifiPasswordScreen
                 0xFF2C2C2E
         );
 
-        graphics.drawString(
-                font,
+        drawUiText(
+                graphics,
                 "Show Password",
                 contentX + 12,
                 showY + 15,
-                0xFFFFFFFF,
-                false
+                0xFFFFFFFF
         );
 
         drawSmallToggle(
                 graphics,
-                contentX
-                        + contentWidth
-                        - 43,
+                contentX + contentWidth - 43,
                 showY + 11,
-                passwordField != null
-                        && passwordField.isReveal()
+                passwordField != null && passwordField.isReveal()
         );
 
-        boolean canJoin =
-                passwordField != null;
+        boolean canJoin = passwordField != null;
 
         roundedRect(
                 graphics,
@@ -210,25 +146,24 @@ public final class IPhoneWifiPasswordScreen
                         : 0xFF3A3A3C
         );
 
-        graphics.drawCenteredString(
-                font,
+        drawUiCentered(
+                graphics,
                 "Join",
-                phoneX
-                        + PHONE_WIDTH
-                        / 2,
+                phoneX + PHONE_WIDTH / 2,
                 joinY + 16,
                 canJoin
                         ? 0xFFFFFFFF
                         : 0xFF8E8E93
         );
 
-        graphics.drawCenteredString(
-                font,
+        drawUiWrappedCentered(
+                graphics,
                 "Password is checked by the server AP",
-                phoneX
-                        + PHONE_WIDTH
-                        / 2,
-                joinY + 62,
+                phoneX + PHONE_WIDTH / 2,
+                joinY + 60,
+                PHONE_WIDTH - 52,
+                12,
+                2,
                 0xFF636366
         );
 
@@ -239,9 +174,8 @@ public final class IPhoneWifiPasswordScreen
                 partialTick
         );
 
-        renderHomeIndicator(
-                graphics
-        );
+        endPhoneClip(graphics);
+        renderHomeIndicator(graphics);
     }
 
     private void drawSmallToggle(
@@ -264,9 +198,7 @@ public final class IPhoneWifiPasswordScreen
 
         roundedRect(
                 graphics,
-                enabled
-                        ? x + 16
-                        : x + 3,
+                enabled ? x + 16 : x + 3,
                 y + 3,
                 12,
                 12,
@@ -276,51 +208,15 @@ public final class IPhoneWifiPasswordScreen
     }
 
     private String securityLabel() {
-        String value =
-                security
-                        .replace(
-                                "signality:",
-                                ""
-                        )
-                        .replace(
-                                '_',
-                                ' '
-                        );
+        String value = security
+                .replace("signality:", "")
+                .replace('_', ' ');
 
         if (value.isBlank()) {
             return "Protected Network";
         }
 
-        return value.toUpperCase();
-    }
-
-    private String fit(
-            String value,
-            int maxWidth
-    ) {
-        String text =
-                value == null
-                        ? ""
-                        : value;
-
-        if (font.width(
-                text
-        ) <= maxWidth) {
-            return text;
-        }
-
-        while (!text.isEmpty()
-                && font.width(
-                text + "..."
-        ) > maxWidth) {
-            text =
-                    text.substring(
-                            0,
-                            text.length() - 1
-                    );
-        }
-
-        return text + "...";
+        return value.toUpperCase(Locale.ROOT);
     }
 
     private void submit() {
@@ -328,27 +224,20 @@ public final class IPhoneWifiPasswordScreen
             return;
         }
 
-        String submittedPassword =
-                passwordField
-                        .getValue();
+        String submittedPassword = passwordField.getValue();
 
-        PhoneWifiClientPreferences
-                .rememberPassword(
-                        ssid,
-                        security,
-                        submittedPassword
-                );
-
-        PhoneNetworkController
-                .get()
-                .connectWifi(
-                        bssid,
-                        submittedPassword
-                );
-
-        minecraft.setScreen(
-                new IPhoneWifiScreen()
+        PhoneWifiClientPreferences.rememberPassword(
+                ssid,
+                security,
+                submittedPassword
         );
+
+        PhoneNetworkController.get().connectWifi(
+                bssid,
+                submittedPassword
+        );
+
+        minecraft.setScreen(new IPhoneWifiScreen());
     }
 
     @Override
@@ -358,14 +247,8 @@ public final class IPhoneWifiPasswordScreen
             int button
     ) {
         if (button == 0) {
-            if (clickedBack(
-                    mouseX,
-                    mouseY
-            )) {
-                minecraft.setScreen(
-                        new IPhoneWifiScreen()
-                );
-
+            if (clickedBack(mouseX, mouseY)) {
+                minecraft.setScreen(new IPhoneWifiScreen());
                 return true;
             }
 
@@ -382,7 +265,6 @@ public final class IPhoneWifiPasswordScreen
                             !passwordField.isReveal()
                     );
                 }
-
                 return true;
             }
 
@@ -395,16 +277,11 @@ public final class IPhoneWifiPasswordScreen
                     42
             )) {
                 submit();
-
                 return true;
             }
         }
 
-        return super.mouseClicked(
-                mouseX,
-                mouseY,
-                button
-        );
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
@@ -413,12 +290,9 @@ public final class IPhoneWifiPasswordScreen
             int scanCode,
             int modifiers
     ) {
-        if (keyCode
-                == GLFW.GLFW_KEY_ENTER
-                || keyCode
-                == GLFW.GLFW_KEY_KP_ENTER) {
+        if (keyCode == GLFW.GLFW_KEY_ENTER
+                || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
             submit();
-
             return true;
         }
 

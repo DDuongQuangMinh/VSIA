@@ -25,10 +25,10 @@ public class IPhoneHomeScreen extends IPhoneScreen {
     @Override
     protected void init() {
         super.init();
-        innerX = phoneX + DISPLAY_INSET;
-        innerY = phoneY + DISPLAY_INSET;
-        innerW = PHONE_WIDTH - DISPLAY_INSET * 2;
-        innerH = PHONE_HEIGHT - DISPLAY_INSET * 2;
+        innerX = displayX();
+        innerY = displayY();
+        innerW = displayWidth();
+        innerH = displayHeight();
         widgetY = phoneY + 48;
         gridY = phoneY + 157;
         searchY = phoneY + 333;
@@ -47,13 +47,15 @@ public class IPhoneHomeScreen extends IPhoneScreen {
         );
 
         renderWallpaper(graphics);
-        renderStatusBar(graphics);
         renderWidgets(graphics);
         renderAppGrid(graphics);
         renderSearchPill(graphics);
         renderDock(graphics);
 
         graphics.disableScissor();
+
+        maskDisplayCorners(graphics);
+        renderStatusBar(graphics);
         renderHomeIndicator(graphics);
     }
 
