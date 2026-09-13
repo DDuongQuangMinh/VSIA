@@ -2,10 +2,10 @@ package com.k1ngtle.vsia.signality.internet.satellite.gui;
 
 import com.k1ngtle.vsia.signality.internet.satellite.SatelliteLinkAssessment;
 import com.k1ngtle.vsia.signality.internet.satellite.SatelliteNetworkManager;
+import com.k1ngtle.vsia.signality.internet.satellite.VsAwareSatelliteLinkService;
 import com.k1ngtle.vsia.signality.internet.satellite.device.TemporarySatelliteTerminalBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.phys.Vec3;
 
 public final class SatelliteGuiServer {
     private static final double MAX_DISTANCE_SQR =
@@ -36,7 +36,7 @@ public final class SatelliteGuiServer {
 
         if (!assessment.visible()) {
             assessment =
-                    SatelliteNetworkManager
+                    VsAwareSatelliteLinkService
                             .assessSelf(
                                     terminal
                             );
@@ -85,7 +85,7 @@ public final class SatelliteGuiServer {
         switch (action) {
             case REFRESH -> {
                 terminal.setLastAssessment(
-                        SatelliteNetworkManager
+                        VsAwareSatelliteLinkService
                                 .assessSelf(
                                         terminal
                                 )
@@ -95,7 +95,7 @@ public final class SatelliteGuiServer {
             case BAND_CYCLE -> {
                 terminal.cycleBand();
                 terminal.setLastAssessment(
-                        SatelliteNetworkManager
+                        VsAwareSatelliteLinkService
                                 .assessSelf(
                                         terminal
                                 )
@@ -112,11 +112,57 @@ public final class SatelliteGuiServer {
                             1.0
                     );
 
-            case LINK_TEST ->
-                    terminal.testNearestLink();
+            case LINK_TEST -> {
+                TemporarySatelliteTerminalBlockEntity target =
+                        VsAwareSatelliteLinkService
+                                .nearestOther(
+                                        terminal
+                                );
 
-            case PACKET_TEST ->
-                    terminal.packetTest();
+                SatelliteLinkAssessment assessment =
+                        target == null
+                                ? VsAwareSatelliteLinkService
+                                .assessSelf(
+                                        terminal
+                                )
+                                : VsAwareSatelliteLinkService
+                                .assess(
+                                        terminal,
+                                        target
+                                );
+
+                terminal.setLastAssessment(
+                        assessment
+                );
+
+                terminal.setStatus(
+                        assessment.visible()
+                                ? "VS-aware satellite link "
+                                + assessment.satelliteName()
+                                : "No VS-aware common satellite"
+                );
+            }
+
+            case PACKET_TEST -> {
+                TemporarySatelliteTerminalBlockEntity target =
+                        VsAwareSatelliteLinkService
+                                .nearestOther(
+                                        terminal
+                                );
+
+                if (target == null) {
+                    terminal.setStatus(
+                            "Place a second satellite terminal for packet test"
+                    );
+                } else {
+                    VsAwareSatelliteLinkService
+                            .sendPacket(
+                                    terminal,
+                                    target,
+                                    "Satellite terminal packet test"
+                            );
+                }
+            }
         }
 
         return snapshot(
@@ -132,19 +178,26 @@ public final class SatelliteGuiServer {
         if (player == null
                 || pos == null
                 || !player.serverLevel()
-                .hasChunkAt(pos)
-                || player.distanceToSqr(
-                Vec3.atCenterOf(pos)
-        ) > MAX_DISTANCE_SQR) {
+                .hasChunkAt(pos)) {
             return null;
         }
 
-        if (player.serverLevel()
+        if (!(player.serverLevel()
                 .getBlockEntity(pos)
-                instanceof TemporarySatelliteTerminalBlockEntity terminal) {
-            return terminal;
+                instanceof TemporarySatelliteTerminalBlockEntity terminal)) {
+            return null;
         }
 
-        return null;
+        if (player.position()
+                .distanceToSqr(
+                        VsAwareSatelliteLinkService
+                                .terminalWorldPosition(
+                                        terminal
+                                )
+                ) > MAX_DISTANCE_SQR) {
+            return null;
+        }
+
+        return terminal;
     }
 }

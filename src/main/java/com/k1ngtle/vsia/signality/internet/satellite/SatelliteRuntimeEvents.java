@@ -30,6 +30,10 @@ public final class SatelliteRuntimeEvents {
             SatelliteNetworkManager.tick(
                     level
             );
+
+            VsAwareSatelliteLinkService.tick(
+                    level
+            );
         }
     }
 
@@ -38,5 +42,6 @@ public final class SatelliteRuntimeEvents {
             ServerStoppedEvent event
     ) {
         SatelliteNetworkManager.clear();
+        VsAwareSatelliteLinkService.clear();
     }
 }

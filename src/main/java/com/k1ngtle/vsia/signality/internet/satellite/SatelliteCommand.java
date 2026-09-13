@@ -136,7 +136,7 @@ public final class SatelliteCommand {
                 );
 
         SatelliteLinkAssessment assessment =
-                SatelliteNetworkManager
+                VsAwareSatelliteLinkService
                         .assessSelf(
                                 terminal
                         );
@@ -208,7 +208,7 @@ public final class SatelliteCommand {
                 );
 
         SatelliteLinkAssessment assessment =
-                SatelliteNetworkManager
+                VsAwareSatelliteLinkService
                         .assess(
                                 source,
                                 target
@@ -265,7 +265,7 @@ public final class SatelliteCommand {
                         );
 
         boolean queued =
-                SatelliteNetworkManager
+                VsAwareSatelliteLinkService
                         .sendPacket(
                                 source,
                                 target,

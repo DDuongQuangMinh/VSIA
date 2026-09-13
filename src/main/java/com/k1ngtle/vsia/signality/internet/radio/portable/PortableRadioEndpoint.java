@@ -19,6 +19,8 @@ import com.k1ngtle.vsia.signality.engineering.reality.RfMicroTiming;
 import com.k1ngtle.vsia.signality.engineering.reality.RfMicroTimingRegistry;
 import com.k1ngtle.vsia.signality.internet.field.FieldDeviceNetwork;
 import com.k1ngtle.vsia.signality.internet.radio.voice.network.S2CRadioVoiceFramePacket;
+import com.k1ngtle.vsia.signality.internet.radio.comsec.RadioComsecEngine;
+import com.k1ngtle.vsia.signality.internet.radio.comsec.RadioComsecKeyStoreSavedData;
 import com.k1ngtle.vsia.signality.internet.radio.satellite.SatelliteRadioRelayService;
 import com.k1ngtle.vsia.signality.internet.radio.debug.RadioDevSelfTestService;
 import com.k1ngtle.vsia.signality.internet.routing.LongHaulRoutePolicy;
@@ -49,8 +51,9 @@ public final class PortableRadioEndpoint
     private UUID id;
     private RadioController controller;
     private long configuredRevision = Long.MIN_VALUE;
+    private int configuredComsecEpoch = Integer.MIN_VALUE;
 
-    private static final long LIVE_VOICE_FRAME_MICROS = 50_000L;
+    private static final long LIVE_VOICE_FRAME_MICROS = 20_000L;
 
     private boolean livePttActive;
     private int livePttSession = -1;
@@ -80,16 +83,48 @@ public final class PortableRadioEndpoint
                         stack
                 );
 
+        RadioComsecKeyStoreSavedData.KeyMaterial comsecMaterial =
+                PortableRadioState.comsecEnabled(
+                        stack
+                )
+                        ? RadioComsecKeyStoreSavedData
+                        .get(
+                                player.serverLevel()
+                        )
+                        .material(
+                                PortableRadioState
+                                        .comsecSlot(
+                                                stack
+                                        )
+                        )
+                        : null;
+
+        int comsecEpoch =
+                comsecMaterial == null
+                        ? 0
+                        : comsecMaterial.epoch();
+
         if (controller == null
                 || configuredRevision
-                != revision) {
+                != revision
+                || configuredComsecEpoch
+                != comsecEpoch) {
             controller =
                     PortableRadioState.controller(
                             stack
                     );
 
+            controller.setSecurityKey(
+                    comsecMaterial == null
+                            ? new byte[0]
+                            : comsecMaterial.key()
+            );
+
             configuredRevision =
                     revision;
+
+            configuredComsecEpoch =
+                    comsecEpoch;
         }
     }
 
@@ -301,6 +336,51 @@ public final class PortableRadioEndpoint
 
         if (livePttActive) {
             return;
+        }
+
+        if ("VOICE".equalsIgnoreCase(
+                radioMessage.getString(
+                        "radio_message_type"
+                )
+        )) {
+            RadioComsecEngine.IncomingVoiceResult comsec =
+                    RadioComsecEngine.prepareIncomingVoice(
+                            player.serverLevel(),
+                            radioMessage,
+                            PortableRadioState.comsecEnabled(
+                                    stack
+                            ),
+                            PortableRadioState.comsecSlot(
+                                    stack
+                            )
+                    );
+
+            if (!comsec.accepted()) {
+                PortableRadioState.cryptoStatus(
+                        stack,
+                        comsec.status()
+                );
+
+                PortableRadioState.status(
+                        stack,
+                        comsec.status()
+                );
+
+                return;
+            }
+
+            radioMessage =
+                    comsec.message();
+
+            PortableRadioState.cryptoStatus(
+                    stack,
+                    PortableRadioState.comsecEnabled(
+                            stack
+                    )
+                            ? "SECURE RX "
+                            + comsec.status()
+                            : "CLEAR RX"
+            );
         }
 
         String incomingEmission =
@@ -676,6 +756,63 @@ public final class PortableRadioEndpoint
     ) {
         ItemStack stack = stack();
 
+        CompoundTag outgoingMessage =
+                radioMessage == null
+                        ? new CompoundTag()
+                        : radioMessage.copy();
+
+        if ("VOICE".equalsIgnoreCase(
+                outgoingMessage.getString(
+                        "radio_message_type"
+                )
+        )
+                && PortableRadioState.comsecEnabled(
+                stack
+        )) {
+            try {
+                outgoingMessage =
+                        RadioComsecEngine.protectVoice(
+                                player.serverLevel(),
+                                id,
+                                outgoingMessage,
+                                PortableRadioState.comsecSlot(
+                                        stack
+                                ),
+                                frequencyHz
+                        );
+
+                RadioComsecKeyStoreSavedData.KeyMaterial material =
+                        RadioComsecKeyStoreSavedData
+                                .get(
+                                        player.serverLevel()
+                                )
+                                .material(
+                                        PortableRadioState
+                                                .comsecSlot(
+                                                        stack
+                                                )
+                                );
+
+                PortableRadioState.cryptoStatus(
+                        stack,
+                        "SECURE TX "
+                                + material.keyId()
+                );
+            } catch (RuntimeException exception) {
+                PortableRadioState.cryptoStatus(
+                        stack,
+                        "COMSEC TX FAILURE"
+                );
+
+                PortableRadioState.status(
+                        stack,
+                        "COMSEC TX FAILURE"
+                );
+
+                return;
+            }
+        }
+
         NetworkProfile profile =
                 PortableRadioState.profile(
                         stack
@@ -706,7 +843,7 @@ public final class PortableRadioEndpoint
 
         envelope.put(
                 "radio_message",
-                radioMessage
+                outgoingMessage
         );
 
         UUID transmissionId =
@@ -747,13 +884,13 @@ public final class PortableRadioEndpoint
 
         boolean liveVoice =
                 "VOICE".equalsIgnoreCase(
-                        radioMessage.getString(
+                        outgoingMessage.getString(
                                 "radio_message_type"
                         )
                 )
                         && "G711_MULAW_8K"
                         .equalsIgnoreCase(
-                                radioMessage.getString(
+                                outgoingMessage.getString(
                                         "voice_stream_codec"
                                 )
                         );
@@ -762,7 +899,7 @@ public final class PortableRadioEndpoint
                 liveVoice
                         ? Math.max(
                         1L,
-                        (long) radioMessage
+                        (long) outgoingMessage
                                 .getByteArray(
                                         "voice_data"
                                 )
@@ -778,7 +915,7 @@ public final class PortableRadioEndpoint
         long airtimeMicros =
                 liveVoice
                         ? (
-                        radioMessage.getBoolean(
+                        outgoingMessage.getBoolean(
                                 "end_of_transmission"
                         )
                                 ? 8_000L
@@ -872,7 +1009,7 @@ public final class PortableRadioEndpoint
 
         SatelliteRadioRelayService.relayLongHaul(
                 this,
-                radioMessage,
+                outgoingMessage,
                 frequencyHz
         );
     }

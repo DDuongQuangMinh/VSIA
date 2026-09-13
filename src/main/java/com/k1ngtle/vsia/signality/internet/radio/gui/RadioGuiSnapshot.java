@@ -15,6 +15,9 @@ public record RadioGuiSnapshot(
         double squelchDb,
         boolean meshEnabled,
         boolean fhssEnabled,
+        boolean comsecEnabled,
+        int comsecKeySlot,
+        String cryptoStatus,
         boolean pttPressed,
         boolean measured,
         double receivedPowerDbm,
@@ -31,6 +34,7 @@ public record RadioGuiSnapshot(
         mode = safe(mode);
         band = safe(band);
         emission = safe(emission);
+        cryptoStatus = safe(cryptoStatus);
         lastVoice = safe(lastVoice);
         status = safe(status);
     }
@@ -52,6 +56,9 @@ public record RadioGuiSnapshot(
         buffer.writeDouble(squelchDb);
         buffer.writeBoolean(meshEnabled);
         buffer.writeBoolean(fhssEnabled);
+        buffer.writeBoolean(comsecEnabled);
+        buffer.writeVarInt(comsecKeySlot);
+        buffer.writeUtf(cryptoStatus, 128);
         buffer.writeBoolean(pttPressed);
         buffer.writeBoolean(measured);
         buffer.writeDouble(receivedPowerDbm);
@@ -77,6 +84,9 @@ public record RadioGuiSnapshot(
                 buffer.readDouble(),
                 buffer.readBoolean(),
                 buffer.readBoolean(),
+                buffer.readBoolean(),
+                buffer.readVarInt(),
+                buffer.readUtf(128),
                 buffer.readBoolean(),
                 buffer.readBoolean(),
                 buffer.readDouble(),
@@ -106,6 +116,9 @@ public record RadioGuiSnapshot(
                 0.0,
                 false,
                 false,
+                false,
+                0,
+                "",
                 false,
                 false,
                 Double.NEGATIVE_INFINITY,

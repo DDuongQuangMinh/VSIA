@@ -19,7 +19,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class FieldDeviceNetwork {
     private static final String PROTOCOL =
-            "1.1";
+            "1.2";
 
     private static SimpleChannel channel;
     private static int packetId;

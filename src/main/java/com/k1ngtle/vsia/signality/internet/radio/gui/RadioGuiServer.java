@@ -7,10 +7,10 @@ import com.k1ngtle.vsia.signality.internet.radio.device.TemporaryRadioItem;
 import com.k1ngtle.vsia.signality.internet.radio.portable.PortableRadioEndpoint;
 import com.k1ngtle.vsia.signality.internet.radio.portable.PortableRadioService;
 import com.k1ngtle.vsia.signality.internet.radio.portable.PortableRadioState;
+import com.k1ngtle.vsia.signality.integration.vs.VsNetworkPosition;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.phys.Vec3;
 
 import java.util.Locale;
 
@@ -84,6 +84,9 @@ public final class RadioGuiServer {
                     radio.guiMeshEnabled(),
                     radio.guiFhssEnabled(),
                     false,
+                    0,
+                    "COMSEC available on portable radio",
+                    false,
                     measured,
                     measured
                             ? quality.receivedPowerDbm()
@@ -155,6 +158,12 @@ public final class RadioGuiServer {
                         .mesh(stack),
                 PortableRadioState
                         .fhss(stack),
+                PortableRadioState
+                        .comsecEnabled(stack),
+                PortableRadioState
+                        .comsecSlot(stack),
+                PortableRadioState
+                        .cryptoStatus(stack),
                 false,
                 measured,
                 measured
@@ -295,6 +304,10 @@ public final class RadioGuiServer {
             case FHSS_TOGGLE ->
                     radio.toggleFhss();
 
+            case COMSEC_TOGGLE,
+                 COMSEC_SLOT_NEXT -> {
+            }
+
             case PTT_TEST ->
                     radio.pttTest();
 
@@ -377,6 +390,18 @@ public final class RadioGuiServer {
                                     stack
                             );
 
+            case COMSEC_TOGGLE ->
+                    PortableRadioState
+                            .toggleComsec(
+                                    stack
+                            );
+
+            case COMSEC_SLOT_NEXT ->
+                    PortableRadioState
+                            .nextComsecSlot(
+                                    stack
+                            );
+
             case PTT_TEST -> {
                 PortableRadioEndpoint endpoint =
                         PortableRadioService
@@ -428,9 +453,13 @@ public final class RadioGuiServer {
                 || pos == null
                 || !player.serverLevel()
                 .hasChunkAt(pos)
-                || player.distanceToSqr(
-                Vec3.atCenterOf(pos)
-        ) > MAX_BLOCK_GUI_DISTANCE_SQR) {
+                || player.position()
+                .distanceToSqr(
+                        VsNetworkPosition.blockCenterWorld(
+                                player.serverLevel(),
+                                pos
+                        )
+                ) > MAX_BLOCK_GUI_DISTANCE_SQR) {
             return null;
         }
 

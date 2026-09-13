@@ -18,7 +18,7 @@ import java.util.Locale;
 
 public final class RadioControlScreen extends Screen {
     private static final int PANEL_WIDTH = 360;
-    private static final int PANEL_HEIGHT = 258;
+    private static final int PANEL_HEIGHT = 326;
 
     private static final int BG = 0xFF0E1110;
     private static final int PANEL = 0xFF171D19;
@@ -201,7 +201,7 @@ public final class RadioControlScreen extends Screen {
                             + RadioVoiceClient
                             .get()
                             .pttKeyName()
-                            + " | G.711 u-law 8 kHz";
+                            + " | 20 ms G.711 u-law / jitter buffer";
 
             PhoneText.draw(
                     graphics,
@@ -382,6 +382,29 @@ public final class RadioControlScreen extends Screen {
                         : AMBER
         );
 
+        if (target.isHeld()) {
+            String comsec =
+                    snapshot.comsecEnabled()
+                            ? "SECURE TEK-"
+                            + String.format(
+                                    Locale.ROOT,
+                                    "%02d",
+                                    snapshot.comsecKeySlot()
+                            )
+                            : "CLEAR";
+
+            PhoneText.draw(
+                    graphics,
+                    font,
+                    comsec,
+                    x + w - 118,
+                    y + 26,
+                    snapshot.comsecEnabled()
+                            ? BLUE
+                            : MUTED
+            );
+        }
+
         if (!snapshot.lastVoice()
                 .isBlank()) {
             PhoneText.draw(
@@ -410,6 +433,9 @@ public final class RadioControlScreen extends Screen {
 
         int y3 =
                 top + 204;
+
+        int y4 =
+                top + 238;
 
         add(
                 left + 18,
@@ -506,26 +532,50 @@ public final class RadioControlScreen extends Screen {
                 y3,
                 102,
                 24,
-                "PTT TEST",
-                RadioGuiAction.PTT_TEST
+                target.isHeld()
+                        ? "COMSEC"
+                        : "COMSEC N/A",
+                RadioGuiAction.COMSEC_TOGGLE
         );
 
         add(
                 left + 126,
                 y3,
-                110,
+                96,
                 24,
-                "PACKET TEST",
-                RadioGuiAction.PACKET_TEST
+                snapshot != null
+                        && target.isHeld()
+                        ? "KEY "
+                        + snapshot.comsecKeySlot()
+                        : "KEY -",
+                RadioGuiAction.COMSEC_SLOT_NEXT
         );
 
         add(
-                left + 242,
+                left + 228,
                 y3,
-                100,
+                114,
                 24,
                 "REFRESH",
                 RadioGuiAction.REFRESH
+        );
+
+        add(
+                left + 18,
+                y4,
+                156,
+                24,
+                "PTT TEST",
+                RadioGuiAction.PTT_TEST
+        );
+
+        add(
+                left + 180,
+                y4,
+                162,
+                24,
+                "PACKET TEST",
+                RadioGuiAction.PACKET_TEST
         );
     }
 
@@ -563,6 +613,12 @@ public final class RadioControlScreen extends Screen {
                     case FHSS_TOGGLE ->
                             snapshot != null
                                     && snapshot.fhssEnabled();
+
+                    case COMSEC_TOGGLE,
+                         COMSEC_SLOT_NEXT ->
+                            target.isHeld()
+                                    && snapshot != null
+                                    && snapshot.comsecEnabled();
 
                     case BAND_HF ->
                             snapshot != null

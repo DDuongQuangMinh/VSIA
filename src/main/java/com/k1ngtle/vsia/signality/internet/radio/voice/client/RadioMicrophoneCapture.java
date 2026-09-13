@@ -15,7 +15,7 @@ public final class RadioMicrophoneCapture {
             8_000;
 
     public static final int FRAME_MILLIS =
-            50;
+            20;
 
     public static final int RADIO_SAMPLES_PER_FRAME =
             RADIO_SAMPLE_RATE
@@ -24,10 +24,16 @@ public final class RadioMicrophoneCapture {
 
     private static final float[] CAPTURE_RATES =
             new float[]{
-                    16_000.0F,
                     48_000.0F,
-                    44_100.0F
+                    44_100.0F,
+                    16_000.0F
             };
+
+    private static final double NOISE_GATE_RMS =
+            90.0;
+
+    private static final double TARGET_RMS =
+            5_500.0;
 
     private final AtomicBoolean running =
             new AtomicBoolean();
@@ -35,6 +41,9 @@ public final class RadioMicrophoneCapture {
     private volatile TargetDataLine line;
     private volatile Thread thread;
     private volatile String lastError = "";
+
+    private double smoothedGain =
+            1.0;
 
     public boolean start(
             Consumer<byte[]> frameConsumer
@@ -171,7 +180,7 @@ public final class RadioMicrophoneCapture {
                 }
 
                 byte[] encoded =
-                        resampleAndEncode(
+                        resampleProcessAndEncode(
                                 pcmFrame,
                                 sourceSamples
                         );
@@ -215,7 +224,8 @@ public final class RadioMicrophoneCapture {
             return false;
         }
 
-        int offset = 0;
+        int offset =
+                0;
 
         while (offset < buffer.length
                 && running.get()) {
@@ -231,62 +241,203 @@ public final class RadioMicrophoneCapture {
                 return false;
             }
 
-            offset += read;
+            offset +=
+                    read;
         }
 
         return offset
                 == buffer.length;
     }
 
-    private static byte[] resampleAndEncode(
+    private byte[] resampleProcessAndEncode(
             byte[] pcm16Le,
             int sourceSamples
     ) {
-        byte[] encoded =
-                new byte[
+        short[] samples =
+                new short[
                         RADIO_SAMPLES_PER_FRAME
                 ];
+
+        double mean =
+                0.0;
 
         for (int i = 0;
              i < RADIO_SAMPLES_PER_FRAME;
              i++) {
-            int sourceIndex =
+            double sourcePosition =
+                    (
+                            (double) i
+                                    * (
+                                    sourceSamples - 1
+                            )
+                    )
+                            / Math.max(
+                            1,
+                            RADIO_SAMPLES_PER_FRAME - 1
+                    );
+
+            int left =
+                    Math.max(
+                            0,
+                            Math.min(
+                                    sourceSamples - 1,
+                                    (int) Math.floor(
+                                            sourcePosition
+                                    )
+                            )
+                    );
+
+            int right =
                     Math.min(
                             sourceSamples - 1,
-                            (int) (
-                                    (
-                                            (long) i
-                                                    * sourceSamples
-                                    )
-                                            / RADIO_SAMPLES_PER_FRAME
+                            left + 1
+                    );
+
+            double fraction =
+                    sourcePosition
+                            - left;
+
+            short a =
+                    readSample(
+                            pcm16Le,
+                            left
+                    );
+
+            short b =
+                    readSample(
+                            pcm16Le,
+                            right
+                    );
+
+            double interpolated =
+                    a
+                            + (
+                            b - a
+                    )
+                            * fraction;
+
+            samples[i] =
+                    (short) Math.round(
+                            interpolated
+                    );
+
+            mean +=
+                    samples[i];
+        }
+
+        mean /=
+                samples.length;
+
+        double sumSquares =
+                0.0;
+
+        for (int i = 0;
+             i < samples.length;
+             i++) {
+            int dcRemoved =
+                    (int) Math.round(
+                            samples[i]
+                                    - mean
+                    );
+
+            samples[i] =
+                    (short) Math.max(
+                            Short.MIN_VALUE,
+                            Math.min(
+                                    Short.MAX_VALUE,
+                                    dcRemoved
                             )
                     );
 
-            int byteIndex =
-                    sourceIndex
-                            * 2;
+            sumSquares +=
+                    (
+                            double
+                            ) samples[i]
+                            * samples[i];
+        }
 
-            short sample =
-                    (short) (
-                            (
-                                    pcm16Le[byteIndex]
-                                            & 0xFF
-                            )
-                                    | (
-                                    pcm16Le[
-                                            byteIndex + 1
-                                    ]
-                                            << 8
+        double rms =
+                Math.sqrt(
+                        sumSquares
+                                / Math.max(
+                                1,
+                                samples.length
+                        )
+                );
+
+        double desiredGain;
+
+        if (rms < NOISE_GATE_RMS) {
+            desiredGain =
+                    0.0;
+        } else {
+            desiredGain =
+                    Math.max(
+                            0.55,
+                            Math.min(
+                                    5.0,
+                                    TARGET_RMS
+                                            / rms
                             )
                     );
+        }
+
+        smoothedGain =
+                0.80
+                        * smoothedGain
+                        + 0.20
+                        * desiredGain;
+
+        byte[] encoded =
+                new byte[
+                        samples.length
+                ];
+
+        for (int i = 0;
+             i < samples.length;
+             i++) {
+            double scaled =
+                    samples[i]
+                            * smoothedGain;
+
+            double limited =
+                    Math.tanh(
+                            scaled
+                                    / 24_000.0
+                    )
+                            * 28_000.0;
 
             encoded[i] =
                     MuLawCodec.encode(
-                            sample
+                            (short) Math.round(
+                                    limited
+                            )
                     );
         }
 
         return encoded;
+    }
+
+    private static short readSample(
+            byte[] pcm16Le,
+            int sampleIndex
+    ) {
+        int byteIndex =
+                sampleIndex
+                        * 2;
+
+        return (short) (
+                (
+                        pcm16Le[byteIndex]
+                                & 0xFF
+                )
+                        | (
+                        pcm16Le[
+                                byteIndex + 1
+                        ]
+                                << 8
+                )
+        );
     }
 
     private static CaptureLine openCaptureLine()
@@ -340,7 +491,7 @@ public final class RadioMicrophoneCapture {
                 target.open(
                         format,
                         frameBytes
-                                * 8
+                                * 12
                 );
 
                 return new CaptureLine(

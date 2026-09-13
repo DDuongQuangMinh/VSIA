@@ -12,6 +12,8 @@ public enum RadioGuiAction {
     SQUELCH_UP,
     MESH_TOGGLE,
     FHSS_TOGGLE,
+    COMSEC_TOGGLE,
+    COMSEC_SLOT_NEXT,
     PTT_TEST,
     PACKET_TEST
 }

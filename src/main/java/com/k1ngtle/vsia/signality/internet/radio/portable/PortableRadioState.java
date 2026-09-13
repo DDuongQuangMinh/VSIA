@@ -44,6 +44,9 @@ public final class PortableRadioState {
         tag.putDouble("SquelchDb", 3.0);
         tag.putBoolean("Mesh", false);
         tag.putBoolean("Fhss", false);
+        tag.putBoolean("ComsecEnabled", false);
+        tag.putInt("ComsecSlot", 1);
+        tag.putString("CryptoStatus", "CLEAR");
         tag.putDouble("LastReceivedPowerDbm", Double.NEGATIVE_INFINITY);
         tag.putDouble("LastSnrDb", Double.NEGATIVE_INFINITY);
         tag.putDouble("LastIntelligibility", 0.0);
@@ -115,6 +118,44 @@ public final class PortableRadioState {
         return root(stack).getBoolean("Fhss");
     }
 
+    public static boolean comsecEnabled(
+            ItemStack stack
+    ) {
+        return root(stack)
+                .getBoolean(
+                        "ComsecEnabled"
+                );
+    }
+
+    public static int comsecSlot(
+            ItemStack stack
+    ) {
+        return Math.max(
+                1,
+                Math.min(
+                        8,
+                        root(stack)
+                                .getInt(
+                                        "ComsecSlot"
+                                )
+                )
+        );
+    }
+
+    public static String cryptoStatus(
+            ItemStack stack
+    ) {
+        String value =
+                root(stack)
+                        .getString(
+                                "CryptoStatus"
+                        );
+
+        return value.isBlank()
+                ? "CLEAR"
+                : value;
+    }
+
     public static void applyBand(
             ItemStack stack,
             RadioBandPreset preset
@@ -128,8 +169,22 @@ public final class PortableRadioState {
         tag.putString("Band", preset.name());
         tag.putDouble("FrequencyHz", preset.frequencyHz());
         tag.putDouble("BandwidthHz", preset.bandwidthHz());
-        tag.putString("Emission", preset.emission().name());
-        tag.putString("Status", "Band changed to " + preset.name());
+        tag.putString(
+                "Emission",
+                comsecEnabled(stack)
+                        ? RadioEmission.DIGITAL.name()
+                        : preset.emission().name()
+        );
+
+        tag.putString(
+                "Status",
+                comsecEnabled(stack)
+                        ? "Band changed to "
+                        + preset.name()
+                        + " | COMSEC waveform DIGITAL"
+                        : "Band changed to "
+                        + preset.name()
+        );
         bumpRevision(tag);
 
         commit(stack, tag);
@@ -190,7 +245,38 @@ public final class PortableRadioState {
     }
 
     public static void cycleEmission(ItemStack stack) {
-        RadioEmission current = emission(stack);
+        CompoundTag tag =
+                root(stack);
+
+        if (comsecEnabled(
+                stack
+        )) {
+            tag.putString(
+                    "Emission",
+                    RadioEmission.DIGITAL.name()
+            );
+
+            tag.putString(
+                    "Status",
+                    "COMSEC secure voice requires DIGITAL waveform"
+            );
+
+            bumpRevision(
+                    tag
+            );
+
+            commit(
+                    stack,
+                    tag
+            );
+
+            return;
+        }
+
+        RadioEmission current =
+                emission(
+                        stack
+                );
 
         RadioEmission next =
                 switch (current) {
@@ -199,11 +285,25 @@ public final class PortableRadioState {
                     case DIGITAL -> RadioEmission.AM;
                 };
 
-        CompoundTag tag = root(stack);
-        tag.putString("Emission", next.name());
-        tag.putString("Status", "Emission " + next.name());
-        bumpRevision(tag);
-        commit(stack, tag);
+        tag.putString(
+                "Emission",
+                next.name()
+        );
+
+        tag.putString(
+                "Status",
+                "Emission "
+                        + next.name()
+        );
+
+        bumpRevision(
+                tag
+        );
+
+        commit(
+                stack,
+                tag
+        );
     }
 
     public static void adjustSquelch(
@@ -251,6 +351,129 @@ public final class PortableRadioState {
         tag.putString("Status", "FHSS " + (next ? "enabled" : "disabled"));
         bumpRevision(tag);
         commit(stack, tag);
+    }
+
+    public static void toggleComsec(
+            ItemStack stack
+    ) {
+        CompoundTag tag =
+                root(stack);
+
+        boolean next =
+                !tag.getBoolean(
+                        "ComsecEnabled"
+                );
+
+        tag.putBoolean(
+                "ComsecEnabled",
+                next
+        );
+
+        if (next) {
+            tag.putString(
+                    "Emission",
+                    RadioEmission.DIGITAL.name()
+            );
+        }
+
+        tag.putString(
+                "CryptoStatus",
+                next
+                        ? "SECURE TEK-"
+                        + String.format(
+                                Locale.ROOT,
+                                "%02d",
+                                comsecSlot(stack)
+                        )
+                        : "CLEAR"
+        );
+
+        tag.putString(
+                "Status",
+                next
+                        ? "COMSEC secure mode enabled"
+                        : "COMSEC clear mode enabled"
+        );
+
+        bumpRevision(
+                tag
+        );
+
+        commit(
+                stack,
+                tag
+        );
+    }
+
+    public static void nextComsecSlot(
+            ItemStack stack
+    ) {
+        CompoundTag tag =
+                root(stack);
+
+        int next =
+                comsecSlot(stack)
+                        % 8
+                        + 1;
+
+        tag.putInt(
+                "ComsecSlot",
+                next
+        );
+
+        tag.putString(
+                "CryptoStatus",
+                tag.getBoolean(
+                        "ComsecEnabled"
+                )
+                        ? "SECURE TEK-"
+                        + String.format(
+                                Locale.ROOT,
+                                "%02d",
+                                next
+                        )
+                        : "CLEAR / TEK-"
+                        + String.format(
+                                Locale.ROOT,
+                                "%02d",
+                                next
+                        )
+        );
+
+        tag.putString(
+                "Status",
+                "COMSEC key slot "
+                        + next
+        );
+
+        bumpRevision(
+                tag
+        );
+
+        commit(
+                stack,
+                tag
+        );
+    }
+
+    public static void cryptoStatus(
+            ItemStack stack,
+            String status
+    ) {
+        CompoundTag tag =
+                root(stack);
+
+        tag.putString(
+                "CryptoStatus",
+                status == null
+                        ? ""
+                        : status
+        );
+
+        commit(
+                stack,
+                tag
+        );
     }
 
     public static long revision(ItemStack stack) {

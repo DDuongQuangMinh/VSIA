@@ -218,8 +218,11 @@ public final class RadioVoiceClient {
             String emission
     ) {
         playback.enqueue(
+                sourceRadioId,
+                sequenceNumber,
                 encodedAudio,
                 endOfTransmission,
+                snrDb,
                 intelligibility,
                 emission
         );

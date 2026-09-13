@@ -4,6 +4,7 @@ import com.k1ngtle.vsia.signality.SignalityBlocks;
 import com.k1ngtle.vsia.signality.internet.satellite.SatelliteBandPreset;
 import com.k1ngtle.vsia.signality.internet.satellite.SatelliteLinkAssessment;
 import com.k1ngtle.vsia.signality.internet.satellite.SatelliteNetworkManager;
+import com.k1ngtle.vsia.signality.internet.satellite.VsAwareSatelliteLinkService;
 import com.k1ngtle.vsia.signality.internet.satellite.SatellitePacket;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -218,31 +219,31 @@ public final class TemporarySatelliteTerminalBlockEntity
 
     public SatelliteLinkAssessment testNearestLink() {
         TemporarySatelliteTerminalBlockEntity target =
-                SatelliteNetworkManager
+                VsAwareSatelliteLinkService
                         .nearestOther(
                                 this
                         );
 
         if (target == null) {
             lastAssessment =
-                    SatelliteNetworkManager
+                    VsAwareSatelliteLinkService
                             .assessSelf(
                                     this
                             );
 
             status =
                     lastAssessment.visible()
-                            ? "Satellite visible: "
+                            ? "VS-aware satellite visible: "
                             + lastAssessment
                             .satelliteName()
-                            : "No satellite visible";
+                            : "No VS-aware satellite visible";
 
             setChanged();
             return lastAssessment;
         }
 
         lastAssessment =
-                SatelliteNetworkManager
+                VsAwareSatelliteLinkService
                         .assess(
                                 this,
                                 target
@@ -261,7 +262,7 @@ public final class TemporarySatelliteTerminalBlockEntity
 
     public boolean packetTest() {
         TemporarySatelliteTerminalBlockEntity target =
-                SatelliteNetworkManager
+                VsAwareSatelliteLinkService
                         .nearestOther(
                                 this
                         );
@@ -274,7 +275,7 @@ public final class TemporarySatelliteTerminalBlockEntity
             return false;
         }
 
-        return SatelliteNetworkManager
+        return VsAwareSatelliteLinkService
                 .sendPacket(
                         this,
                         target,

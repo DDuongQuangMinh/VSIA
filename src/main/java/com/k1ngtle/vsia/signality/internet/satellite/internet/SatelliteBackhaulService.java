@@ -3,6 +3,7 @@ package com.k1ngtle.vsia.signality.internet.satellite.internet;
 import com.k1ngtle.vsia.signality.internet.routing.LongHaulRoutePolicy;
 import com.k1ngtle.vsia.signality.internet.satellite.SatelliteLinkAssessment;
 import com.k1ngtle.vsia.signality.internet.satellite.SatelliteNetworkManager;
+import com.k1ngtle.vsia.signality.internet.satellite.VsAwareSatelliteLinkService;
 import com.k1ngtle.vsia.signality.internet.satellite.device.TemporarySatelliteTerminalBlockEntity;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
@@ -94,7 +95,7 @@ public final class SatelliteBackhaulService {
                 }
 
                 SatelliteLinkAssessment link =
-                        SatelliteNetworkManager.assess(
+                        VsAwareSatelliteLinkService.assess(
                                 source.terminal(),
                                 destination.terminal()
                         );
@@ -216,9 +217,10 @@ public final class SatelliteBackhaulService {
             }
 
             double distanceSqr =
-                    Vec3.atCenterOf(
-                            terminal.getBlockPos()
-                    )
+                    VsAwareSatelliteLinkService
+                            .terminalWorldPosition(
+                                    terminal
+                            )
                             .distanceToSqr(
                                     endpoint
                             );

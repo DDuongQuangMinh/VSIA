@@ -8,6 +8,7 @@ import com.k1ngtle.vsia.signality.internet.routing.LongHaulRoutePolicy;
 import com.k1ngtle.vsia.signality.internet.satellite.SatelliteLinkAssessment;
 import com.k1ngtle.vsia.signality.internet.server.ServerRackBlockEntity;
 import com.k1ngtle.vsia.signality.internet.server.ServerRackDirectory;
+import com.k1ngtle.vsia.signality.integration.vs.VsNetworkPosition;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.phys.Vec3;
@@ -84,7 +85,7 @@ public final class LongHaulBrowserService {
         if (!plan.backhaulAvailable()) {
             return errorPage(
                     rawUrl,
-                    503,
+                    508,
                     "Satellite Backhaul Required",
                     "The physical destination is "
                             + LongHaulRoutePolicy.describeDistance(
@@ -219,7 +220,8 @@ public final class LongHaulBrowserService {
                 player.position();
 
         Vec3 destination =
-                Vec3.atCenterOf(
+                VsNetworkPosition.blockCenterWorld(
+                        level,
                         rack.getBlockPos()
                 );
 
