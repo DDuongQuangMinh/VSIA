@@ -1,11 +1,16 @@
 package com.k1ngtle.vsia.phone.client;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 public final class PhoneWifiClientPreferences {
     private static final Map<String, Boolean>
             AUTO_JOIN =
+            new HashMap<>();
+
+    private static final Map<String, String>
+            PASSWORDS =
             new HashMap<>();
 
     private PhoneWifiClientPreferences() {
@@ -16,7 +21,7 @@ public final class PhoneWifiClientPreferences {
     ) {
         return AUTO_JOIN
                 .getOrDefault(
-                        normalize(
+                        normalizeBssid(
                                 bssid
                         ),
                         true
@@ -28,10 +33,52 @@ public final class PhoneWifiClientPreferences {
             boolean enabled
     ) {
         AUTO_JOIN.put(
-                normalize(
+                normalizeBssid(
                         bssid
                 ),
                 enabled
+        );
+    }
+
+    public static void rememberPassword(
+            String ssid,
+            String security,
+            String password
+    ) {
+        PASSWORDS.put(
+                networkKey(
+                        ssid,
+                        security
+                ),
+                password == null
+                        ? ""
+                        : password
+        );
+    }
+
+    public static String password(
+            String ssid,
+            String security
+    ) {
+        return PASSWORDS
+                .getOrDefault(
+                        networkKey(
+                                ssid,
+                                security
+                        ),
+                        ""
+                );
+    }
+
+    public static boolean hasRememberedPassword(
+            String ssid,
+            String security
+    ) {
+        return PASSWORDS.containsKey(
+                networkKey(
+                        ssid,
+                        security
+                )
         );
     }
 
@@ -39,20 +86,59 @@ public final class PhoneWifiClientPreferences {
             String bssid
     ) {
         AUTO_JOIN.remove(
-                normalize(
+                normalizeBssid(
                         bssid
                 )
         );
     }
 
-    private static String normalize(
+    public static void forgetNetwork(
+            String ssid,
+            String security,
+            String bssid
+    ) {
+        forget(
+                bssid
+        );
+
+        PASSWORDS.remove(
+                networkKey(
+                        ssid,
+                        security
+                )
+        );
+    }
+
+    private static String normalizeBssid(
             String value
     ) {
         return value == null
                 ? ""
                 : value.trim()
                 .toUpperCase(
-                        java.util.Locale.ROOT
+                        Locale.ROOT
                 );
+    }
+
+    private static String networkKey(
+            String ssid,
+            String security
+    ) {
+        String safeSsid =
+                ssid == null
+                        ? ""
+                        : ssid.trim();
+
+        String safeSecurity =
+                security == null
+                        ? ""
+                        : security.trim()
+                        .toLowerCase(
+                                Locale.ROOT
+                        );
+
+        return safeSsid
+                + "\u0000"
+                + safeSecurity;
     }
 }

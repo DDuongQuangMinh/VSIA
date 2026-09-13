@@ -46,6 +46,7 @@ public class IPhoneWifiDetailsScreen
     private int viewportHeight;
 
     private int scrollOffset;
+    private boolean showPassword;
 
     public IPhoneWifiDetailsScreen() {
         super(
@@ -240,12 +241,28 @@ public class IPhoneWifiDetailsScreen
                 "Password"
         );
 
-        String passwordValue =
-                isOpenSecurity(
-                        wifi.security()
-                )
-                        ? "None"
-                        : "••••••••";
+        String rememberedPassword =
+                PhoneWifiClientPreferences
+                        .password(
+                                wifi.ssid(),
+                                wifi.security()
+                        );
+
+        String passwordValue;
+
+        if (isOpenSecurity(
+                wifi.security()
+        )
+                || rememberedPassword.isEmpty()) {
+            passwordValue =
+                    "";
+        } else if (showPassword) {
+            passwordValue =
+                    rememberedPassword;
+        } else {
+            passwordValue =
+                    "••••••••";
+        }
 
         drawRightText(
                 graphics,
@@ -253,8 +270,10 @@ public class IPhoneWifiDetailsScreen
                         + ROW_HEIGHT
                         * 2,
                 passwordValue,
-                SECONDARY,
-                true
+                showPassword
+                        ? TEXT
+                        : SECONDARY,
+                false
         );
 
         int ipv4LabelY =
@@ -817,7 +836,9 @@ public class IPhoneWifiDetailsScreen
         if (logicalY >= 0
                 && logicalY < 36) {
             PhoneWifiClientPreferences
-                    .forget(
+                    .forgetNetwork(
+                            wifi.ssid(),
+                            wifi.security(),
                             wifi.bssid()
                     );
 
@@ -871,13 +892,20 @@ public class IPhoneWifiDetailsScreen
                 && !isOpenSecurity(
                 wifi.security()
         )) {
-            minecraft.setScreen(
-                    new IPhoneWifiPasswordScreen(
-                            wifi.ssid(),
-                            wifi.bssid(),
-                            wifi.security()
-                    )
-            );
+            String rememberedPassword =
+                    PhoneWifiClientPreferences
+                            .password(
+                                    wifi.ssid(),
+                                    wifi.security()
+                            );
+
+            if (!rememberedPassword.isEmpty()) {
+                showPassword =
+                        !showPassword;
+            } else {
+                showPassword =
+                        false;
+            }
 
             return true;
         }

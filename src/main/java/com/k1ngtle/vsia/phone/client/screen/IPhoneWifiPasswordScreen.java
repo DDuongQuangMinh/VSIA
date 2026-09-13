@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.phone.client.screen;
 
+import com.k1ngtle.vsia.phone.client.PhoneWifiClientPreferences;
 import com.k1ngtle.vsia.phone.client.widget.PhonePasswordField;
 import com.k1ngtle.vsia.phone.network.PhoneNetworkController;
 import net.minecraft.client.gui.GuiGraphics;
@@ -327,12 +328,22 @@ public final class IPhoneWifiPasswordScreen
             return;
         }
 
+        String submittedPassword =
+                passwordField
+                        .getValue();
+
+        PhoneWifiClientPreferences
+                .rememberPassword(
+                        ssid,
+                        security,
+                        submittedPassword
+                );
+
         PhoneNetworkController
                 .get()
                 .connectWifi(
                         bssid,
-                        passwordField
-                                .getValue()
+                        submittedPassword
                 );
 
         minecraft.setScreen(
