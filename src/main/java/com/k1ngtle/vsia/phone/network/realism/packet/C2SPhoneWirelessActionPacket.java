@@ -15,13 +15,18 @@ public final class C2SPhoneWirelessActionPacket {
     private static final int MAX_VALUE =
             128;
 
+    private static final int MAX_CREDENTIAL =
+            128;
+
     private final String action;
     private final String value;
+    private final String credential;
     private final boolean flag;
 
     public C2SPhoneWirelessActionPacket(
             String action,
             String value,
+            String credential,
             boolean flag
     ) {
         this.action =
@@ -33,6 +38,11 @@ public final class C2SPhoneWirelessActionPacket {
                 value == null
                         ? ""
                         : value;
+
+        this.credential =
+                credential == null
+                        ? ""
+                        : credential;
 
         this.flag =
                 flag;
@@ -51,6 +61,11 @@ public final class C2SPhoneWirelessActionPacket {
                         MAX_VALUE
                 );
 
+        credential =
+                buffer.readUtf(
+                        MAX_CREDENTIAL
+                );
+
         flag =
                 buffer.readBoolean();
     }
@@ -66,6 +81,11 @@ public final class C2SPhoneWirelessActionPacket {
         buffer.writeUtf(
                 value,
                 MAX_VALUE
+        );
+
+        buffer.writeUtf(
+                credential,
+                MAX_CREDENTIAL
         );
 
         buffer.writeBoolean(
@@ -131,7 +151,8 @@ public final class C2SPhoneWirelessActionPacket {
                     PhoneWirelessServerService
                             .connectWifi(
                                     player,
-                                    value
+                                    value,
+                                    credential
                             );
 
             case "WIFI_DISCONNECT" ->
@@ -153,6 +174,7 @@ public final class C2SPhoneWirelessActionPacket {
         return new C2SPhoneWirelessActionPacket(
                 "REFRESH",
                 "",
+                "",
                 false
         );
     }
@@ -162,6 +184,7 @@ public final class C2SPhoneWirelessActionPacket {
     ) {
         return new C2SPhoneWirelessActionPacket(
                 "WIFI_ENABLE",
+                "",
                 "",
                 enabled
         );
@@ -173,16 +196,19 @@ public final class C2SPhoneWirelessActionPacket {
         return new C2SPhoneWirelessActionPacket(
                 "CELLULAR_ENABLE",
                 "",
+                "",
                 enabled
         );
     }
 
     public static C2SPhoneWirelessActionPacket wifiConnect(
-            String bssid
+            String bssid,
+            String passphrase
     ) {
         return new C2SPhoneWirelessActionPacket(
                 "WIFI_CONNECT",
                 bssid,
+                passphrase,
                 false
         );
     }
@@ -190,6 +216,7 @@ public final class C2SPhoneWirelessActionPacket {
     public static C2SPhoneWirelessActionPacket wifiDisconnect() {
         return new C2SPhoneWirelessActionPacket(
                 "WIFI_DISCONNECT",
+                "",
                 "",
                 false
         );

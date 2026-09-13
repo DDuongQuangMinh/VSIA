@@ -12,6 +12,10 @@ public class IPhoneCellularScreen
 
     private int contentX;
     private int contentWidth;
+    private int firstY;
+    private int serviceY;
+    private int dataY;
+    private int diagnosticsY;
 
     public IPhoneCellularScreen() {
         super(
@@ -30,6 +34,18 @@ public class IPhoneCellularScreen
 
         contentWidth =
                 PHONE_WIDTH - 28;
+
+        firstY =
+                phoneY + 76;
+
+        serviceY =
+                firstY + 66;
+
+        dataY =
+                serviceY + 136;
+
+        diagnosticsY =
+                dataY + 108;
 
         PhoneNetworkController
                 .get()
@@ -63,15 +79,12 @@ public class IPhoneCellularScreen
                         .get()
                         .getCellular();
 
-        int firstY =
-                phoneY + 78;
-
         roundedRect(
                 graphics,
                 contentX,
                 firstY,
                 contentWidth,
-                52,
+                48,
                 14,
                 0xFF2C2C2E
         );
@@ -80,7 +93,7 @@ public class IPhoneCellularScreen
                 font,
                 "Cellular Data",
                 contentX + 13,
-                firstY + 19,
+                firstY + 18,
                 0xFFFFFFFF,
                 false
         );
@@ -90,12 +103,9 @@ public class IPhoneCellularScreen
                 contentX
                         + contentWidth
                         - 47,
-                firstY + 16,
+                firstY + 14,
                 cellular.enabled()
         );
-
-        int serviceY =
-                firstY + 76;
 
         graphics.drawString(
                 font,
@@ -111,7 +121,7 @@ public class IPhoneCellularScreen
                 contentX,
                 serviceY,
                 contentWidth,
-                132,
+                116,
                 14,
                 0xFF2C2C2E
         );
@@ -127,12 +137,12 @@ public class IPhoneCellularScreen
 
         divider(
                 graphics,
-                serviceY + 33
+                serviceY + 29
         );
 
         pair(
                 graphics,
-                serviceY + 33,
+                serviceY + 29,
                 "Radio",
                 cellular.radioLabel()
                         .isBlank()
@@ -144,24 +154,24 @@ public class IPhoneCellularScreen
 
         divider(
                 graphics,
-                serviceY + 66
+                serviceY + 58
         );
 
         pair(
                 graphics,
-                serviceY + 66,
+                serviceY + 58,
                 "Signal",
                 cellular.quality()
         );
 
         divider(
                 graphics,
-                serviceY + 99
+                serviceY + 87
         );
 
         pair(
                 graphics,
-                serviceY + 99,
+                serviceY + 87,
                 "Distance",
                 Double.isFinite(
                         cellular.distanceBlocks()
@@ -173,9 +183,6 @@ public class IPhoneCellularScreen
                 )
                         : "-"
         );
-
-        int dataY =
-                serviceY + 154;
 
         graphics.drawString(
                 font,
@@ -191,7 +198,7 @@ public class IPhoneCellularScreen
                 contentX,
                 dataY,
                 contentWidth,
-                99,
+                90,
                 14,
                 0xFF2C2C2E
         );
@@ -205,12 +212,12 @@ public class IPhoneCellularScreen
 
         divider(
                 graphics,
-                dataY + 33
+                dataY + 30
         );
 
         pair(
                 graphics,
-                dataY + 33,
+                dataY + 30,
                 "Estimated DL",
                 String.format(
                         Locale.ROOT,
@@ -221,14 +228,24 @@ public class IPhoneCellularScreen
 
         divider(
                 graphics,
-                dataY + 66
+                dataY + 60
         );
 
         pair(
                 graphics,
-                dataY + 66,
+                dataY + 60,
                 "Satellite NTN",
                 "Not Provisioned"
+        );
+
+        roundedRect(
+                graphics,
+                contentX,
+                diagnosticsY,
+                contentWidth,
+                28,
+                12,
+                0xFF2C2C2E
         );
 
         graphics.drawCenteredString(
@@ -237,7 +254,7 @@ public class IPhoneCellularScreen
                 phoneX
                         + PHONE_WIDTH
                         / 2,
-                dataY + 120,
+                diagnosticsY + 10,
                 0xFF0A84FF
         );
 
@@ -256,7 +273,7 @@ public class IPhoneCellularScreen
                 font,
                 key,
                 contentX + 13,
-                y + 12,
+                y + 10,
                 0xFFFFFFFF,
                 false
         );
@@ -264,7 +281,7 @@ public class IPhoneCellularScreen
         String shown =
                 fit(
                         value,
-                        104
+                        98
                 );
 
         int width =
@@ -279,7 +296,7 @@ public class IPhoneCellularScreen
                         + contentWidth
                         - width
                         - 13,
-                y + 12,
+                y + 10,
                 0xFFAEAEB2,
                 false
         );
@@ -384,7 +401,7 @@ public class IPhoneCellularScreen
                     contentX
                             + contentWidth
                             - 54,
-                    phoneY + 84,
+                    firstY + 5,
                     50,
                     38
             )) {
@@ -402,14 +419,14 @@ public class IPhoneCellularScreen
                 return true;
             }
 
-            int diagnosticsY =
-                    phoneY + 78
-                            + 76
-                            + 154
-                            + 108;
-
-            if (mouseY >= diagnosticsY
-                    && mouseY <= diagnosticsY + 35) {
+            if (inside(
+                    mouseX,
+                    mouseY,
+                    contentX,
+                    diagnosticsY,
+                    contentWidth,
+                    28
+            )) {
                 minecraft.setScreen(
                         new IPhoneCellularDiagnosticsScreen()
                 );

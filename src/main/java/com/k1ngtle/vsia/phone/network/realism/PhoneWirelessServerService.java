@@ -8,6 +8,7 @@ import com.k1ngtle.vsia.signality.engineering.cellular.CellularBandCatalog;
 import com.k1ngtle.vsia.signality.engineering.cellular.CellularGeneration;
 import com.k1ngtle.vsia.signality.engineering.cellular.CellularMode;
 import com.k1ngtle.vsia.signality.engineering.wifi.WifiMode;
+import com.k1ngtle.vsia.signality.engineering.wifi.WifiMacController;
 import com.k1ngtle.vsia.signality.internet.NetworkDeviceBlockEntity;
 import com.k1ngtle.vsia.signality.internet.field.FieldDeviceNetwork;
 import net.minecraft.nbt.CompoundTag;
@@ -15,7 +16,9 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.phys.Vec3;
 
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -181,7 +184,8 @@ public final class PhoneWirelessServerService {
 
     public static void connectWifi(
             ServerPlayer player,
-            String bssid
+            String bssid,
+            String passphrase
     ) {
         Session session =
                 session(
@@ -237,20 +241,51 @@ public final class PhoneWirelessServerService {
         }
 
         if (candidate.locked()) {
-            disconnectWifi(
-                    session,
-                    "Protected Wi-Fi detected. Temporary iPhone WPA credential bridge is not yet provisioned."
+            String supplied =
+                    passphrase == null
+                            ? ""
+                            : passphrase;
+
+            if (supplied.isBlank()) {
+                supplied =
+                        session.rememberedWifiPassphrases
+                                .getOrDefault(
+                                        wifiCredentialKey(
+                                                candidate
+                                        ),
+                                        ""
+                                );
+            }
+
+            if (!wifiCredentialMatches(
+                    candidate.device(),
+                    supplied
+            )) {
+                disconnectWifi(
+                        session,
+                        supplied.isBlank()
+                                ? "Password required for "
+                                + candidate.ssid()
+                                : "Incorrect Wi-Fi password"
+                );
+
+                session.wifiStage =
+                        "FAILED";
+
+                refresh(
+                        player,
+                        true
+                );
+
+                return;
+            }
+
+            session.rememberedWifiPassphrases.put(
+                    wifiCredentialKey(
+                            candidate
+                    ),
+                    supplied
             );
-
-            session.wifiStage =
-                    "FAILED";
-
-            refresh(
-                    player,
-                    true
-            );
-
-            return;
         }
 
         if (candidate.rssiDbm()
@@ -647,6 +682,20 @@ public final class PhoneWirelessServerService {
                                         candidate.rssiDbm()
                                                 >= current.rssiDbm()
                                                 + WIFI_ROAM_HYSTERESIS_DB
+                        )
+                        .filter(
+                                candidate ->
+                                        !candidate.locked()
+                                                || wifiCredentialMatches(
+                                                candidate.device(),
+                                                session.rememberedWifiPassphrases
+                                                        .getOrDefault(
+                                                                wifiCredentialKey(
+                                                                        candidate
+                                                                ),
+                                                                ""
+                                                        )
+                                        )
                         )
                         .max(
                                 Comparator.comparingInt(
@@ -1596,6 +1645,94 @@ public final class PhoneWirelessServerService {
         );
     }
 
+    private static String wifiCredentialKey(
+            WifiCandidate candidate
+    ) {
+        if (candidate == null) {
+            return "";
+        }
+
+        return safe(
+                candidate.ssid()
+        )
+                + "\u0000"
+                + safe(
+                candidate.security()
+        );
+    }
+
+    private static boolean wifiCredentialMatches(
+            NetworkDeviceBlockEntity device,
+            String supplied
+    ) {
+        if (device == null) {
+            return false;
+        }
+
+        try {
+            Field wifiMacField =
+                    NetworkDeviceBlockEntity.class
+                            .getDeclaredField(
+                                    "wifiMac"
+                            );
+
+            wifiMacField.setAccessible(
+                    true
+            );
+
+            Object controller =
+                    wifiMacField.get(
+                            device
+                    );
+
+            if (!(controller
+                    instanceof WifiMacController)) {
+                return false;
+            }
+
+            Field passphraseField =
+                    WifiMacController.class
+                            .getDeclaredField(
+                                    "apPassphrase"
+                            );
+
+            passphraseField.setAccessible(
+                    true
+            );
+
+            Object configuredValue =
+                    passphraseField.get(
+                            controller
+                    );
+
+            String configured =
+                    configuredValue instanceof String
+                            ? (String) configuredValue
+                            : "";
+
+            byte[] expected =
+                    configured.getBytes(
+                            StandardCharsets.UTF_8
+                    );
+
+            byte[] actual =
+                    safe(
+                            supplied
+                    )
+                            .getBytes(
+                                    StandardCharsets.UTF_8
+                            );
+
+            return MessageDigest.isEqual(
+                    expected,
+                    actual
+            );
+        } catch (ReflectiveOperationException
+                 | RuntimeException ignored) {
+            return false;
+        }
+    }
+
     private static boolean isOpenSecurity(
             String security
     ) {
@@ -1819,6 +1956,10 @@ public final class PhoneWirelessServerService {
 
         private String wifiDns =
                 "";
+
+        private final Map<String, String>
+                rememberedWifiPassphrases =
+                new HashMap<>();
 
         private UUID servingCellId;
 

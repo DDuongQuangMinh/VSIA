@@ -37,7 +37,7 @@ public class IPhoneWifiScreen
                 PHONE_WIDTH - 28;
 
         listY =
-                phoneY + 160;
+                phoneY + 184;
 
         PhoneNetworkController
                 .get()
@@ -108,10 +108,10 @@ public class IPhoneWifiScreen
                 )
                         : "Wi-Fi is off",
                 contentX + 4,
-                phoneY + 139,
-                wifi.connected()
-                        ? 0xFF30D158
-                        : 0xFF8E8E93,
+                phoneY + 143,
+                statusColor(
+                        wifi
+                ),
                 false
         );
 
@@ -120,7 +120,7 @@ public class IPhoneWifiScreen
                     font,
                     "NETWORKS",
                     contentX + 4,
-                    listY - 16,
+                    listY - 18,
                     0xFF8E8E93,
                     false
             );
@@ -363,6 +363,40 @@ public class IPhoneWifiScreen
         return "Scanning...";
     }
 
+    private int statusColor(
+            PhoneNetworkState.WifiStatus wifi
+    ) {
+        if (wifi.connected()) {
+            return 0xFF30D158;
+        }
+
+        if ("FAILED".equalsIgnoreCase(
+                wifi.stage()
+        )) {
+            return 0xFFFF453A;
+        }
+
+        if ("AUTHENTICATING".equalsIgnoreCase(
+                wifi.stage()
+        )
+                || "ASSOCIATING".equalsIgnoreCase(
+                wifi.stage()
+        )
+                || "DHCP".equalsIgnoreCase(
+                wifi.stage()
+        )
+                || "GATEWAY".equalsIgnoreCase(
+                wifi.stage()
+        )
+                || "DNS".equalsIgnoreCase(
+                wifi.stage()
+        )) {
+            return 0xFFFFD60A;
+        }
+
+        return 0xFF8E8E93;
+    }
+
     private void drawToggle(
             GuiGraphics graphics,
             int x,
@@ -591,7 +625,15 @@ public class IPhoneWifiScreen
             }
 
             if (state.getWifi()
-                    .enabled()) {
+                    .enabled()
+                    && inside(
+                    mouseX,
+                    mouseY,
+                    contentX,
+                    listY,
+                    contentWidth,
+                    ROW_HEIGHT * 5
+            )) {
                 List<PhoneNetworkState.VisibleWifiNetwork> networks =
                         state.getVisibleWifiNetworks();
 
@@ -605,11 +647,7 @@ public class IPhoneWifiScreen
                 int index =
                         scroll + row;
 
-                if (mouseX >= contentX
-                        && mouseX
-                        < contentX
-                        + contentWidth
-                        && row >= 0
+                if (row >= 0
                         && row < 5
                         && index >= 0
                         && index < networks.size()) {
@@ -628,11 +666,20 @@ public class IPhoneWifiScreen
                         minecraft.setScreen(
                                 new IPhoneWifiDetailsScreen()
                         );
+                    } else if (network.locked()) {
+                        minecraft.setScreen(
+                                new IPhoneWifiPasswordScreen(
+                                        network.ssid(),
+                                        network.bssid(),
+                                        network.security()
+                                )
+                        );
                     } else {
                         PhoneNetworkController
                                 .get()
                                 .connectWifi(
-                                        network.bssid()
+                                        network.bssid(),
+                                        ""
                                 );
                     }
 

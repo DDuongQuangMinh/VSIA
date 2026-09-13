@@ -65,10 +65,21 @@ public final class PhoneNetworkController {
     public void connectWifi(
             String bssid
     ) {
+        connectWifi(
+                bssid,
+                ""
+        );
+    }
+
+    public void connectWifi(
+            String bssid,
+            String passphrase
+    ) {
         FieldDeviceNetwork.sendToServer(
                 C2SPhoneWirelessActionPacket
                         .wifiConnect(
-                                bssid
+                                bssid,
+                                passphrase
                         )
         );
     }
