@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.phone.network;
 
+import com.k1ngtle.vsia.phone.client.PhoneSystemSettings;
 import com.k1ngtle.vsia.phone.browser.BrowserResponse;
 import com.k1ngtle.vsia.phone.network.realism.packet.C2SPhoneWirelessActionPacket;
 import com.k1ngtle.vsia.phone.subscriber.PhoneSubscriberClientState;
@@ -28,7 +29,13 @@ public final class PhoneNetworkController {
     public void tick() {
         tickCounter++;
 
-        if (tickCounter == 1 || tickCounter % 40 == 0) {
+        int refreshInterval =
+                PhoneSystemSettings.lowPowerMode()
+                        ? 100
+                        : 40;
+
+        if (tickCounter == 1
+                || tickCounter % refreshInterval == 0) {
             requestRefresh();
             FieldDeviceNetwork.sendToServer(
                     C2SPhoneSubscriberActionPacket.refresh()

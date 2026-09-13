@@ -4,6 +4,7 @@ import com.k1ngtle.vsia.phone.client.PhoneAccessibilityClientPreferences;
 import com.k1ngtle.vsia.phone.client.PhoneDeviceSettingsClientState;
 import com.k1ngtle.vsia.phone.client.PhoneNotificationSettings;
 import com.k1ngtle.vsia.phone.client.PhonePrivacyClientState;
+import com.k1ngtle.vsia.phone.client.PhoneSystemSettings;
 import com.k1ngtle.vsia.phone.network.PhoneNetworkState;
 import com.k1ngtle.vsia.phone.subscriber.PhoneSubscriberClientState;
 import net.minecraft.client.gui.GuiGraphics;
@@ -552,20 +553,24 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
                     ? Math.round(PhoneNotificationSettings.alertVolume() * 100.0F) + "%"
                     : "Silent";
             case FOCUS -> PhoneNotificationSettings.doNotDisturbEnabled() ? "Do Not Disturb" : "Off";
-            case SCREEN_TIME -> "";
+            case SCREEN_TIME -> PhoneSystemSettings.screenTimeEnabled()
+                    ? PhoneSystemSettings.formattedScreenTime()
+                    : "Off";
             case GENERAL -> "";
             case ACCESSIBILITY -> "";
             case ACTION_BUTTON -> "";
-            case DISPLAY_BRIGHTNESS -> PhoneAccessibilityClientPreferences.largerText() ? "Text Size" : "Display";
-            case HOME_SCREEN -> "";
-            case WALLPAPER -> "";
+            case DISPLAY_BRIGHTNESS -> Math.round(PhoneSystemSettings.brightness() * 100.0F) + "%";
+            case HOME_SCREEN -> PhoneSystemSettings.showHomeSearch() ? "Search On" : "Search Off";
+            case WALLPAPER -> PhoneSystemSettings.wallpaper().displayName();
             case SIRI -> "";
             case FACE_ID -> "";
             case EMERGENCY_SOS -> "";
             case PRIVACY_SECURITY -> PhonePrivacyClientState.localNetworkAllowed() ? "On" : "Restricted";
             case APP_STORE -> "";
             case WALLET -> "";
-            case BATTERY -> PhoneNetworkState.get().getBatteryPercent() + "%";
+            case BATTERY -> PhoneSystemSettings.lowPowerMode()
+                    ? PhoneNetworkState.get().getBatteryPercent() + "% · Low Power"
+                    : PhoneNetworkState.get().getBatteryPercent() + "%";
             case APPS -> "";
         };
     }
@@ -683,12 +688,32 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
                             minecraft.setScreen(new IPhoneFocusScreen());
                             return true;
                         }
+                        case SCREEN_TIME -> {
+                            minecraft.setScreen(new IPhoneScreenTimeScreen());
+                            return true;
+                        }
+                        case GENERAL -> {
+                            minecraft.setScreen(new IPhoneGeneralScreen());
+                            return true;
+                        }
                         case ACCESSIBILITY -> {
                             minecraft.setScreen(new IPhoneAccessibilityScreen());
                             return true;
                         }
                         case DISPLAY_BRIGHTNESS -> {
-                            minecraft.setScreen(new IPhoneDisplayTextSizeScreen());
+                            minecraft.setScreen(new IPhoneDisplayBrightnessScreen());
+                            return true;
+                        }
+                        case HOME_SCREEN -> {
+                            minecraft.setScreen(new IPhoneHomeScreenSettingsScreen());
+                            return true;
+                        }
+                        case WALLPAPER -> {
+                            minecraft.setScreen(new IPhoneWallpaperScreen());
+                            return true;
+                        }
+                        case BATTERY -> {
+                            minecraft.setScreen(new IPhoneBatteryScreen());
                             return true;
                         }
                         case PRIVACY_SECURITY -> {

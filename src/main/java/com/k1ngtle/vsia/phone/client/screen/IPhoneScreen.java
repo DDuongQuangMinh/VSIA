@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.phone.client.screen;
 
 import com.k1ngtle.vsia.phone.client.IPhoneStatusBar;
 import com.k1ngtle.vsia.phone.client.PhoneText;
+import com.k1ngtle.vsia.phone.client.PhoneSystemSettings;
 import com.k1ngtle.vsia.phone.client.PhoneNotificationManager;
 import com.k1ngtle.vsia.phone.network.PhoneNetworkController;
 import net.minecraft.client.gui.GuiGraphics;
@@ -40,6 +41,7 @@ public abstract class IPhoneScreen extends Screen {
     public void tick() {
         super.tick();
         PhoneNetworkController.get().tick();
+        PhoneSystemSettings.onPhoneTick();
     }
 
     protected void renderPhoneBase(GuiGraphics graphics) {
@@ -114,6 +116,21 @@ public abstract class IPhoneScreen extends Screen {
         int x = phoneX + (PHONE_WIDTH - indicatorWidth) / 2;
         int y = phoneY + PHONE_HEIGHT - 18;
         roundedRect(graphics, x, y, indicatorWidth, 4, 2, 0xFFFFFFFF);
+
+        int brightnessOverlay =
+                PhoneSystemSettings.brightnessOverlayColor();
+
+        if (brightnessOverlay != 0) {
+            roundedRect(
+                    graphics,
+                    phoneX + SCREEN_INSET,
+                    phoneY + SCREEN_INSET,
+                    PHONE_WIDTH - SCREEN_INSET * 2,
+                    PHONE_HEIGHT - SCREEN_INSET * 2,
+                    SCREEN_RADIUS,
+                    brightnessOverlay
+            );
+        }
     }
 
     protected void renderHeader(GuiGraphics graphics, String back, String title) {

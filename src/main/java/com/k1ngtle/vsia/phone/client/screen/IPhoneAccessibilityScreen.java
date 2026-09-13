@@ -38,97 +38,335 @@ public class IPhoneAccessibilityScreen extends IPhoneScreen {
     }
 
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+    public void render(
+            GuiGraphics graphics,
+            int mouseX,
+            int mouseY,
+            float partialTick
+    ) {
         renderPhoneShell(graphics, BACKGROUND);
         renderStatusBar(graphics);
-        renderHeader(graphics, "Settings", "Accessibility");
+        renderHeader(
+                graphics,
+                "Settings",
+                "Accessibility"
+        );
 
-        graphics.enableScissor(phoneX + 4, viewportTop, phoneX + PHONE_WIDTH - 4, viewportBottom);
+        graphics.enableScissor(
+                phoneX + DISPLAY_INSET,
+                viewportTop,
+                phoneX + PHONE_WIDTH - DISPLAY_INSET,
+                viewportBottom
+        );
+
         renderScrollable(graphics);
-        graphics.disableScissor();
 
+        graphics.disableScissor();
         renderHomeIndicator(graphics);
     }
 
-    private void renderScrollable(GuiGraphics graphics) {
+    private void renderScrollable(
+            GuiGraphics graphics
+    ) {
         int introY = sy(0);
-        roundedRect(graphics, contentX, introY, contentWidth, 56, 14, CARD);
-        graphics.drawString(font, "Personalize iPhone in ways that", contentX + 10, introY + 12, TEXT, false);
-        graphics.drawString(font, "work best for vision, mobility,", contentX + 10, introY + 23, TEXT, false);
-        graphics.drawString(font, "hearing, speech, and cognition.", contentX + 10, introY + 34, SECONDARY, false);
-        graphics.drawString(font, "Learn more...", contentX + 94, introY + 44, BLUE, false);
 
-        int visionLabelY = sy(74);
-        graphics.drawString(font, "Vision", contentX + 4, visionLabelY, MUTED, false);
-        int visionY = sy(88);
-        drawGroup(graphics, visionY, 7);
-        drawRow(graphics, visionY + ROW_HEIGHT * 0, "VoiceOver", "Off", false);
-        drawRow(graphics, visionY + ROW_HEIGHT * 1, "Zoom", "Off", false);
-        drawRow(graphics, visionY + ROW_HEIGHT * 2, "Hover Text", "Off", false);
-        drawRow(graphics, visionY + ROW_HEIGHT * 3, "Display & Text Size", "", true);
-        drawRow(graphics, visionY + ROW_HEIGHT * 4, "Motion", "", true);
-        drawRow(graphics, visionY + ROW_HEIGHT * 5, "Read & Speak", "", true);
-        drawRow(graphics, visionY + ROW_HEIGHT * 6, "Audio Descriptions", "Off", false);
+        roundedRect(
+                graphics,
+                contentX,
+                introY,
+                contentWidth,
+                64,
+                14,
+                CARD
+        );
 
-        int physicalLabelY = sy(324);
-        graphics.drawString(font, "Physical and Motor", contentX + 4, physicalLabelY, MUTED, false);
-        int physicalY = sy(338);
-        drawGroup(graphics, physicalY, 2);
-        drawRow(graphics, physicalY + ROW_HEIGHT * 0, "Touch", "", true);
-        drawRow(graphics, physicalY + ROW_HEIGHT * 1, "Face ID & Attention", "", true);
+        drawUiWrappedCentered(
+                graphics,
+                "Personalize the phone for vision, mobility, hearing, speech, and cognition.",
+                phoneX + PHONE_WIDTH / 2,
+                introY + 10,
+                contentWidth - 24,
+                11,
+                4,
+                TEXT
+        );
+
+        drawUiCentered(
+                graphics,
+                "Learn more...",
+                phoneX + PHONE_WIDTH / 2,
+                introY + 49,
+                BLUE
+        );
+
+        int visionLabelY = sy(82);
+
+        drawUiText(
+                graphics,
+                "VISION",
+                contentX + 4,
+                visionLabelY,
+                MUTED
+        );
+
+        int visionY = sy(96);
+
+        drawGroup(
+                graphics,
+                visionY,
+                7
+        );
+
+        drawRow(
+                graphics,
+                visionY,
+                "VoiceOver",
+                "Off",
+                false
+        );
+
+        drawRow(
+                graphics,
+                visionY + ROW_HEIGHT,
+                "Zoom",
+                "Off",
+                false
+        );
+
+        drawRow(
+                graphics,
+                visionY + ROW_HEIGHT * 2,
+                "Hover Text",
+                "Off",
+                false
+        );
+
+        drawRow(
+                graphics,
+                visionY + ROW_HEIGHT * 3,
+                "Display & Text Size",
+                "",
+                true
+        );
+
+        drawRow(
+                graphics,
+                visionY + ROW_HEIGHT * 4,
+                "Motion",
+                "",
+                true
+        );
+
+        drawRow(
+                graphics,
+                visionY + ROW_HEIGHT * 5,
+                "Read & Speak",
+                "",
+                true
+        );
+
+        drawRow(
+                graphics,
+                visionY + ROW_HEIGHT * 6,
+                "Audio Descriptions",
+                "Off",
+                false
+        );
+
+        int physicalLabelY = sy(332);
+
+        drawUiText(
+                graphics,
+                "PHYSICAL AND MOTOR",
+                contentX + 4,
+                physicalLabelY,
+                MUTED
+        );
+
+        int physicalY = sy(346);
+
+        drawGroup(
+                graphics,
+                physicalY,
+                2
+        );
+
+        drawRow(
+                graphics,
+                physicalY,
+                "Touch",
+                "",
+                true
+        );
+
+        drawRow(
+                graphics,
+                physicalY + ROW_HEIGHT,
+                "Face ID & Attention",
+                "",
+                true
+        );
     }
 
-    private void drawGroup(GuiGraphics graphics, int y, int rows) {
-        roundedRect(graphics, contentX, y, contentWidth, rows * ROW_HEIGHT, 14, CARD_SECONDARY);
+    private void drawGroup(
+            GuiGraphics graphics,
+            int y,
+            int rows
+    ) {
+        roundedRect(
+                graphics,
+                contentX,
+                y,
+                contentWidth,
+                rows * ROW_HEIGHT,
+                14,
+                CARD_SECONDARY
+        );
+
         for (int i = 1; i < rows; i++) {
             int dividerY = y + ROW_HEIGHT * i;
-            graphics.fill(contentX + 12, dividerY, contentX + contentWidth - 12, dividerY + 1, DIVIDER);
+
+            graphics.fill(
+                    contentX + 12,
+                    dividerY,
+                    contentX + contentWidth - 12,
+                    dividerY + 1,
+                    DIVIDER
+            );
         }
     }
 
-    private void drawRow(GuiGraphics graphics, int y, String left, String right, boolean chevron) {
-        graphics.drawString(font, left, contentX + 12, y + 11, TEXT, false);
-        if (right != null && !right.isBlank()) {
-            int rightWidth = font.width(right);
-            graphics.drawString(font, right, contentX + contentWidth - rightWidth - (chevron ? 18 : 12), y + 11, SECONDARY, false);
+    private void drawRow(
+            GuiGraphics graphics,
+            int y,
+            String left,
+            String right,
+            boolean chevron
+    ) {
+        drawUiText(
+                graphics,
+                fitUi(
+                        left,
+                        contentWidth - 58
+                ),
+                contentX + 12,
+                y + 11,
+                TEXT
+        );
+
+        if (right != null
+                && !right.isBlank()) {
+            String shown = fitUi(
+                    right,
+                    62
+            );
+
+            drawUiText(
+                    graphics,
+                    shown,
+                    contentX
+                            + contentWidth
+                            - uiWidth(shown)
+                            - (chevron ? 18 : 12),
+                    y + 11,
+                    SECONDARY
+            );
         }
+
         if (chevron) {
-            graphics.drawString(font, ">", contentX + contentWidth - 11, y + 11, MUTED, false);
+            drawUiText(
+                    graphics,
+                    "›",
+                    contentX + contentWidth - 11,
+                    y + 11,
+                    MUTED
+            );
         }
     }
 
-    private int sy(int y) {
-        return viewportTop + y - scrollOffset;
+    private int sy(
+            int y
+    ) {
+        return viewportTop
+                + y
+                - scrollOffset;
     }
 
-    private int clampScroll(int value) {
-        int max = Math.max(0, CONTENT_HEIGHT - viewportHeight);
-        if (value < 0) {
-            return 0;
-        }
-        return Math.min(value, max);
+    private int clampScroll(
+            int value
+    ) {
+        int max = Math.max(
+                0,
+                CONTENT_HEIGHT - viewportHeight
+        );
+
+        return Math.max(
+                0,
+                Math.min(
+                        value,
+                        max
+                )
+        );
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
-        scrollOffset = clampScroll(scrollOffset - (int) (delta * 18));
+    public boolean mouseScrolled(
+            double mouseX,
+            double mouseY,
+            double delta
+    ) {
+        scrollOffset = clampScroll(
+                scrollOffset
+                        - (int) (
+                        delta * 18
+                )
+        );
+
         return true;
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(
+            double mouseX,
+            double mouseY,
+            int button
+    ) {
         if (button == 0) {
-            if (clickedBack(mouseX, mouseY)) {
-                minecraft.setScreen(new IPhoneSettingsScreen());
+            if (clickedBack(
+                    mouseX,
+                    mouseY
+            )) {
+                minecraft.setScreen(
+                        new IPhoneSettingsScreen()
+                );
                 return true;
             }
 
-            int displayY = sy(88 + ROW_HEIGHT * 3);
-            if (inside(mouseX, mouseY, contentX, displayY, contentWidth, ROW_HEIGHT)) {
-                minecraft.setScreen(new IPhoneDisplayTextSizeScreen());
+            int displayY =
+                    sy(
+                            96
+                                    + ROW_HEIGHT * 3
+                    );
+
+            if (inside(
+                    mouseX,
+                    mouseY,
+                    contentX,
+                    displayY,
+                    contentWidth,
+                    ROW_HEIGHT
+            )) {
+                minecraft.setScreen(
+                        new IPhoneDisplayTextSizeScreen()
+                );
                 return true;
             }
         }
-        return super.mouseClicked(mouseX, mouseY, button);
+
+        return super.mouseClicked(
+                mouseX,
+                mouseY,
+                button
+        );
     }
 }

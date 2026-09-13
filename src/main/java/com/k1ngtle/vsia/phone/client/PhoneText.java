@@ -17,7 +17,13 @@ public final class PhoneText {
 
     public static Component component(String text) {
         return Component.literal(text == null ? "" : text)
-                .withStyle(style -> style.withFont(UI_FONT));
+                .withStyle(
+                        style -> style
+                                .withFont(UI_FONT)
+                                .withBold(
+                                        PhoneAccessibilityClientPreferences.boldText()
+                                )
+                );
     }
 
     public static FormattedCharSequence sequence(String text) {

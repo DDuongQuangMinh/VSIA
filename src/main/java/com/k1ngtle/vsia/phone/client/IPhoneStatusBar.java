@@ -9,7 +9,8 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 
 public final class IPhoneStatusBar {
-    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter TIME_24 = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter TIME_12 = DateTimeFormatter.ofPattern("h:mm");
 
     private IPhoneStatusBar() {
     }
@@ -25,7 +26,13 @@ public final class IPhoneStatusBar {
 
         graphics.drawString(
                 font,
-                PhoneText.component(LocalTime.now().format(TIME)),
+                PhoneText.component(
+                        LocalTime.now().format(
+                                PhoneSystemSettings.use24HourTime()
+                                        ? TIME_24
+                                        : TIME_12
+                        )
+                ),
                 x + 18,
                 y + 16,
                 0xFFFFFFFF,
@@ -200,7 +207,12 @@ public final class IPhoneStatusBar {
                 )
         );
 
-        int color = percent <= 20 ? 0xFFFF453A : 0xFFFFFFFF;
+        int color =
+                PhoneSystemSettings.lowPowerMode()
+                        ? 0xFFFFD60A
+                        : percent <= 20
+                        ? 0xFFFF453A
+                        : 0xFFFFFFFF;
         graphics.fill(x + 2, y + 2, x + 2 + fill, y + 7, color);
     }
 
