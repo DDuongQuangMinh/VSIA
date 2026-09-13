@@ -1,29 +1,24 @@
 package com.k1ngtle.vsia.phone.client.screen;
 
-import com.k1ngtle.vsia.phone.client.PhoneSystemSettings;
 import com.k1ngtle.vsia.phone.client.PhoneLocaleSettings;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
-
-public final class IPhoneDateTimeScreen extends IPhoneScreen {
+public final class IPhoneLanguageRegionScreen extends IPhoneScreen {
     private static final int BG = 0xFF1C1C1E;
     private static final int CARD = 0xFF2C2C2E;
     private static final int TEXT = 0xFFFFFFFF;
     private static final int MUTED = 0xFFAEAEB2;
-    private static final int GREEN = 0xFF30D158;
     private static final int DIVIDER = 0xFF3A3A3C;
 
+    private static final int ROW_HEIGHT = 38;
 
     private int contentX;
     private int contentWidth;
     private int groupY;
 
-    public IPhoneDateTimeScreen() {
-        super(Component.literal("Date & Time"));
+    public IPhoneLanguageRegionScreen() {
+        super(Component.literal("Language & Region"));
     }
 
     @Override
@@ -31,7 +26,7 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
         super.init();
         contentX = phoneX + 14;
         contentWidth = PHONE_WIDTH - 28;
-        groupY = phoneY + 84;
+        groupY = phoneY + 82;
     }
 
     @Override
@@ -43,7 +38,11 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
     ) {
         renderPhoneShell(graphics, BG);
         renderStatusBar(graphics);
-        renderHeader(graphics, "General", "Date & Time");
+        renderHeader(
+                graphics,
+                "General",
+                "Language & Region"
+        );
 
         beginPhoneClip(graphics, 68);
 
@@ -52,68 +51,58 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
                 contentX,
                 groupY,
                 contentWidth,
-                38 * 3,
+                ROW_HEIGHT * 5,
                 14,
                 CARD
         );
 
-        drawUiText(
+        row(
                 graphics,
-                "24-Hour Time",
-                contentX + 13,
-                groupY + 14,
-                TEXT
+                groupY,
+                "iPhone Language",
+                PhoneLocaleSettings.language().displayName()
         );
+        divider(graphics, groupY + ROW_HEIGHT);
 
-        drawToggle(
+        row(
                 graphics,
-                contentX + contentWidth - 47,
-                groupY + 9,
-                PhoneSystemSettings.use24HourTime()
+                groupY + ROW_HEIGHT,
+                "Region",
+                PhoneLocaleSettings.region().displayName()
         );
+        divider(graphics, groupY + ROW_HEIGHT * 2);
 
-        divider(
+        row(
                 graphics,
-                groupY + 38
+                groupY + ROW_HEIGHT * 2,
+                "Temperature",
+                PhoneLocaleSettings.temperatureUnit().displayName()
         );
+        divider(graphics, groupY + ROW_HEIGHT * 3);
 
-        pair(
+        row(
                 graphics,
-                groupY + 38,
-                "Date",
-                PhoneLocaleSettings.formatDate(LocalDate.now())
+                groupY + ROW_HEIGHT * 3,
+                "Measurement System",
+                PhoneLocaleSettings.measurementSystem().displayName()
         );
+        divider(graphics, groupY + ROW_HEIGHT * 4);
 
-        divider(
+        row(
                 graphics,
-                groupY + 76
-        );
-
-        String time = LocalTime.now().format(
-                PhoneSystemSettings.use24HourTime()
-                        ? DateTimeFormatter.ofPattern(
-                        "HH:mm"
-                )
-                        : DateTimeFormatter.ofPattern(
-                        "h:mm"
-                )
-        );
-
-        pair(
-                graphics,
-                groupY + 76,
-                "Time",
-                time
+                groupY + ROW_HEIGHT * 4,
+                "First Day of Week",
+                PhoneLocaleSettings.firstDayOfWeek().displayName()
         );
 
         drawUiWrappedCentered(
                 graphics,
-                "The simulated phone follows the client system clock.",
+                "Region changes date formatting and default units. Temperature changes the Weather widget immediately.",
                 phoneX + PHONE_WIDTH / 2,
-                groupY + 134,
-                PHONE_WIDTH - 50,
+                groupY + ROW_HEIGHT * 5 + 19,
+                PHONE_WIDTH - 48,
                 11,
-                3,
+                5,
                 MUTED
         );
 
@@ -121,7 +110,7 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
         renderHomeIndicator(graphics);
     }
 
-    private void pair(
+    private void row(
             GuiGraphics graphics,
             int y,
             String left,
@@ -129,19 +118,32 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
     ) {
         drawUiText(
                 graphics,
-                left,
+                fitUi(left, 106),
                 contentX + 13,
                 y + 14,
                 TEXT
         );
 
+        String shown = fitUi(
+                right,
+                94
+        );
+
         drawUiText(
                 graphics,
-                right,
+                shown,
                 contentX
                         + contentWidth
-                        - uiWidth(right)
-                        - 13,
+                        - uiWidth(shown)
+                        - 21,
+                y + 14,
+                MUTED
+        );
+
+        drawUiText(
+                graphics,
+                "›",
+                contentX + contentWidth - 11,
                 y + 14,
                 MUTED
         );
@@ -157,33 +159,6 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
                 contentX + contentWidth - 13,
                 y + 1,
                 DIVIDER
-        );
-    }
-
-    private void drawToggle(
-            GuiGraphics graphics,
-            int x,
-            int y,
-            boolean enabled
-    ) {
-        roundedRect(
-                graphics,
-                x,
-                y,
-                36,
-                20,
-                10,
-                enabled ? GREEN : 0xFF636366
-        );
-
-        roundedRect(
-                graphics,
-                enabled ? x + 19 : x + 3,
-                y + 3,
-                14,
-                14,
-                7,
-                0xFFFFFFFF
         );
     }
 
@@ -204,20 +179,46 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
                 return true;
             }
 
-            if (inside(
+            if (!inside(
                     mouseX,
                     mouseY,
                     contentX,
                     groupY,
                     contentWidth,
-                    38
+                    ROW_HEIGHT * 5
             )) {
-                PhoneSystemSettings.setUse24HourTime(
-                        !PhoneSystemSettings
-                                .use24HourTime()
+                return super.mouseClicked(
+                        mouseX,
+                        mouseY,
+                        button
                 );
-                return true;
             }
+
+            int row =
+                    ((int) mouseY - groupY)
+                            / ROW_HEIGHT;
+
+            switch (row) {
+                case 0 ->
+                        PhoneLocaleSettings.cycleLanguage();
+
+                case 1 ->
+                        PhoneLocaleSettings.cycleRegion();
+
+                case 2 ->
+                        PhoneLocaleSettings.cycleTemperatureUnit();
+
+                case 3 ->
+                        PhoneLocaleSettings.cycleMeasurementSystem();
+
+                case 4 ->
+                        PhoneLocaleSettings.cycleFirstDayOfWeek();
+
+                default -> {
+                }
+            }
+
+            return true;
         }
 
         return super.mouseClicked(

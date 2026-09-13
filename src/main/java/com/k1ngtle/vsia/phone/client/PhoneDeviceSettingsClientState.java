@@ -68,4 +68,25 @@ public final class PhoneDeviceSettingsClientState {
         }
         PhoneNetworkController.get().setWifiEnabled(enabled);
     }
+
+    public static void resetNetworkSettings() {
+        PhoneNetworkController controller =
+                PhoneNetworkController.get();
+
+        airplaneMode = false;
+        bluetoothEnabled = true;
+        wifiEnabledInAirplanePreference = false;
+        wifiStateBeforeAirplane = true;
+        wifiExplicitlyChangedInAirplane = false;
+        wifiValueDuringAirplane = false;
+
+        controller.setCellularRadioEnabled(true);
+        controller.setWifiEnabled(false);
+        controller.setWifiEnabled(true);
+        controller.requestRefresh();
+    }
+
+    public static void resetToDefaults() {
+        resetNetworkSettings();
+    }
 }

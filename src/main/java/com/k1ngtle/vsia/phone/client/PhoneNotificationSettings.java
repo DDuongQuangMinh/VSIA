@@ -72,4 +72,14 @@ public final class PhoneNotificationSettings {
     public static boolean messagesSilencedByFocus() {
         return doNotDisturbEnabled && !allowMessagesInFocus;
     }
+
+    public static void resetToDefaults() {
+        messagesNotificationsEnabled = true;
+        showPreviews = true;
+        alertSoundEnabled = true;
+        hapticsEnabled = true;
+        alertVolume = 0.75F;
+        doNotDisturbEnabled = false;
+        allowMessagesInFocus = false;
+    }
 }

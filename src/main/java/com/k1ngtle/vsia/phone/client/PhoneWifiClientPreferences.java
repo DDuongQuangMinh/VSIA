@@ -109,6 +109,11 @@ public final class PhoneWifiClientPreferences {
         );
     }
 
+    public static void clearAll() {
+        AUTO_JOIN.clear();
+        PASSWORDS.clear();
+    }
+
     private static String normalizeBssid(
             String value
     ) {

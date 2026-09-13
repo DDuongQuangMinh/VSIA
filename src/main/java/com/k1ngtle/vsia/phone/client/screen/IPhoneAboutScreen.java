@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.phone.client.screen;
 
+import com.k1ngtle.vsia.phone.client.PhoneSoftwareUpdateState;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
@@ -56,7 +57,7 @@ public final class IPhoneAboutScreen extends IPhoneScreen {
                 graphics,
                 groupY + 38,
                 "PhoneOS Version",
-                "26.0"
+                PhoneSoftwareUpdateState.currentVersion()
         );
         divider(graphics, groupY + 76);
 

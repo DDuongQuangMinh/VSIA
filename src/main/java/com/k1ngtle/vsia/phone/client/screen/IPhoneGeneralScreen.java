@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.phone.client.screen;
 
+import com.k1ngtle.vsia.phone.client.PhoneSoftwareUpdateState;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
@@ -69,7 +70,7 @@ public final class IPhoneGeneralScreen extends IPhoneScreen {
                 graphics,
                 firstY + ROW_HEIGHT,
                 "Software Update",
-                "PhoneOS 26.0"
+                "PhoneOS " + PhoneSoftwareUpdateState.currentVersion()
         );
 
         roundedRect(
@@ -204,12 +205,54 @@ public final class IPhoneGeneralScreen extends IPhoneScreen {
                     mouseX,
                     mouseY,
                     contentX,
+                    firstY + ROW_HEIGHT,
+                    contentWidth,
+                    ROW_HEIGHT
+            )) {
+                minecraft.setScreen(
+                        new IPhoneSoftwareUpdateScreen()
+                );
+                return true;
+            }
+
+            if (inside(
+                    mouseX,
+                    mouseY,
+                    contentX,
                     secondY,
                     contentWidth,
                     ROW_HEIGHT
             )) {
                 minecraft.setScreen(
                         new IPhoneDateTimeScreen()
+                );
+                return true;
+            }
+
+            if (inside(
+                    mouseX,
+                    mouseY,
+                    contentX,
+                    secondY + ROW_HEIGHT,
+                    contentWidth,
+                    ROW_HEIGHT
+            )) {
+                minecraft.setScreen(
+                        new IPhoneLanguageRegionScreen()
+                );
+                return true;
+            }
+
+            if (inside(
+                    mouseX,
+                    mouseY,
+                    contentX,
+                    secondY + ROW_HEIGHT * 2,
+                    contentWidth,
+                    ROW_HEIGHT
+            )) {
+                minecraft.setScreen(
+                        new IPhoneTransferResetScreen()
                 );
                 return true;
             }

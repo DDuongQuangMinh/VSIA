@@ -1,6 +1,7 @@
 package com.k1ngtle.vsia.phone.client.screen;
 
 import com.k1ngtle.vsia.phone.client.PhoneSystemSettings;
+import com.k1ngtle.vsia.phone.client.PhoneLocaleSettings;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
@@ -116,11 +117,13 @@ public class IPhoneHomeScreen extends IPhoneScreen {
         roundedRect(g, x, y, w, h, 16, 0xE8246BA6);
         roundedRect(g, x + 2, y + 2, w - 4, 18, 12, 0x2FFFFFFF);
         drawUiText(g, "Overworld", x + 10, y + 9, TEXT);
-        drawUiText(g, "53°", x + 10, y + 27, TEXT);
+        drawUiText(g, PhoneLocaleSettings.formatTemperature(12.0), x + 10, y + 27, TEXT);
         roundedRect(g, x + 12, y + 58, 15, 7, 3, 0xFFFFFFFF);
         roundedRect(g, x + 17, y + 54, 7, 7, 3, 0xFFFFD60A);
-        drawUiText(g, "Partly Cloudy", x + 31, y + 56, TEXT);
-        drawUiText(g, "H:56°  L:50°", x + 10, y + 72, 0xFFE3F5FF);
+        drawUiText(g, PhoneLocaleSettings.partlyCloudyLabel(), x + 31, y + 56, TEXT);
+        drawUiText(g, "H:" + PhoneLocaleSettings.formatTemperature(13.0)
+                + "  L:" + PhoneLocaleSettings.formatTemperature(10.0),
+                x + 10, y + 72, 0xFFE3F5FF);
     }
 
     private void drawFindMyWidget(GuiGraphics g, int x, int y, int w, int h) {
@@ -134,7 +137,7 @@ public class IPhoneHomeScreen extends IPhoneScreen {
         roundedRect(g, x + w - 28, y + 15, 12, 12, 6, 0xFFB99CF7);
         g.fill(x + w - 24, y + 18, x + w - 20, y + 23, 0xFF303030);
         drawUiText(g, "Now", x + 9, y + 52, 0xFF777777);
-        drawUiText(g, "Current Position", x + 9, y + 64, 0xFF222222);
+        drawUiText(g, PhoneLocaleSettings.currentPositionLabel(), x + 9, y + 64, 0xFF222222);
         drawUiText(g, "VS:IA", x + 9, y + 77, 0xFF666666);
     }
 
@@ -338,9 +341,11 @@ public class IPhoneHomeScreen extends IPhoneScreen {
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0) {
-            int left = phoneX + 14;
             int stepX = 52;
             int stepY = 42;
+            int columns = 4;
+            int totalWidth = GRID_ICON + stepX * (columns - 1);
+            int left = phoneX + (PHONE_WIDTH - totalWidth) / 2;
 
             int settingsX = left + 3 * stepX;
             int settingsY = gridY + 3 * stepY;
@@ -349,9 +354,18 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 return true;
             }
 
+            int clockX = left + 3 * stepX;
+            int clockY = gridY + stepY;
+            if (inside(mouseX, mouseY, clockX, clockY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhoneClockScreen());
+                return true;
+            }
+
             int dockX = phoneX + 12;
-            int first = dockX + 12;
+            int dockWidth = PHONE_WIDTH - 24;
             int gap = 43;
+            int iconSpan = DOCK_ICON + gap * 3;
+            int first = dockX + (dockWidth - iconSpan) / 2;
 
             if (inside(mouseX, mouseY, first, dockY + 10, DOCK_ICON, DOCK_ICON)) {
                 minecraft.setScreen(new IPhoneCellularScreen());

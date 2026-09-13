@@ -76,4 +76,15 @@ public final class PhoneAccessibilityClientPreferences {
     public static void togglePreferHorizontalText() {
         preferHorizontalText = !preferHorizontalText;
     }
+
+    public static void resetToDefaults() {
+        boldText = false;
+        largerText = true;
+        buttonShapes = false;
+        onOffLabels = false;
+        reduceTransparency = false;
+        increaseContrast = false;
+        differentiateWithoutColor = false;
+        preferHorizontalText = false;
+    }
 }

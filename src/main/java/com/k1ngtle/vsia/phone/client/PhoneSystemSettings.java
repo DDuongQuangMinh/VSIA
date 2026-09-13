@@ -120,4 +120,22 @@ public final class PhoneSystemSettings {
 
         return (alpha << 24);
     }
+
+    public static void resetHomeScreenLayout() {
+        showHomeSearch = true;
+        wallpaper = Wallpaper.AERO;
+    }
+
+    public static void clearUsageData() {
+        screenTicks = 0L;
+    }
+
+    public static void resetToDefaults() {
+        use24HourTime = true;
+        lowPowerMode = false;
+        screenTimeEnabled = true;
+        showHomeSearch = true;
+        wallpaper = Wallpaper.AERO;
+        brightness = 1.0F;
+    }
 }

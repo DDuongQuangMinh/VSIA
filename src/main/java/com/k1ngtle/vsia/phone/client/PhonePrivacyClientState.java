@@ -13,4 +13,8 @@ public final class PhonePrivacyClientState {
     public static void setLocalNetworkAllowed(boolean allowed) {
         localNetworkAllowed = allowed;
     }
+
+    public static void resetToDefaults() {
+        localNetworkAllowed = true;
+    }
 }
