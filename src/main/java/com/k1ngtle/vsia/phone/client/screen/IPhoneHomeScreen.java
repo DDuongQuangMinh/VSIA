@@ -8,6 +8,9 @@ public class IPhoneHomeScreen extends IPhoneScreen {
     private static final int DOCK_ICON = 34;
     private static final int TEXT = 0xFFFFFFFF;
     private static final int LABEL_SHADOW = 0x90000000;
+    private static final int SCREEN_FRAME = 0xFF0B0B0F;
+    private static final int SCREEN_RADIUS = 18;
+    private static final int SCREEN_INSET = 8;
 
     private int innerX;
     private int innerY;
@@ -27,10 +30,10 @@ public class IPhoneHomeScreen extends IPhoneScreen {
     protected void init() {
         super.init();
 
-        innerX = phoneX + 5;
-        innerY = phoneY + 5;
-        innerW = PHONE_WIDTH - 10;
-        innerH = PHONE_HEIGHT - 10;
+        innerX = phoneX + SCREEN_INSET;
+        innerY = phoneY + SCREEN_INSET;
+        innerW = PHONE_WIDTH - SCREEN_INSET * 2;
+        innerH = PHONE_HEIGHT - SCREEN_INSET * 2;
 
         widgetY = phoneY + 48;
         gridY = phoneY + 157;
@@ -40,7 +43,17 @@ public class IPhoneHomeScreen extends IPhoneScreen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderPhoneShell(graphics, 0xFF92D9EE);
+        renderPhoneShell(graphics, SCREEN_FRAME);
+
+        roundedRect(
+                graphics,
+                innerX,
+                innerY,
+                innerW,
+                innerH,
+                SCREEN_RADIUS,
+                0xFF6ECFE6
+        );
 
         graphics.enableScissor(
                 innerX,
@@ -50,11 +63,12 @@ public class IPhoneHomeScreen extends IPhoneScreen {
         );
 
         renderWallpaper(graphics);
-        renderStatusBar(graphics);
         renderWidgets(graphics);
         renderAppGrid(graphics);
         renderSearchPill(graphics);
         renderDock(graphics);
+        maskRoundedScreenCorners(graphics);
+        renderStatusBar(graphics);
 
         graphics.disableScissor();
         renderHomeIndicator(graphics);
@@ -83,6 +97,53 @@ public class IPhoneHomeScreen extends IPhoneScreen {
 
         graphics.fill(x, y + 205, x + w, y + 207, 0x20FFFFFF);
         graphics.fill(x, y + 319, x + w, y + 321, 0x18FFFFFF);
+    }
+
+    private void maskRoundedScreenCorners(GuiGraphics graphics) {
+        int radius = SCREEN_RADIUS;
+
+        for (int i = 0; i < radius; i++) {
+            int dy = radius - i;
+            int inset = (int) Math.ceil(
+                    radius - Math.sqrt(Math.max(0, radius * radius - dy * dy))
+            );
+
+            if (inset <= 0) {
+                continue;
+            }
+
+            graphics.fill(
+                    innerX,
+                    innerY + i,
+                    innerX + inset,
+                    innerY + i + 1,
+                    SCREEN_FRAME
+            );
+
+            graphics.fill(
+                    innerX + innerW - inset,
+                    innerY + i,
+                    innerX + innerW,
+                    innerY + i + 1,
+                    SCREEN_FRAME
+            );
+
+            graphics.fill(
+                    innerX,
+                    innerY + innerH - i - 1,
+                    innerX + inset,
+                    innerY + innerH - i,
+                    SCREEN_FRAME
+            );
+
+            graphics.fill(
+                    innerX + innerW - inset,
+                    innerY + innerH - i - 1,
+                    innerX + innerW,
+                    innerY + innerH - i,
+                    SCREEN_FRAME
+            );
+        }
     }
 
     private void renderWidgets(GuiGraphics graphics) {
@@ -114,11 +175,15 @@ public class IPhoneHomeScreen extends IPhoneScreen {
     }
 
     private void drawLocationWidget(GuiGraphics graphics, int x, int y, int w, int h) {
-        roundedRect(graphics, x, y, w, h, 16, 0xE8E7F5EE);
+        roundedRect(graphics, x, y, w, h, 16, 0xB82B6C8D);
+        roundedRect(graphics, x + 2, y + 2, w - 4, h - 4, 14, 0xFFF1EFE7);
 
-        graphics.fill(x + 1, y + 1, x + w - 1, y + 27, 0xFF8BD6F0);
-        graphics.fill(x + 1, y + 27, x + w - 1, y + 48, 0xFFB7E6B0);
-        graphics.fill(x + 1, y + 48, x + w - 1, y + h - 1, 0xFFF1EFE7);
+        int left = x + 4;
+        int right = x + w - 4;
+
+        graphics.fill(left, y + 5, right, y + 27, 0xFF8BD6F0);
+        graphics.fill(left, y + 27, right, y + 48, 0xFFB7E6B0);
+        graphics.fill(left, y + 48, right, y + h - 5, 0xFFF1EFE7);
 
         graphics.fill(x + 11, y + 19, x + w - 11, y + 21, 0xFFFFFFFF);
         graphics.fill(x + 19, y + 37, x + w - 8, y + 39, 0xFFE6D8A6);

@@ -157,6 +157,14 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
     private void refreshDocument() {
         BrowserResponse response = browser.response();
 
+        if (response == null) {
+            lastResponse = null;
+            document = null;
+            lastRender = PhoneHtmlRenderer.RenderResult.empty();
+            scrollY = 0;
+            return;
+        }
+
         if (response == lastResponse) {
             return;
         }
@@ -164,7 +172,7 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
         lastResponse = response;
         scrollY = 0;
 
-        if (response == null || response.statusCode() == 0) {
+        if (response.statusCode() == 0) {
             document = null;
             lastRender = PhoneHtmlRenderer.RenderResult.empty();
             return;
@@ -176,6 +184,7 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
     private void forcePageRefresh() {
         lastResponse = null;
         document = null;
+        lastRender = PhoneHtmlRenderer.RenderResult.empty();
         scrollY = 0;
         overlayScroll = 0;
         syncAddressFromBrowser();
@@ -725,43 +734,23 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             double mouseY,
             int button
     ) {
+        if (button == 0 && clickedHome(mouseX, mouseY)) {
+            closeOverlay();
+
+            if (addressField != null) {
+                addressField.setFocused(false);
+            }
+
+            setFocused(null);
+            goHome();
+            return true;
+        }
+
         if (button == 0 && overlay != BrowserOverlay.NONE) {
             return handleOverlayClick(mouseX, mouseY);
         }
 
         if (button == 0) {
-            BrowserResponse response = browser.response();
-
-            if (response != null && response.openWifiSettingsSuggested()) {
-                int buttonX = phoneX + 46;
-                int buttonY = contentY + contentHeight - 58;
-
-                if (inside(mouseX, mouseY, buttonX, buttonY, PHONE_WIDTH - 92, 34)) {
-                    minecraft.setScreen(new IPhoneWifiScreen());
-                    return true;
-                }
-            }
-
-            if (browser.response() == null && handleQuickSiteClick(mouseX, mouseY)) {
-                return true;
-            }
-
-            for (PhoneHtmlRenderer.LinkRegion link : lastRender.links()) {
-                if (!link.contains(mouseX, mouseY)) {
-                    continue;
-                }
-
-                String target = BrowserRequest.resolve(browser.currentUrl(), link.href());
-                browser.navigate(target);
-
-                if (addressField != null) {
-                    addressField.setValue(displayAddress(target));
-                    addressField.setFocused(false);
-                }
-
-                return true;
-            }
-
             if (inside(mouseX, mouseY, phoneX + 22, toolbarY + 1, 20, 20)) {
                 browser.back();
                 forcePageRefresh();
@@ -799,6 +788,41 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
 
                 addressField.moveCursorToEnd();
                 return true;
+            }
+
+            BrowserResponse response = browser.response();
+
+            if (response != null && response.openWifiSettingsSuggested()) {
+                int buttonX = phoneX + 46;
+                int buttonY = contentY + contentHeight - 58;
+
+                if (inside(mouseX, mouseY, buttonX, buttonY, PHONE_WIDTH - 92, 34)) {
+                    minecraft.setScreen(new IPhoneWifiScreen());
+                    return true;
+                }
+            }
+
+            if (response == null && handleQuickSiteClick(mouseX, mouseY)) {
+                return true;
+            }
+
+            if (response != null
+                    && inside(mouseX, mouseY, contentX, contentY, contentWidth, contentHeight)) {
+                for (PhoneHtmlRenderer.LinkRegion link : lastRender.links()) {
+                    if (!link.contains(mouseX, mouseY)) {
+                        continue;
+                    }
+
+                    String target = BrowserRequest.resolve(browser.currentUrl(), link.href());
+                    browser.navigate(target);
+
+                    if (addressField != null) {
+                        addressField.setValue(displayAddress(target));
+                        addressField.setFocused(false);
+                    }
+
+                    return true;
+                }
             }
         }
 
@@ -1068,8 +1092,17 @@ public class IPhoneBrowserScreen extends IPhoneScreen {
             }
 
             if (mouseX >= x + width - 62 && mouseY <= cardY + 28) {
-                browser.closeTab(i);
-                forcePageRefresh();
+                if (browser.closeTab(i)) {
+                    closeOverlay();
+                    forcePageRefresh();
+
+                    if (browser.currentUrl().isBlank()) {
+                        showToast("Start Page");
+                    } else {
+                        showToast("Tab Closed");
+                    }
+                }
+
                 return true;
             }
 
