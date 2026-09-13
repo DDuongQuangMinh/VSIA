@@ -17,6 +17,8 @@ import com.k1ngtle.vsia.signality.engineering.reality.GeneralRfAirtimeModel;
 import com.k1ngtle.vsia.signality.engineering.reality.NetworkTimebase;
 import com.k1ngtle.vsia.signality.engineering.reality.RfMicroTiming;
 import com.k1ngtle.vsia.signality.engineering.reality.RfMicroTimingRegistry;
+import com.k1ngtle.vsia.signality.internet.field.FieldDeviceNetwork;
+import com.k1ngtle.vsia.signality.internet.radio.voice.network.S2CRadioVoiceFramePacket;
 import com.k1ngtle.vsia.signality.internet.network.NetworkProfile;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
@@ -43,6 +45,13 @@ public final class PortableRadioEndpoint
     private UUID id;
     private RadioController controller;
     private long configuredRevision = Long.MIN_VALUE;
+
+    private static final long LIVE_VOICE_FRAME_MICROS = 50_000L;
+
+    private boolean livePttActive;
+    private int livePttSession = -1;
+    private int lastLiveVoiceSequence = -1;
+    private long lastLiveVoiceFrameNanos;
 
     public PortableRadioEndpoint(
             ServerPlayer player,
@@ -200,6 +209,10 @@ public final class PortableRadioEndpoint
 
         refresh();
 
+        if (livePttActive) {
+            return;
+        }
+
         double powerDbm =
                 wattsToDbm(
                         receivedPowerWatts
@@ -227,6 +240,21 @@ public final class PortableRadioEndpoint
                 envelope.getCompound(
                         "radio_message"
                 );
+
+        String incomingEmission =
+                radioMessage.getString(
+                        "radio_emission"
+                );
+
+        if (!incomingEmission.isBlank()
+                && !PortableRadioState
+                .emission(stack)
+                .name()
+                .equalsIgnoreCase(
+                        incomingEmission
+                )) {
+            return;
+        }
 
         controller.receive(
                 id,
@@ -256,27 +284,222 @@ public final class PortableRadioEndpoint
         )
                 && quality.squelchOpen()) {
 
-            String voice =
-                    new String(
-                            controller.lastReceivedVoice(),
-                            StandardCharsets.UTF_8
+            boolean liveStream =
+                    "G711_MULAW_8K"
+                            .equalsIgnoreCase(
+                                    radioMessage.getString(
+                                            "voice_stream_codec"
+                                    )
+                            );
+
+            if (liveStream) {
+                byte[] audio =
+                        controller
+                                .lastReceivedVoice();
+
+                boolean end =
+                        radioMessage.getBoolean(
+                                "end_of_transmission"
+                        );
+
+                UUID sourceRadio =
+                        radioMessage.hasUUID(
+                                "sender_id"
+                        )
+                                ? radioMessage.getUUID(
+                                "sender_id"
+                        )
+                                : signal.transmitterId();
+
+                FieldDeviceNetwork.sendToPlayer(
+                        player,
+                        new S2CRadioVoiceFramePacket(
+                                sourceRadio,
+                                radioMessage.getInt(
+                                        "voice_stream_seq"
+                                ),
+                                audio,
+                                end,
+                                quality.snrDb(),
+                                quality.intelligibility(),
+                                incomingEmission
+                        )
+                );
+
+                PortableRadioState.status(
+                        stack,
+                        end
+                                ? "RX voice transmission ended"
+                                : "Receiving live radio voice"
+                );
+            } else {
+                String voice =
+                        new String(
+                                controller.lastReceivedVoice(),
+                                StandardCharsets.UTF_8
+                        );
+
+                if (!voice.isBlank()) {
+                    PortableRadioState.storeVoice(
+                            stack,
+                            voice
                     );
 
-            if (!voice.isBlank()) {
-                PortableRadioState.storeVoice(
-                        stack,
-                        voice
-                );
-
-                player.displayClientMessage(
-                        Component.literal(
-                                "[Portable Radio] "
-                                        + voice
-                        ),
-                        true
-                );
+                    player.displayClientMessage(
+                            Component.literal(
+                                    "[Portable Radio] "
+                                            + voice
+                            ),
+                            true
+                    );
+                }
             }
         }
+    }
+
+    public boolean beginLivePtt(
+            int sessionId
+    ) {
+        if (!valid()) {
+            return false;
+        }
+
+        refresh();
+
+        if (livePttActive) {
+            return livePttSession
+                    == sessionId;
+        }
+
+        if (!controller.pressPtt()) {
+            return false;
+        }
+
+        livePttActive =
+                true;
+
+        livePttSession =
+                sessionId;
+
+        lastLiveVoiceSequence =
+                -1;
+
+        lastLiveVoiceFrameNanos =
+                0L;
+
+        PortableRadioState.status(
+                stack(),
+                "LIVE PTT transmitting"
+        );
+
+        return true;
+    }
+
+    public boolean transmitLiveVoiceFrame(
+            int sessionId,
+            int sequenceNumber,
+            byte[] encodedAudio
+    ) {
+        if (!livePttActive
+                || livePttSession
+                != sessionId
+                || sequenceNumber
+                <= lastLiveVoiceSequence
+                || encodedAudio == null
+                || encodedAudio.length == 0
+                || encodedAudio.length > 512) {
+            return false;
+        }
+
+        long now =
+                System.nanoTime();
+
+        if (lastLiveVoiceFrameNanos != 0L
+                && now
+                - lastLiveVoiceFrameNanos
+                < 12_000_000L) {
+            return false;
+        }
+
+        lastLiveVoiceFrameNanos =
+                now;
+
+        lastLiveVoiceSequence =
+                sequenceNumber;
+
+        return controller.sendVoice(
+                id,
+                encodedAudio,
+                false,
+                (message, frequencyHz) -> {
+                    message.putString(
+                            "voice_stream_codec",
+                            "G711_MULAW_8K"
+                    );
+
+                    message.putInt(
+                            "voice_stream_seq",
+                            sequenceNumber
+                    );
+
+                    transmitRadioMessage(
+                            message,
+                            frequencyHz
+                    );
+                }
+        );
+    }
+
+    public void endLivePtt(
+            int sessionId
+    ) {
+        if (!livePttActive
+                || livePttSession
+                != sessionId) {
+            return;
+        }
+
+        int endSequence =
+                Math.max(
+                        0,
+                        lastLiveVoiceSequence
+                                + 1
+                );
+
+        controller.sendVoice(
+                id,
+                new byte[0],
+                true,
+                (message, frequencyHz) -> {
+                    message.putString(
+                            "voice_stream_codec",
+                            "G711_MULAW_8K"
+                    );
+
+                    message.putInt(
+                            "voice_stream_seq",
+                            endSequence
+                    );
+
+                    transmitRadioMessage(
+                            message,
+                            frequencyHz
+                    );
+                }
+        );
+
+        controller.releasePtt();
+
+        livePttActive =
+                false;
+
+        livePttSession =
+                -1;
+
+        PortableRadioState.status(
+                stack(),
+                "PTT released"
+        );
     }
 
     public boolean transmitVoice(
@@ -426,15 +649,46 @@ public final class PortableRadioEndpoint
                         null
                 );
 
+        boolean liveVoice =
+                "VOICE".equalsIgnoreCase(
+                        radioMessage.getString(
+                                "radio_message_type"
+                        )
+                )
+                        && "G711_MULAW_8K"
+                        .equalsIgnoreCase(
+                                radioMessage.getString(
+                                        "voice_stream_codec"
+                                )
+                        );
+
         long payloadBits =
-                Math.max(
+                liveVoice
+                        ? Math.max(
+                        1L,
+                        (long) radioMessage
+                                .getByteArray(
+                                        "voice_data"
+                                )
+                                .length
+                                * 8L
+                )
+                        : Math.max(
                         1L,
                         (long) payload.length
                                 * 8L
                 );
 
         long airtimeMicros =
-                GeneralRfAirtimeModel
+                liveVoice
+                        ? (
+                        radioMessage.getBoolean(
+                                "end_of_transmission"
+                        )
+                                ? 8_000L
+                                : LIVE_VOICE_FRAME_MICROS
+                )
+                        : GeneralRfAirtimeModel
                         .estimateMicros(
                                 payloadBits,
                                 PortableRadioState
@@ -522,6 +776,12 @@ public final class PortableRadioEndpoint
     }
 
     public void unregister() {
+        livePttActive =
+                false;
+
+        livePttSession =
+                -1;
+
         SignalBus.unregisterReceiver(
                 id,
                 this

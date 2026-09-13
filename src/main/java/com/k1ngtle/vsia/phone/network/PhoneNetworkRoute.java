@@ -8,10 +8,14 @@ public record PhoneNetworkRoute(
 ) {
     public enum Transport {
         WIFI,
-        CELLULAR
+        CELLULAR,
+        SATELLITE
     }
 
     public String summary() {
-        return String.join(" → ", hops);
+        return String.join(
+                " → ",
+                hops
+        );
     }
 }

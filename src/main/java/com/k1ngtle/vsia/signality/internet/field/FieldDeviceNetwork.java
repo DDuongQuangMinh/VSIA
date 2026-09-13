@@ -4,6 +4,9 @@ import com.k1ngtle.vsia.Vsia;
 import com.k1ngtle.vsia.signality.internet.radio.network.C2SRadioGuiActionPacket;
 import com.k1ngtle.vsia.signality.internet.radio.network.C2SRadioGuiRequestPacket;
 import com.k1ngtle.vsia.signality.internet.radio.network.S2CRadioGuiSnapshotPacket;
+import com.k1ngtle.vsia.signality.internet.radio.voice.network.C2SRadioVoiceFramePacket;
+import com.k1ngtle.vsia.signality.internet.radio.voice.network.C2SRadioVoicePttPacket;
+import com.k1ngtle.vsia.signality.internet.radio.voice.network.S2CRadioVoiceFramePacket;
 import com.k1ngtle.vsia.signality.internet.satellite.network.C2SSatelliteGuiActionPacket;
 import com.k1ngtle.vsia.signality.internet.satellite.network.C2SSatelliteGuiRequestPacket;
 import com.k1ngtle.vsia.signality.internet.satellite.network.S2CSatelliteGuiSnapshotPacket;
@@ -16,7 +19,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class FieldDeviceNetwork {
     private static final String PROTOCOL =
-            "1.0";
+            "1.1";
 
     private static SimpleChannel channel;
     private static int packetId;
@@ -94,6 +97,54 @@ public final class FieldDeviceNetwork {
                 )
                 .consumerMainThread(
                         S2CRadioGuiSnapshotPacket::handle
+                )
+                .add();
+
+        channel.messageBuilder(
+                        C2SRadioVoicePttPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
+                .decoder(
+                        C2SRadioVoicePttPacket::new
+                )
+                .encoder(
+                        C2SRadioVoicePttPacket::toBytes
+                )
+                .consumerMainThread(
+                        C2SRadioVoicePttPacket::handle
+                )
+                .add();
+
+        channel.messageBuilder(
+                        C2SRadioVoiceFramePacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
+                .decoder(
+                        C2SRadioVoiceFramePacket::new
+                )
+                .encoder(
+                        C2SRadioVoiceFramePacket::toBytes
+                )
+                .consumerMainThread(
+                        C2SRadioVoiceFramePacket::handle
+                )
+                .add();
+
+        channel.messageBuilder(
+                        S2CRadioVoiceFramePacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_CLIENT
+                )
+                .decoder(
+                        S2CRadioVoiceFramePacket::new
+                )
+                .encoder(
+                        S2CRadioVoiceFramePacket::toBytes
+                )
+                .consumerMainThread(
+                        S2CRadioVoiceFramePacket::handle
                 )
                 .add();
 

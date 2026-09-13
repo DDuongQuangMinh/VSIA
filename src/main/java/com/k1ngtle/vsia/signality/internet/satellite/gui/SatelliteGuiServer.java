@@ -58,6 +58,7 @@ public final class SatelliteGuiServer {
                 terminal.band()
                         .bandwidthHz(),
                 terminal.minimumElevationDeg(),
+                terminal.internetGatewayEnabled(),
                 assessment,
                 terminal.lastPacket(),
                 terminal.status()
@@ -117,6 +118,9 @@ public final class SatelliteGuiServer {
 
             case PACKET_TEST ->
                     terminal.packetTest();
+
+            case GATEWAY_TOGGLE ->
+                    terminal.toggleInternetGateway();
         }
 
         return snapshot(

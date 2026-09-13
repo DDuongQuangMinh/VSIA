@@ -5,6 +5,7 @@ import com.k1ngtle.vsia.signality.internet.field.FieldDeviceNetwork;
 import com.k1ngtle.vsia.signality.internet.radio.gui.RadioGuiAction;
 import com.k1ngtle.vsia.signality.internet.radio.gui.RadioGuiSnapshot;
 import com.k1ngtle.vsia.signality.internet.radio.gui.RadioGuiTarget;
+import com.k1ngtle.vsia.signality.internet.radio.voice.client.RadioVoiceClient;
 import com.k1ngtle.vsia.signality.internet.radio.network.C2SRadioGuiActionPacket;
 import com.k1ngtle.vsia.signality.internet.radio.network.C2SRadioGuiRequestPacket;
 import net.minecraft.client.gui.GuiGraphics;
@@ -191,6 +192,24 @@ public final class RadioControlScreen extends Screen {
                             mouseX,
                             mouseY
                     )
+            );
+        }
+
+        if (target.isHeld()) {
+            String ptt =
+                    "LIVE PTT: Hold "
+                            + RadioVoiceClient
+                            .get()
+                            .pttKeyName()
+                            + " | G.711 u-law 8 kHz";
+
+            PhoneText.draw(
+                    graphics,
+                    font,
+                    ptt,
+                    left + 18,
+                    top + PANEL_HEIGHT - 35,
+                    GREEN
             );
         }
 

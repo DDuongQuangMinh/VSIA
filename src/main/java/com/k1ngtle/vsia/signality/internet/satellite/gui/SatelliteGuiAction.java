@@ -6,5 +6,6 @@ public enum SatelliteGuiAction {
     ELEVATION_DOWN,
     ELEVATION_UP,
     LINK_TEST,
-    PACKET_TEST
+    PACKET_TEST,
+    GATEWAY_TOGGLE
 }

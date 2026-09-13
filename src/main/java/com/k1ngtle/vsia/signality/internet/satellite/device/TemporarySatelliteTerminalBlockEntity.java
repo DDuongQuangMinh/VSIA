@@ -28,6 +28,8 @@ public final class TemporarySatelliteTerminalBlockEntity
     private SatelliteBandPreset band =
             SatelliteBandPreset.KU;
 
+    private boolean internetGatewayEnabled;
+
     private double minimumElevationDeg =
             5.0;
 
@@ -95,6 +97,22 @@ public final class TemporarySatelliteTerminalBlockEntity
 
     public SatelliteBandPreset band() {
         return band;
+    }
+
+    public boolean internetGatewayEnabled() {
+        return internetGatewayEnabled;
+    }
+
+    public void toggleInternetGateway() {
+        internetGatewayEnabled =
+                !internetGatewayEnabled;
+
+        status =
+                internetGatewayEnabled
+                        ? "Internet gateway backhaul enabled"
+                        : "Internet gateway backhaul disabled";
+
+        setChanged();
     }
 
     public double minimumElevationDeg() {
@@ -312,6 +330,11 @@ public final class TemporarySatelliteTerminalBlockEntity
             );
         }
 
+        tag.putBoolean(
+                "SatelliteInternetGateway",
+                internetGatewayEnabled
+        );
+
         tag.putString(
                 "SatelliteBand",
                 band.name()
@@ -372,6 +395,11 @@ public final class TemporarySatelliteTerminalBlockEntity
                         "SatelliteLastReceivedSource"
                 )
                         : null;
+
+        internetGatewayEnabled =
+                tag.getBoolean(
+                        "SatelliteInternetGateway"
+                );
 
         try {
             band =
