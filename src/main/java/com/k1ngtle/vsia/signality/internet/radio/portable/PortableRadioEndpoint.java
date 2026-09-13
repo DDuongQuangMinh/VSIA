@@ -20,6 +20,7 @@ import com.k1ngtle.vsia.signality.engineering.reality.RfMicroTimingRegistry;
 import com.k1ngtle.vsia.signality.internet.field.FieldDeviceNetwork;
 import com.k1ngtle.vsia.signality.internet.radio.voice.network.S2CRadioVoiceFramePacket;
 import com.k1ngtle.vsia.signality.internet.radio.satellite.SatelliteRadioRelayService;
+import com.k1ngtle.vsia.signality.internet.radio.debug.RadioDevSelfTestService;
 import com.k1ngtle.vsia.signality.internet.routing.LongHaulRoutePolicy;
 import com.k1ngtle.vsia.signality.internet.satellite.SatelliteLinkAssessment;
 import com.k1ngtle.vsia.signality.internet.network.NetworkProfile;
@@ -102,6 +103,10 @@ public final class PortableRadioEndpoint
 
     public InteractionHand hand() {
         return hand;
+    }
+
+    public ServerPlayer player() {
+        return player;
     }
 
     public ItemStack stack() {
@@ -459,6 +464,11 @@ public final class PortableRadioEndpoint
                 "LIVE PTT transmitting"
         );
 
+        RadioDevSelfTestService.begin(
+                this,
+                sessionId
+        );
+
         return true;
     }
 
@@ -509,6 +519,13 @@ public final class PortableRadioEndpoint
                             sequenceNumber
                     );
 
+                    RadioDevSelfTestService.capture(
+                            this,
+                            sessionId,
+                            message,
+                            frequencyHz
+                    );
+
                     transmitRadioMessage(
                             message,
                             frequencyHz
@@ -548,6 +565,13 @@ public final class PortableRadioEndpoint
                             endSequence
                     );
 
+                    RadioDevSelfTestService.capture(
+                            this,
+                            sessionId,
+                            message,
+                            frequencyHz
+                    );
+
                     transmitRadioMessage(
                             message,
                             frequencyHz
@@ -566,6 +590,11 @@ public final class PortableRadioEndpoint
         PortableRadioState.status(
                 stack(),
                 "PTT released"
+        );
+
+        RadioDevSelfTestService.finish(
+                this,
+                sessionId
         );
     }
 
@@ -849,6 +878,10 @@ public final class PortableRadioEndpoint
     }
 
     public void unregister() {
+        RadioDevSelfTestService.cancel(
+                this
+        );
+
         livePttActive =
                 false;
 
