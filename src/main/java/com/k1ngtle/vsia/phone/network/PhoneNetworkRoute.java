@@ -8,8 +8,7 @@ public record PhoneNetworkRoute(
 ) {
     public enum Transport {
         WIFI,
-        CELLULAR,
-        SATELLITE
+        CELLULAR
     }
 
     public String summary() {

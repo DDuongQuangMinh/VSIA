@@ -2,6 +2,8 @@ package com.k1ngtle.vsia.signality.internet.satellite.internet;
 
 import com.k1ngtle.vsia.Vsia;
 import com.k1ngtle.vsia.phone.browser.PhoneBrowserServerService;
+import com.k1ngtle.vsia.signality.internet.routing.LongHaulRoutePolicy;
+import com.k1ngtle.vsia.signality.internet.satellite.SatelliteNetworkManager;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -44,7 +46,16 @@ public final class SatelliteInternetCommand {
                                                 "status"
                                         )
                                         .executes(
-                                                SatelliteInternetCommand::status
+                                                SatelliteInternetCommand::statusPolicy
+                                        )
+                                        .then(
+                                                Commands.argument(
+                                                                "url",
+                                                                StringArgumentType.greedyString()
+                                                        )
+                                                        .executes(
+                                                                SatelliteInternetCommand::statusUrl
+                                                        )
                                         )
                         )
                         .then(
@@ -64,40 +75,26 @@ public final class SatelliteInternetCommand {
         );
     }
 
-    private static int status(
+    private static int statusPolicy(
             CommandContext<CommandSourceStack> context
     ) throws CommandSyntaxException {
         ServerPlayer player =
                 context.getSource()
                         .getPlayerOrException();
 
-        SatelliteInternetService.PathResult result =
-                SatelliteInternetService.resolvePath(
-                        player
-                );
-
-        if (!result.success()) {
-            context.getSource()
-                    .sendFailure(
-                            Component.literal(
-                                    result.error()
-                            )
-                    );
-
-            return 0;
-        }
-
-        SatelliteInternetPath path =
-                result.path();
+        int terminals =
+                SatelliteNetworkManager
+                        .terminals(
+                                player.serverLevel()
+                        )
+                        .size();
 
         context.getSource()
                 .sendSuccess(
                         () ->
                                 Component.literal(
-                                                SatelliteInternetService
-                                                        .routeSummary(
-                                                                path
-                                                        )
+                                                "VS:IA long-haul policy: SATELLITE is mandatory at >= 5.000 km / 5000 blocks. Below 5 km, normal terrestrial routing is used. Loaded satellite terminals: "
+                                                        + terminals
                                         )
                                         .withStyle(
                                                 ChatFormatting.AQUA
@@ -105,7 +102,64 @@ public final class SatelliteInternetCommand {
                         false
                 );
 
+        context.getSource()
+                .sendSuccess(
+                        () ->
+                                Component.literal(
+                                        "Inspect a real destination with /vsiasatnet status <domain-or-direct-rack-url>."
+                                ),
+                        false
+                );
+
         return 1;
+    }
+
+    private static int statusUrl(
+            CommandContext<CommandSourceStack> context
+    ) throws CommandSyntaxException {
+        ServerPlayer player =
+                context.getSource()
+                        .getPlayerOrException();
+
+        String url =
+                StringArgumentType.getString(
+                        context,
+                        "url"
+                );
+
+        LongHaulBrowserService.RoutePlan plan =
+                LongHaulBrowserService.plan(
+                        player,
+                        url
+                );
+
+        ChatFormatting color =
+                !plan.targetResolved()
+                        || !plan.physicalDestinationAvailable()
+                        || (
+                        plan.satelliteRequired()
+                                && !plan.backhaulAvailable()
+                )
+                        ? ChatFormatting.RED
+                        : plan.satelliteRequired()
+                        ? ChatFormatting.GOLD
+                        : ChatFormatting.GREEN;
+
+        context.getSource()
+                .sendSuccess(
+                        () ->
+                                Component.literal(
+                                                plan.summary()
+                                        )
+                                        .withStyle(
+                                                color
+                                        ),
+                        false
+                );
+
+        return color == ChatFormatting.RED
+                ? 0
+                : 1;
     }
 
     private static int fetch(
@@ -116,16 +170,16 @@ public final class SatelliteInternetCommand {
                         .getPlayerOrException();
 
         String url =
-                StringArgumentType
-                        .getString(
-                                context,
-                                "url"
-                        );
+                StringArgumentType.getString(
+                        context,
+                        "url"
+                );
 
         PhoneBrowserServerService.ServerPage page =
-                SatelliteInternetService.fetchWebsite(
+                LongHaulBrowserService.fetch(
                         player,
-                        url
+                        url,
+                        "WIFI"
                 );
 
         context.getSource()
@@ -135,7 +189,7 @@ public final class SatelliteInternetCommand {
                                                 page.statusCode()
                                                         + " "
                                                         + page.reason()
-                                                        + " | "
+                                                        + " | local access="
                                                         + page.transport()
                                         )
                                         .withStyle(

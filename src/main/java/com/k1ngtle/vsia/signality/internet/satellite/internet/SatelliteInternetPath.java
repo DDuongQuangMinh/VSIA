@@ -4,13 +4,16 @@ import com.k1ngtle.vsia.signality.internet.satellite.SatelliteLinkAssessment;
 import com.k1ngtle.vsia.signality.internet.satellite.device.TemporarySatelliteTerminalBlockEntity;
 
 public record SatelliteInternetPath(
-        TemporarySatelliteTerminalBlockEntity userTerminal,
-        TemporarySatelliteTerminalBlockEntity gatewayTerminal,
-        SatelliteLinkAssessment link
+        TemporarySatelliteTerminalBlockEntity sourceTerminal,
+        TemporarySatelliteTerminalBlockEntity destinationTerminal,
+        SatelliteLinkAssessment link,
+        double endpointDistanceBlocks,
+        double sourceAccessDistanceBlocks,
+        double destinationAccessDistanceBlocks
 ) {
     public boolean valid() {
-        return userTerminal != null
-                && gatewayTerminal != null
+        return sourceTerminal != null
+                && destinationTerminal != null
                 && link != null
                 && link.visible();
     }

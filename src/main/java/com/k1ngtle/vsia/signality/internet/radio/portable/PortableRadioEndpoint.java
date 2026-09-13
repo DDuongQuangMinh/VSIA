@@ -19,6 +19,9 @@ import com.k1ngtle.vsia.signality.engineering.reality.RfMicroTiming;
 import com.k1ngtle.vsia.signality.engineering.reality.RfMicroTimingRegistry;
 import com.k1ngtle.vsia.signality.internet.field.FieldDeviceNetwork;
 import com.k1ngtle.vsia.signality.internet.radio.voice.network.S2CRadioVoiceFramePacket;
+import com.k1ngtle.vsia.signality.internet.radio.satellite.SatelliteRadioRelayService;
+import com.k1ngtle.vsia.signality.internet.routing.LongHaulRoutePolicy;
+import com.k1ngtle.vsia.signality.internet.satellite.SatelliteLinkAssessment;
 import com.k1ngtle.vsia.signality.internet.network.NetworkProfile;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
@@ -163,9 +166,14 @@ public final class PortableRadioEndpoint
 
     @Override
     public double maximumReceptionRangeBlocks() {
-        return PortableRadioState
-                .profile(stack())
-                .maximumRangeBlocks();
+        return Math.min(
+                PortableRadioState
+                        .profile(stack())
+                        .maximumRangeBlocks(),
+                LongHaulRoutePolicy
+                        .SATELLITE_REQUIRED_DISTANCE_BLOCKS
+                        - 0.001
+        );
     }
 
     @Override
@@ -207,12 +215,6 @@ public final class PortableRadioEndpoint
             return;
         }
 
-        refresh();
-
-        if (livePttActive) {
-            return;
-        }
-
         double powerDbm =
                 wattsToDbm(
                         receivedPowerWatts
@@ -236,10 +238,65 @@ public final class PortableRadioEndpoint
         double snrDb =
                 powerDbm - noiseDbm;
 
-        CompoundTag radioMessage =
+        handleIncomingRadioMessage(
                 envelope.getCompound(
                         "radio_message"
-                );
+                ),
+                signal.frequencyHz(),
+                powerDbm,
+                snrDb,
+                signal.transmitterId(),
+                false
+        );
+    }
+
+    public void receiveSatelliteRelay(
+            CompoundTag radioMessage,
+            double frequencyHz,
+            UUID sourceRadioId,
+            SatelliteLinkAssessment satelliteLink
+    ) {
+        if (radioMessage == null
+                || satelliteLink == null
+                || !satelliteLink.visible()) {
+            return;
+        }
+
+        double snrDb =
+                satelliteLink
+                        .bottleneckSnrDb();
+
+        handleIncomingRadioMessage(
+                radioMessage,
+                frequencyHz,
+                -70.0,
+                snrDb,
+                sourceRadioId,
+                true
+        );
+    }
+
+    private void handleIncomingRadioMessage(
+            CompoundTag radioMessage,
+            double frequencyHz,
+            double powerDbm,
+            double snrDb,
+            UUID fallbackSourceRadio,
+            boolean viaSatellite
+    ) {
+        ItemStack stack =
+                stack();
+
+        if (!valid()
+                || radioMessage == null) {
+            return;
+        }
+
+        refresh();
+
+        if (livePttActive) {
+            return;
+        }
 
         String incomingEmission =
                 radioMessage.getString(
@@ -259,7 +316,7 @@ public final class PortableRadioEndpoint
         controller.receive(
                 id,
                 radioMessage,
-                signal.frequencyHz(),
+                frequencyHz,
                 powerDbm,
                 snrDb,
                 this::transmitRadioMessage
@@ -277,83 +334,93 @@ public final class PortableRadioEndpoint
                 quality.squelchOpen()
         );
 
-        if ("VOICE".equalsIgnoreCase(
+        if (!"VOICE".equalsIgnoreCase(
                 radioMessage.getString(
                         "radio_message_type"
                 )
         )
-                && quality.squelchOpen()) {
+                || !quality.squelchOpen()) {
+            return;
+        }
 
-            boolean liveStream =
-                    "G711_MULAW_8K"
-                            .equalsIgnoreCase(
-                                    radioMessage.getString(
-                                            "voice_stream_codec"
-                                    )
-                            );
-
-            if (liveStream) {
-                byte[] audio =
-                        controller
-                                .lastReceivedVoice();
-
-                boolean end =
-                        radioMessage.getBoolean(
-                                "end_of_transmission"
+        boolean liveStream =
+                "G711_MULAW_8K"
+                        .equalsIgnoreCase(
+                                radioMessage.getString(
+                                        "voice_stream_codec"
+                                )
                         );
 
-                UUID sourceRadio =
-                        radioMessage.hasUUID(
-                                "sender_id"
-                        )
-                                ? radioMessage.getUUID(
-                                "sender_id"
-                        )
-                                : signal.transmitterId();
+        if (liveStream) {
+            byte[] audio =
+                    controller
+                            .lastReceivedVoice();
 
-                FieldDeviceNetwork.sendToPlayer(
-                        player,
-                        new S2CRadioVoiceFramePacket(
-                                sourceRadio,
-                                radioMessage.getInt(
-                                        "voice_stream_seq"
-                                ),
-                                audio,
-                                end,
-                                quality.snrDb(),
-                                quality.intelligibility(),
-                                incomingEmission
-                        )
-                );
-
-                PortableRadioState.status(
-                        stack,
-                        end
-                                ? "RX voice transmission ended"
-                                : "Receiving live radio voice"
-                );
-            } else {
-                String voice =
-                        new String(
-                                controller.lastReceivedVoice(),
-                                StandardCharsets.UTF_8
-                        );
-
-                if (!voice.isBlank()) {
-                    PortableRadioState.storeVoice(
-                            stack,
-                            voice
+            boolean end =
+                    radioMessage.getBoolean(
+                            "end_of_transmission"
                     );
 
-                    player.displayClientMessage(
-                            Component.literal(
-                                    "[Portable Radio] "
-                                            + voice
+            UUID sourceRadio =
+                    radioMessage.hasUUID(
+                            "sender_id"
+                    )
+                            ? radioMessage.getUUID(
+                            "sender_id"
+                    )
+                            : fallbackSourceRadio;
+
+            FieldDeviceNetwork.sendToPlayer(
+                    player,
+                    new S2CRadioVoiceFramePacket(
+                            sourceRadio,
+                            radioMessage.getInt(
+                                    "voice_stream_seq"
                             ),
-                            true
-                    );
-                }
-            }
+                            audio,
+                            end,
+                            quality.snrDb(),
+                            quality.intelligibility(),
+                            incomingEmission
+                    )
+            );
+
+            PortableRadioState.status(
+                    stack,
+                    end
+                            ? viaSatellite
+                            ? "SATCOM radio voice ended"
+                            : "RX voice transmission ended"
+                            : viaSatellite
+                            ? "Receiving live radio via SATCOM"
+                            : "Receiving live radio voice"
+            );
+
+            return;
+        }
+
+        String voice =
+                new String(
+                        controller.lastReceivedVoice(),
+                        StandardCharsets.UTF_8
+                );
+
+        if (!voice.isBlank()) {
+            PortableRadioState.storeVoice(
+                    stack,
+                    voice
+            );
+
+            player.displayClientMessage(
+                    Component.literal(
+                            viaSatellite
+                                    ? "[Portable Radio / SATCOM] "
+                                    + voice
+                                    : "[Portable Radio] "
+                                    + voice
+                    ),
+                    true
+            );
         }
     }
 
@@ -772,6 +839,12 @@ public final class PortableRadioEndpoint
                         packet,
                         level
                 )
+        );
+
+        SatelliteRadioRelayService.relayLongHaul(
+                this,
+                radioMessage,
+                frequencyHz
         );
     }
 

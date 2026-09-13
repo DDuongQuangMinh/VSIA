@@ -12,9 +12,6 @@ public final class PhoneNetworkController {
     private final PhoneCellularInterface cellular =
             new PhoneCellularInterface();
 
-    private final PhoneSatelliteInterface satellite =
-            new PhoneSatelliteInterface();
-
     private PhoneNetworkController() {
     }
 
@@ -64,14 +61,7 @@ public final class PhoneNetworkController {
             return wifiRoute;
         }
 
-        PhoneNetworkRoute cellularRoute =
-                cellular.browserRoute();
-
-        if (cellularRoute != null) {
-            return cellularRoute;
-        }
-
-        return satellite.browserRoute();
+        return cellular.browserRoute();
     }
 
     public BrowserResponse browserUnavailable(
@@ -87,7 +77,7 @@ public final class PhoneNetworkController {
             return BrowserResponse.networkError(
                     url,
                     "Your iPhone is not connected to the Internet.",
-                    "Wi-Fi is enabled but is not connected to a usable network. Satellite service also requires a nearby VS:IA terminal and a visible gateway path.",
+                    "Wi-Fi is enabled but is not connected to a usable local access network. Satellite is long-haul backhaul and does not replace the phone's local Wi-Fi/Cellular interface.",
                     true
             );
         }
@@ -106,16 +96,15 @@ public final class PhoneNetworkController {
                             .nasState()
                             + "\nPDU: "
                             + state.getCellular()
-                            .pduState()
-                            + "\nSatellite fallback requires a nearby terminal.",
+                            .pduState(),
                     false
             );
         }
 
         return BrowserResponse.networkError(
                 url,
-                "No Internet route is available.",
-                "Use Wi-Fi, Cellular Data, or stand near a satellite user terminal with a reachable Internet gateway.",
+                "Your iPhone is not connected to the Internet.",
+                "Connect to Wi-Fi or Cellular Data. VS:IA will automatically insert satellite backhaul when the physical destination is 5 km or more away.",
                 true
         );
     }

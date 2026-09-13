@@ -2,7 +2,7 @@ package com.k1ngtle.vsia.phone.network.packet;
 
 import com.k1ngtle.vsia.network.VsiaNetwork;
 import com.k1ngtle.vsia.phone.browser.PhoneBrowserServerService;
-import com.k1ngtle.vsia.signality.internet.satellite.internet.SatelliteInternetService;
+import com.k1ngtle.vsia.signality.internet.satellite.internet.LongHaulBrowserService;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
@@ -86,21 +86,11 @@ public final class C2SPhoneBrowserRequestPacket {
         if (player != null) {
             context.enqueueWork(() -> {
                 PhoneBrowserServerService.ServerPage page =
-                        "SATELLITE"
-                                .equalsIgnoreCase(
-                                        transport
-                                )
-                                ? SatelliteInternetService
-                                .fetchWebsite(
-                                        player,
-                                        url
-                                )
-                                : PhoneBrowserServerService
-                                .fetch(
-                                        player,
-                                        url,
-                                        transport
-                                );
+                        LongHaulBrowserService.fetch(
+                                player,
+                                url,
+                                transport
+                        );
 
                 VsiaNetwork.sendToPlayer(
                         player,

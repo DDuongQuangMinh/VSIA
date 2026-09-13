@@ -2,11 +2,14 @@ package com.k1ngtle.vsia.signality.internet.radio.portable;
 
 import com.k1ngtle.vsia.signality.core.signal.SignalBus;
 import com.k1ngtle.vsia.signality.internet.radio.device.TemporaryRadioItem;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -106,6 +109,32 @@ public final class PortableRadioService {
         }
 
         ENDPOINTS.clear();
+    }
+
+    public static List<PortableRadioEndpoint> endpointsInLevel(
+            ServerLevel level
+    ) {
+        if (level == null) {
+            return List.of();
+        }
+
+        List<PortableRadioEndpoint> result =
+                new ArrayList<>();
+
+        for (PortableRadioEndpoint endpoint
+                : ENDPOINTS.values()) {
+            if (endpoint != null
+                    && endpoint.valid()
+                    && endpoint.level() == level) {
+                result.add(
+                        endpoint
+                );
+            }
+        }
+
+        return List.copyOf(
+                result
+        );
     }
 
     public static PortableRadioEndpoint endpoint(

@@ -12,7 +12,6 @@ public record SatelliteGuiSnapshot(
         double downlinkHz,
         double bandwidthHz,
         double minimumElevationDeg,
-        boolean internetGatewayEnabled,
         SatelliteLinkAssessment assessment,
         String lastPacket,
         String status
@@ -45,7 +44,6 @@ public record SatelliteGuiSnapshot(
         buffer.writeDouble(downlinkHz);
         buffer.writeDouble(bandwidthHz);
         buffer.writeDouble(minimumElevationDeg);
-        buffer.writeBoolean(internetGatewayEnabled);
 
         buffer.writeBoolean(
                 assessment.visible()
@@ -139,9 +137,6 @@ public record SatelliteGuiSnapshot(
         double mask =
                 buffer.readDouble();
 
-        boolean gateway =
-                buffer.readBoolean();
-
         SatelliteLinkAssessment assessment =
                 new SatelliteLinkAssessment(
                         buffer.readBoolean(),
@@ -168,7 +163,6 @@ public record SatelliteGuiSnapshot(
                 downlink,
                 bandwidth,
                 mask,
-                gateway,
                 assessment,
                 buffer.readUtf(1024),
                 buffer.readUtf(512)
@@ -187,7 +181,6 @@ public record SatelliteGuiSnapshot(
                 0.0,
                 0.0,
                 0.0,
-                false,
                 SatelliteLinkAssessment
                         .unavailable(),
                 "",

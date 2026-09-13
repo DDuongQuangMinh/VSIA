@@ -204,32 +204,16 @@ public final class SatelliteTerminalScreen
                             : PANEL_2
             );
 
-            String label =
-                    button.action()
-                            == SatelliteGuiAction.GATEWAY_TOGGLE
-                            && snapshot != null
-                            ? (
-                            snapshot.internetGatewayEnabled()
-                                    ? "GATEWAY ON"
-                                    : "GATEWAY OFF"
-                    )
-                            : button.label();
-
             PhoneText.drawCentered(
                     graphics,
                     font,
-                    label,
+                    button.label(),
                     button.x()
                             + button.width()
                             / 2,
                     button.y()
                             + 8,
-                    button.action()
-                            == SatelliteGuiAction.GATEWAY_TOGGLE
-                            && snapshot != null
-                            && snapshot.internetGatewayEnabled()
-                            ? GREEN
-                            : TEXT
+                    TEXT
             );
         }
 
@@ -314,19 +298,6 @@ public final class SatelliteTerminalScreen
                 x + 10,
                 y + 9,
                 CYAN
-        );
-
-        PhoneText.draw(
-                graphics,
-                font,
-                snapshot.internetGatewayEnabled()
-                        ? "INTERNET GW: ON"
-                        : "INTERNET GW: OFF",
-                x + width - 105,
-                y + 9,
-                snapshot.internetGatewayEnabled()
-                        ? GREEN
-                        : MUTED
         );
 
         PhoneText.draw(
@@ -508,28 +479,19 @@ public final class SatelliteTerminalScreen
         add(
                 left + 18,
                 y2,
-                110,
+                170,
                 24,
-                "LINK TEST",
+                "LINK TEST / NEAREST",
                 SatelliteGuiAction.LINK_TEST
         );
 
         add(
-                left + 134,
+                left + 194,
                 y2,
-                110,
+                178,
                 24,
-                "TEST PACKET",
+                "SEND TEST PACKET",
                 SatelliteGuiAction.PACKET_TEST
-        );
-
-        add(
-                left + 250,
-                y2,
-                122,
-                24,
-                "GATEWAY OFF",
-                SatelliteGuiAction.GATEWAY_TOGGLE
         );
     }
 
