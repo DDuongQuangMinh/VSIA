@@ -77,6 +77,15 @@ public final class IPhoneStatusBar {
                 : batteryX - 24;
         cellularX = Math.max(cellularX, islandRight + 8);
 
+        if (PhoneDeviceSettingsClientState.airplaneMode()) {
+            drawAirplaneIcon(
+                    graphics,
+                    cellularX,
+                    y + 14
+            );
+            return;
+        }
+
         if (hasSubscriber && cellular.enabled()) {
             drawCellularBars(
                     graphics,
@@ -96,6 +105,19 @@ public final class IPhoneStatusBar {
                     false
             );
         }
+    }
+
+    private static void drawAirplaneIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        graphics.fill(x + 5, y, x + 7, y + 12, 0xFFFFFFFF);
+        graphics.fill(x, y + 5, x + 12, y + 7, 0xFFFFFFFF);
+        graphics.fill(x + 2, y + 3, x + 6, y + 5, 0xFFFFFFFF);
+        graphics.fill(x + 6, y + 7, x + 10, y + 9, 0xFFFFFFFF);
+        graphics.fill(x + 4, y + 10, x + 6, y + 13, 0xFFFFFFFF);
+        graphics.fill(x + 7, y + 10, x + 9, y + 12, 0xFFFFFFFF);
     }
 
     private static int wifiBars(int rssi) {

@@ -54,6 +54,12 @@ public final class PhoneNetworkController {
         );
     }
 
+    public void setCellularRadioEnabled(boolean enabled) {
+        FieldDeviceNetwork.sendToServer(
+                C2SPhoneWirelessActionPacket.cellularEnabled(enabled)
+        );
+    }
+
     public void connectWifi(String bssid) {
         connectWifi(bssid, "");
     }
@@ -123,6 +129,11 @@ public final class PhoneNetworkController {
 
     public String noRouteMessage() {
         PhoneNetworkState state = PhoneNetworkState.get();
+
+        if (!state.getCellular().enabled()
+                && !state.getWifi().enabled()) {
+            return "Airplane Mode is on. Turn on Wi-Fi or turn off Airplane Mode to use network data.";
+        }
 
         if (!PhoneSubscriberClientState.get().hasActiveSubscription()
                 && !state.isWifiUsable()) {

@@ -493,6 +493,67 @@ public final class PhoneWirelessServerService {
         );
     }
 
+    public static AccessDecision validateCellularRadioAccess(
+            ServerPlayer player
+    ) {
+        if (player == null) {
+            return AccessDecision.reject(
+                    "No player session"
+            );
+        }
+
+        refresh(
+                player,
+                false
+        );
+
+        Session session =
+                session(
+                        player
+                );
+
+        PhoneWirelessSnapshot.CellularStatus cellular =
+                session.lastSnapshot
+                        .cellular();
+
+        if (!cellular.enabled()) {
+            return AccessDecision.reject(
+                    "Cellular radio is turned off"
+            );
+        }
+
+        if (!cellular.registered()) {
+            return AccessDecision.reject(
+                    cellular.status()
+            );
+        }
+
+        if (cellular.rsrpDbm()
+                < CELL_MIN_RSRP_DBM
+                || cellular.sinrDb()
+                < -8.0) {
+            return AccessDecision.reject(
+                    String.format(
+                            Locale.ROOT,
+                            "Cellular radio link is below service threshold: RSRP %d dBm, SINR %.1f dB",
+                            cellular.rsrpDbm(),
+                            cellular.sinrDb()
+                    )
+            );
+        }
+
+        return AccessDecision.allow(
+                String.format(
+                        Locale.ROOT,
+                        "%s %s | RSRP %d dBm | SINR %.1f dB",
+                        cellular.carrier(),
+                        cellular.band(),
+                        cellular.rsrpDbm(),
+                        cellular.sinrDb()
+                )
+        );
+    }
+
     public static AccessDecision validateDataAccess(
             ServerPlayer player,
             String transport

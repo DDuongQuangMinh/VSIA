@@ -1,6 +1,9 @@
 package com.k1ngtle.vsia.phone.client.screen;
 
 import com.k1ngtle.vsia.phone.client.PhoneAccessibilityClientPreferences;
+import com.k1ngtle.vsia.phone.client.PhoneDeviceSettingsClientState;
+import com.k1ngtle.vsia.phone.client.PhoneNotificationSettings;
+import com.k1ngtle.vsia.phone.client.PhonePrivacyClientState;
 import com.k1ngtle.vsia.phone.network.PhoneNetworkState;
 import com.k1ngtle.vsia.phone.subscriber.PhoneSubscriberClientState;
 import net.minecraft.client.gui.GuiGraphics;
@@ -71,7 +74,6 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
     private int viewportHeight;
     private int scrollOffset;
     private int contentHeight;
-    private boolean airplaneMode;
 
     public IPhoneSettingsScreen() {
         super(Component.literal("Settings"));
@@ -192,7 +194,7 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
                     graphics,
                     contentX + contentWidth - 47,
                     y + 9,
-                    airplaneMode
+                    PhoneDeviceSettingsClientState.airplaneMode()
             );
             return;
         }
@@ -541,13 +543,15 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
             Row row
     ) {
         return switch (row) {
-            case AIRPLANE_MODE -> airplaneMode ? "On" : "Off";
+            case AIRPLANE_MODE -> PhoneDeviceSettingsClientState.airplaneMode() ? "On" : "Off";
             case WIFI -> wifiSummary();
             case CELLULAR -> cellularSummary();
-            case BLUETOOTH -> "On";
-            case NOTIFICATIONS -> "";
-            case SOUNDS_HAPTICS -> "";
-            case FOCUS -> "";
+            case BLUETOOTH -> PhoneDeviceSettingsClientState.bluetoothEnabled() ? "On" : "Off";
+            case NOTIFICATIONS -> PhoneNotificationSettings.messagesNotificationsEnabled() ? "On" : "Off";
+            case SOUNDS_HAPTICS -> PhoneNotificationSettings.alertSoundEnabled()
+                    ? Math.round(PhoneNotificationSettings.alertVolume() * 100.0F) + "%"
+                    : "Silent";
+            case FOCUS -> PhoneNotificationSettings.doNotDisturbEnabled() ? "Do Not Disturb" : "Off";
             case SCREEN_TIME -> "";
             case GENERAL -> "";
             case ACCESSIBILITY -> "";
@@ -558,7 +562,7 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
             case SIRI -> "";
             case FACE_ID -> "";
             case EMERGENCY_SOS -> "";
-            case PRIVACY_SECURITY -> "";
+            case PRIVACY_SECURITY -> PhonePrivacyClientState.localNetworkAllowed() ? "On" : "Restricted";
             case APP_STORE -> "";
             case WALLET -> "";
             case BATTERY -> PhoneNetworkState.get().getBatteryPercent() + "%";
@@ -567,10 +571,6 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
     }
 
     private String wifiSummary() {
-        if (airplaneMode) {
-            return "Off";
-        }
-
         PhoneNetworkState.WifiStatus wifi =
                 PhoneNetworkState.get().getWifi();
 
@@ -586,8 +586,8 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
     }
 
     private String cellularSummary() {
-        if (airplaneMode) {
-            return "Off";
+        if (PhoneDeviceSettingsClientState.airplaneMode()) {
+            return "Airplane Mode";
         }
 
         if (!PhoneSubscriberClientState.get().hasActiveSubscription()) {
@@ -654,7 +654,7 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
 
                 if (hit != null) {
                     if (hit.row == Row.AIRPLANE_MODE) {
-                        airplaneMode = !airplaneMode;
+                        PhoneDeviceSettingsClientState.toggleAirplaneMode();
                         return true;
                     }
 
@@ -667,12 +667,32 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
                             minecraft.setScreen(new IPhoneCellularScreen());
                             return true;
                         }
+                        case BLUETOOTH -> {
+                            minecraft.setScreen(new IPhoneBluetoothScreen());
+                            return true;
+                        }
+                        case NOTIFICATIONS -> {
+                            minecraft.setScreen(new IPhoneNotificationsScreen());
+                            return true;
+                        }
+                        case SOUNDS_HAPTICS -> {
+                            minecraft.setScreen(new IPhoneSoundsHapticsScreen());
+                            return true;
+                        }
+                        case FOCUS -> {
+                            minecraft.setScreen(new IPhoneFocusScreen());
+                            return true;
+                        }
                         case ACCESSIBILITY -> {
                             minecraft.setScreen(new IPhoneAccessibilityScreen());
                             return true;
                         }
                         case DISPLAY_BRIGHTNESS -> {
                             minecraft.setScreen(new IPhoneDisplayTextSizeScreen());
+                            return true;
+                        }
+                        case PRIVACY_SECURITY -> {
+                            minecraft.setScreen(new IPhonePrivacySecurityScreen());
                             return true;
                         }
                         default -> {

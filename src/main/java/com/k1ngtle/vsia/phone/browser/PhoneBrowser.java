@@ -1,6 +1,7 @@
 package com.k1ngtle.vsia.phone.browser;
 
 import com.k1ngtle.vsia.network.VsiaNetwork;
+import com.k1ngtle.vsia.phone.client.PhonePrivacyClientState;
 import com.k1ngtle.vsia.phone.network.PhoneNetworkController;
 import com.k1ngtle.vsia.phone.network.PhoneNetworkRoute;
 import com.k1ngtle.vsia.phone.network.packet.C2SPhoneBrowserRequestPacket;
@@ -124,6 +125,21 @@ public final class PhoneBrowser {
                                     request.url(),
                                     "Invalid address.",
                                     "Enter a VS:IA website hostname such as example.com.",
+                                    false
+                            );
+
+            return;
+        }
+
+        if (!PhonePrivacyClientState.localNetworkAllowed()) {
+            tab.loading = false;
+
+            tab.response =
+                    BrowserResponse
+                            .networkError(
+                                    request.url(),
+                                    "Local Network access is disabled.",
+                                    "Open Settings > Privacy & Security and allow Local Network for VS:IA Web.",
                                     false
                             );
 

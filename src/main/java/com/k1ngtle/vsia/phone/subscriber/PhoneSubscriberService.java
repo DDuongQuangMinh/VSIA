@@ -332,9 +332,8 @@ public final class PhoneSubscriberService {
         }
 
         PhoneWirelessServerService.AccessDecision radio =
-                PhoneWirelessServerService.validateDataAccess(
-                        player,
-                        "CELLULAR"
+                PhoneWirelessServerService.validateCellularRadioAccess(
+                        player
                 );
 
         return radio.allowed();

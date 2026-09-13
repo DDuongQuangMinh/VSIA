@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.phone.client.screen;
 
 import com.k1ngtle.vsia.phone.client.IPhoneStatusBar;
 import com.k1ngtle.vsia.phone.client.PhoneText;
+import com.k1ngtle.vsia.phone.client.PhoneNotificationManager;
 import com.k1ngtle.vsia.phone.network.PhoneNetworkController;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -101,6 +102,14 @@ public abstract class IPhoneScreen extends Screen {
     }
 
     protected void renderHomeIndicator(GuiGraphics graphics) {
+        PhoneNotificationManager.get().renderBanner(
+                graphics,
+                font,
+                phoneX,
+                phoneY,
+                PHONE_WIDTH
+        );
+
         int indicatorWidth = 78;
         int x = phoneX + (PHONE_WIDTH - indicatorWidth) / 2;
         int y = phoneY + PHONE_HEIGHT - 18;

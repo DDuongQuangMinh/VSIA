@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.phone.client.screen;
 
+import com.k1ngtle.vsia.phone.client.PhoneDeviceSettingsClientState;
 import com.k1ngtle.vsia.phone.network.PhoneNetworkController;
 import com.k1ngtle.vsia.phone.network.PhoneNetworkState;
 import net.minecraft.client.gui.GuiGraphics;
@@ -74,7 +75,11 @@ public class IPhoneWifiScreen extends IPhoneScreen {
 
         drawUiText(
                 graphics,
-                wifi.enabled() ? statusLine(wifi) : "Wi-Fi is off",
+                wifi.enabled()
+                        ? statusLine(wifi)
+                        : PhoneDeviceSettingsClientState.airplaneMode()
+                        ? "Airplane Mode · Wi-Fi available"
+                        : "Wi-Fi is off",
                 contentX + 4,
                 phoneY + 143,
                 statusColor(wifi)
@@ -426,7 +431,7 @@ public class IPhoneWifiScreen extends IPhoneScreen {
                     50,
                     38
             )) {
-                PhoneNetworkController.get().setWifiEnabled(
+                PhoneDeviceSettingsClientState.setWifiEnabledFromSettings(
                         !state.getWifi().enabled()
                 );
                 return true;
