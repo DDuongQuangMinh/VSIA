@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.phone.client.screen;
 
 import com.k1ngtle.vsia.phone.client.PhoneAccessibilityClientPreferences;
 import com.k1ngtle.vsia.phone.network.PhoneNetworkState;
+import com.k1ngtle.vsia.phone.subscriber.PhoneSubscriberClientState;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
@@ -41,6 +42,7 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
         group1Y = searchY + 36;
         group2Y = group1Y + 134;
         group3Y = group2Y + 100;
+        PhoneSubscriberClientState.get().requestRefresh();
     }
 
     @Override
@@ -83,7 +85,6 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
     private void drawSettingsRow(GuiGraphics graphics, int y, Row row, String summary) {
         int iconX = contentX + 10;
         int iconY = y + 8;
-
         drawRowIcon(graphics, row, iconX, iconY);
         graphics.drawString(font, row.title, contentX + 46, y + 14, TEXT, false);
 
@@ -92,7 +93,6 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
             int summaryWidth = font.width(fitSummary);
             graphics.drawString(font, fitSummary, contentX + contentWidth - summaryWidth - 18, y + 14, SECONDARY, false);
         }
-
         graphics.drawString(font, ">", contentX + contentWidth - 11, y + 14, TERTIARY, false);
     }
 
@@ -160,23 +160,20 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
 
     private String wifiSummary() {
         PhoneNetworkState.WifiStatus wifi = PhoneNetworkState.get().getWifi();
-        if (!wifi.enabled()) {
-            return "Off";
-        }
-        if (wifi.connected()) {
-            return wifi.ssid();
-        }
+        if (!wifi.enabled()) return "Off";
+        if (wifi.connected()) return wifi.ssid();
         return "Not Connected";
     }
 
     private String cellularSummary() {
+        if (!PhoneSubscriberClientState.get().hasActiveSubscription()) {
+            return "No SIM";
+        }
+        if (!PhoneSubscriberClientState.get().snapshot().cellularDataEnabled()) {
+            return "Data Off";
+        }
         PhoneNetworkState.CellularStatus cellular = PhoneNetworkState.get().getCellular();
-        if (!cellular.enabled()) {
-            return "Off";
-        }
-        if (cellular.registered()) {
-            return cellular.carrier();
-        }
+        if (cellular.registered()) return cellular.carrier();
         return "No Service";
     }
 
@@ -186,20 +183,14 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
 
     private String activeInterface() {
         PhoneNetworkState state = PhoneNetworkState.get();
-        if (state.isWifiUsable()) {
-            return "Wi-Fi";
-        }
-        if (state.isCellularUsable()) {
-            return state.getCellular().radioLabel();
-        }
+        if (state.isWifiUsable()) return "Wi-Fi";
+        if (state.isCellularUsable()) return state.getCellular().radioLabel();
         return "Offline";
     }
 
     private String fit(String value, int maxWidth) {
         String text = value == null ? "" : value;
-        if (font.width(text) <= maxWidth) {
-            return text;
-        }
+        if (font.width(text) <= maxWidth) return text;
         while (!text.isEmpty() && font.width(text + "...") > maxWidth) {
             text = text.substring(0, text.length() - 1);
         }

@@ -23,39 +23,21 @@ public class ModCreativeTabs {
             CREATIVE_MODE_TABS.register(
                     "vsia_tab",
                     () -> CreativeModeTab.builder()
-                            .icon(() -> new ItemStack(
-                                    ModItems.BASE_HELMET.get()
-                            ))
-                            .title(Component.translatable(
-                                    "creativetab.vsia_tab"
-                            ))
+                            .icon(() -> new ItemStack(ModItems.BASE_HELMET.get()))
+                            .title(Component.translatable("creativetab.vsia_tab"))
                             .displayItems((parameters, output) -> {
                                 output.accept(ModItems.BASE_HELMET.get());
                                 output.accept(ModItems.GHILLIE_HELMET.get());
                                 output.accept(ModItems.SAND_HELMET.get());
                                 output.accept(ModItems.SNOW_HELMET.get());
-
                                 output.accept(ModItems.PVS31_HELMET.get());
-                                output.accept(
-                                        ModItems.PVS31_GHILLIE_HELMET.get()
-                                );
-                                output.accept(
-                                        ModItems.PVS31_SAND_HELMET.get()
-                                );
-                                output.accept(
-                                        ModItems.PVS31_SNOW_HELMET.get()
-                                );
-
+                                output.accept(ModItems.PVS31_GHILLIE_HELMET.get());
+                                output.accept(ModItems.PVS31_SAND_HELMET.get());
+                                output.accept(ModItems.PVS31_SNOW_HELMET.get());
                                 output.accept(ModItems.GPNVG18_HELMET.get());
-                                output.accept(
-                                        ModItems.GPNVG18_GHILLIE_HELMET.get()
-                                );
-                                output.accept(
-                                        ModItems.GPNVG18_SAND_HELMET.get()
-                                );
-                                output.accept(
-                                        ModItems.GPNVG18_SNOW_HELMET.get()
-                                );
+                                output.accept(ModItems.GPNVG18_GHILLIE_HELMET.get());
+                                output.accept(ModItems.GPNVG18_SAND_HELMET.get());
+                                output.accept(ModItems.GPNVG18_SNOW_HELMET.get());
                             })
                             .build()
             );
@@ -64,15 +46,10 @@ public class ModCreativeTabs {
             CREATIVE_MODE_TABS.register(
                     "vsia_weapon_tab",
                     () -> CreativeModeTab.builder()
-                            .icon(() -> new ItemStack(
-                                    ModItems.BASE_HELMET.get()
-                            ))
-                            .title(Component.translatable(
-                                    "creativetab.vsia_weapon_tab"
-                            ))
-                            .displayItems((parameters, output) -> {
-                                output.accept(ModItems.BASE_HELMET.get());
-                            })
+                            .icon(() -> new ItemStack(ModItems.BASE_HELMET.get()))
+                            .title(Component.translatable("creativetab.vsia_weapon_tab"))
+                            .displayItems((parameters, output) ->
+                                    output.accept(ModItems.BASE_HELMET.get()))
                             .build()
             );
 
@@ -80,12 +57,8 @@ public class ModCreativeTabs {
             CREATIVE_MODE_TABS.register(
                     "vsia_network_tab",
                     () -> CreativeModeTab.builder()
-                            .icon(() -> new ItemStack(
-                                    SignalityBlocks.SERVER_RACK_ITEM.get()
-                            ))
-                            .title(Component.translatable(
-                                    "creativetab.vsia_network_tab"
-                            ))
+                            .icon(() -> new ItemStack(SignalityBlocks.SERVER_RACK_ITEM.get()))
+                            .title(Component.translatable("creativetab.vsia_network_tab"))
                             .displayItems((parameters, output) -> {
                                 output.accept(SignalityBlocks.SERVER_RACK_ITEM.get());
                                 output.accept(SignalityBlocks.STORAGE_SERVER_ITEM.get());
@@ -93,6 +66,7 @@ public class ModCreativeTabs {
                                 output.accept(SignalityBlocks.FIREWALL_ITEM.get());
                                 output.accept(SignalityBlocks.RT_AC68U_ROUTER_ITEM.get());
                                 output.accept(SignalityBlocks.TEMPORARY_IPHONE_ITEM.get());
+                                output.accept(ModItems.PHYSICAL_SIM_CARD.get());
                                 output.accept(SignalityBlocks.TEMPORARY_RADIO_ITEM.get());
                                 output.accept(SignalityBlocks.TEMPORARY_SATELLITE_TERMINAL_ITEM.get());
                                 output.accept(SignalityBlocks.NETWORK_CABLE.get());

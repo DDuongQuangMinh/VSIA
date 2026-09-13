@@ -1,9 +1,10 @@
 package com.k1ngtle.vsia.phone.network;
 
-import com.k1ngtle.vsia.phone.network.realism.packet.C2SPhoneWirelessActionPacket;
 import com.k1ngtle.vsia.phone.browser.BrowserResponse;
+import com.k1ngtle.vsia.phone.network.realism.packet.C2SPhoneWirelessActionPacket;
+import com.k1ngtle.vsia.phone.subscriber.PhoneSubscriberClientState;
+import com.k1ngtle.vsia.phone.subscriber.packet.C2SPhoneSubscriberActionPacket;
 import com.k1ngtle.vsia.signality.internet.field.FieldDeviceNetwork;
-
 
 public final class PhoneNetworkController {
     private static final PhoneNetworkController INSTANCE =
@@ -27,178 +28,127 @@ public final class PhoneNetworkController {
     public void tick() {
         tickCounter++;
 
-        if (tickCounter == 1
-                || tickCounter % 40 == 0) {
+        if (tickCounter == 1 || tickCounter % 40 == 0) {
             requestRefresh();
+            FieldDeviceNetwork.sendToServer(
+                    C2SPhoneSubscriberActionPacket.refresh()
+            );
         }
     }
 
     public void requestRefresh() {
         FieldDeviceNetwork.sendToServer(
-                C2SPhoneWirelessActionPacket
-                        .refresh()
+                C2SPhoneWirelessActionPacket.refresh()
         );
     }
 
-    public void setWifiEnabled(
-            boolean enabled
-    ) {
+    public void setWifiEnabled(boolean enabled) {
         FieldDeviceNetwork.sendToServer(
-                C2SPhoneWirelessActionPacket
-                        .wifiEnabled(
-                                enabled
-                        )
+                C2SPhoneWirelessActionPacket.wifiEnabled(enabled)
         );
     }
 
-    public void setCellularEnabled(
-            boolean enabled
-    ) {
+    public void setCellularEnabled(boolean enabled) {
         FieldDeviceNetwork.sendToServer(
-                C2SPhoneWirelessActionPacket
-                        .cellularEnabled(
-                                enabled
-                        )
+                C2SPhoneSubscriberActionPacket.dataEnabled(enabled)
         );
     }
 
-    public void connectWifi(
-            String bssid
-    ) {
-        connectWifi(
-                bssid,
-                ""
-        );
+    public void connectWifi(String bssid) {
+        connectWifi(bssid, "");
     }
 
-    public void connectWifi(
-            String bssid,
-            String passphrase
-    ) {
+    public void connectWifi(String bssid, String passphrase) {
         FieldDeviceNetwork.sendToServer(
-                C2SPhoneWirelessActionPacket
-                        .wifiConnect(
-                                bssid,
-                                passphrase
-                        )
+                C2SPhoneWirelessActionPacket.wifiConnect(
+                        bssid,
+                        passphrase
+                )
         );
     }
 
     public void disconnectWifi() {
         FieldDeviceNetwork.sendToServer(
-                C2SPhoneWirelessActionPacket
-                        .wifiDisconnect()
+                C2SPhoneWirelessActionPacket.wifiDisconnect()
         );
     }
 
-    public void forgetWifi(
-            String bssid
-    ) {
+    public void forgetWifi(String bssid) {
         FieldDeviceNetwork.sendToServer(
-                C2SPhoneWirelessActionPacket
-                        .wifiForget(
-                                bssid
-                        )
+                C2SPhoneWirelessActionPacket.wifiForget(bssid)
         );
     }
 
-    public void setWifiAutoJoin(
-            String bssid,
-            boolean enabled
-    ) {
+    public void setWifiAutoJoin(String bssid, boolean enabled) {
         FieldDeviceNetwork.sendToServer(
-                C2SPhoneWirelessActionPacket
-                        .wifiAutoJoin(
-                                bssid,
-                                enabled
-                        )
+                C2SPhoneWirelessActionPacket.wifiAutoJoin(
+                        bssid,
+                        enabled
+                )
         );
     }
 
-    public void connectWifi(
-            String ssid,
-            int rssi,
-            boolean locked
-    ) {
-        PhoneNetworkState
-                .get()
+    public void connectWifi(String ssid, int rssi, boolean locked) {
+        PhoneNetworkState.get()
                 .getVisibleWifiNetworks()
                 .stream()
-                .filter(
-                        network ->
-                                network.ssid()
-                                        .equals(
-                                                ssid
-                                        )
-                )
-                .max(
-                        java.util.Comparator.comparingInt(
-                                PhoneNetworkState
-                                        .VisibleWifiNetwork
-                                        ::rssiDbm
-                        )
-                )
-                .ifPresent(
-                        network ->
-                                connectWifi(
-                                        network.bssid()
-                                )
-                );
+                .filter(network -> network.ssid().equals(ssid))
+                .max(java.util.Comparator.comparingInt(
+                        PhoneNetworkState.VisibleWifiNetwork::rssiDbm
+                ))
+                .ifPresent(network -> connectWifi(network.bssid()));
     }
 
     public PhoneNetworkRoute selectBrowserRoute() {
-        PhoneNetworkRoute wifiRoute =
-                wifi.browserRoute();
-
+        PhoneNetworkRoute wifiRoute = wifi.browserRoute();
         if (wifiRoute != null) {
             return wifiRoute;
+        }
+
+        if (!PhoneSubscriberClientState.get().canUseCellularData()) {
+            return null;
         }
 
         return cellular.browserRoute();
     }
 
-    public BrowserResponse browserUnavailable(
-            String url
-    ) {
+    public BrowserResponse browserUnavailable(String url) {
         return BrowserResponse.networkError(
                 url,
                 "Your iPhone has no usable radio access.",
                 noRouteMessage(),
-                PhoneNetworkState
-                        .get()
-                        .getWifi()
-                        .enabled()
+                PhoneNetworkState.get().getWifi().enabled()
         );
     }
 
     public String noRouteMessage() {
-        PhoneNetworkState state =
-                PhoneNetworkState.get();
+        PhoneNetworkState state = PhoneNetworkState.get();
 
-        if (state.getWifi()
-                .enabled()
-                && !state.getWifi()
-                .connected()
-                && state.getVisibleWifiNetworks()
-                .isEmpty()
-                && state.getCellular()
-                .enabled()
-                && !state.getCellular()
-                .registered()) {
-            return "No local radio access. There is no usable Wi-Fi AP or cellular antenna in range. Satellite remains long-haul backhaul unless a direct-to-device NTN service is provisioned.";
+        if (!PhoneSubscriberClientState.get().hasActiveSubscription()
+                && !state.isWifiUsable()) {
+            return "No active SIM or eSIM. Connect to Wi-Fi or install a subscriber profile before using cellular service.";
         }
 
-        if (state.getWifi()
-                .enabled()
-                && !state.getWifi()
-                .connected()) {
+        if (PhoneSubscriberClientState.get().hasActiveSubscription()
+                && !PhoneSubscriberClientState.get().snapshot().cellularDataEnabled()
+                && !state.isWifiUsable()) {
+            return "Cellular Data is turned off. SMS remains available when cellular service is registered.";
+        }
+
+        if (state.getWifi().enabled()
+                && !state.getWifi().connected()
+                && state.getVisibleWifiNetworks().isEmpty()
+                && !state.isCellularUsable()) {
+            return "No local radio access. There is no usable Wi-Fi AP or authorized cellular service in range.";
+        }
+
+        if (state.getWifi().enabled() && !state.getWifi().connected()) {
             return "Wi-Fi is enabled but not associated. Open Wi-Fi settings and choose an in-range access point, or use cellular coverage.";
         }
 
-        if (state.getCellular()
-                .enabled()
+        if (PhoneSubscriberClientState.get().hasActiveSubscription()
                 && !state.isCellularUsable()) {
-            return "Cellular data has no usable serving cell or packet-data bearer. Move closer to a base station or use Wi-Fi.";
+            return "Your SIM/eSIM is installed, but there is no usable cellular packet-data service at this location.";
         }
 
         return "No usable local phone interface. Enable Wi-Fi or Cellular Data.";
