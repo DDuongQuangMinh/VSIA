@@ -161,6 +161,21 @@ public final class C2SPhoneWirelessActionPacket {
                                     player
                             );
 
+            case "WIFI_FORGET" ->
+                    PhoneWirelessServerService
+                            .forgetWifi(
+                                    player,
+                                    value
+                            );
+
+            case "WIFI_AUTOJOIN" ->
+                    PhoneWirelessServerService
+                            .setWifiAutoJoin(
+                                    player,
+                                    value,
+                                    flag
+                            );
+
             default ->
                     PhoneWirelessServerService
                             .refresh(
@@ -219,6 +234,29 @@ public final class C2SPhoneWirelessActionPacket {
                 "",
                 "",
                 false
+        );
+    }
+
+    public static C2SPhoneWirelessActionPacket wifiForget(
+            String bssid
+    ) {
+        return new C2SPhoneWirelessActionPacket(
+                "WIFI_FORGET",
+                bssid,
+                "",
+                false
+        );
+    }
+
+    public static C2SPhoneWirelessActionPacket wifiAutoJoin(
+            String bssid,
+            boolean enabled
+    ) {
+        return new C2SPhoneWirelessActionPacket(
+                "WIFI_AUTOJOIN",
+                bssid,
+                "",
+                enabled
         );
     }
 }

@@ -22,9 +22,11 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public final class PhoneWirelessServerService {
@@ -356,6 +358,141 @@ public final class PhoneWirelessServerService {
         );
     }
 
+    public static void forgetWifi(
+            ServerPlayer player,
+            String bssid
+    ) {
+        if (player == null) {
+            return;
+        }
+
+        Session session =
+                session(
+                        player
+                );
+
+        WifiCandidate candidate =
+                scanWifi(
+                        player
+                )
+                        .stream()
+                        .filter(
+                                value ->
+                                        value.bssid()
+                                                .equalsIgnoreCase(
+                                                        safe(
+                                                                bssid
+                                                        )
+                                                )
+                        )
+                        .findFirst()
+                        .orElse(
+                                null
+                        );
+
+        String key =
+                candidate != null
+                        ? wifiCredentialKey(
+                        candidate
+                )
+                        : session.connectedNetworkKey;
+
+        if (key != null
+                && !key.isBlank()) {
+            session.rememberedWifiPassphrases
+                    .remove(
+                            key
+                    );
+
+            session.knownWifiNetworks
+                    .remove(
+                            key
+                    );
+
+            session.autoJoinPreferences
+                    .remove(
+                            key
+                    );
+        }
+
+        disconnectWifi(
+                session,
+                "Forgot network"
+        );
+
+        refresh(
+                player,
+                true
+        );
+    }
+
+    public static void setWifiAutoJoin(
+            ServerPlayer player,
+            String bssid,
+            boolean enabled
+    ) {
+        if (player == null) {
+            return;
+        }
+
+        Session session =
+                session(
+                        player
+                );
+
+        WifiCandidate candidate =
+                scanWifi(
+                        player
+                )
+                        .stream()
+                        .filter(
+                                value ->
+                                        value.bssid()
+                                                .equalsIgnoreCase(
+                                                        safe(
+                                                                bssid
+                                                        )
+                                                )
+                        )
+                        .findFirst()
+                        .orElse(
+                                null
+                        );
+
+        String key =
+                candidate != null
+                        ? wifiCredentialKey(
+                        candidate
+                )
+                        : session.connectedNetworkKey;
+
+        if (key == null
+                || key.isBlank()) {
+            refresh(
+                    player,
+                    true
+            );
+
+            return;
+        }
+
+        session.knownWifiNetworks
+                .add(
+                        key
+                );
+
+        session.autoJoinPreferences
+                .put(
+                        key,
+                        enabled
+                );
+
+        refresh(
+                player,
+                true
+        );
+    }
+
     public static AccessDecision validateDataAccess(
             ServerPlayer player,
             String transport
@@ -610,10 +747,108 @@ public final class PhoneWirelessServerService {
                     session,
                     pending
             );
+
+            String connectedKey =
+                    wifiCredentialKey(
+                            pending
+                    );
+
+            session.connectedNetworkKey =
+                    connectedKey;
+
+            session.knownWifiNetworks
+                    .add(
+                            connectedKey
+                    );
+
+            session.autoJoinPreferences
+                    .putIfAbsent(
+                            connectedKey,
+                            true
+                    );
         }
 
         if (session.connectedBssid
                 .isBlank()) {
+            WifiCandidate autoJoin =
+                    candidates
+                            .stream()
+                            .filter(
+                                    candidate ->
+                                            candidate.rssiDbm()
+                                                    >= WIFI_ASSOC_MIN_RSSI_DBM
+                                                    && candidate.sinrDb()
+                                                    >= WIFI_DISCONNECT_MIN_SINR_DB
+                            )
+                            .filter(
+                                    candidate ->
+                                            session.knownWifiNetworks
+                                                    .contains(
+                                                            wifiCredentialKey(
+                                                                    candidate
+                                                            )
+                                                    )
+                            )
+                            .filter(
+                                    candidate ->
+                                            session.autoJoinPreferences
+                                                    .getOrDefault(
+                                                            wifiCredentialKey(
+                                                                    candidate
+                                                            ),
+                                                            true
+                                                    )
+                            )
+                            .filter(
+                                    candidate ->
+                                            !candidate.locked()
+                                                    || wifiCredentialMatches(
+                                                    candidate.device(),
+                                                    session.rememberedWifiPassphrases
+                                                            .getOrDefault(
+                                                                    wifiCredentialKey(
+                                                                            candidate
+                                                                    ),
+                                                                    ""
+                                                            )
+                                            )
+                            )
+                            .max(
+                                    Comparator.comparingInt(
+                                            WifiCandidate::rssiDbm
+                                    )
+                            )
+                            .orElse(
+                                    null
+                            );
+
+            if (autoJoin != null
+                    && !"FAILED".equals(
+                    session.wifiStage
+            )) {
+                session.pendingBssid =
+                        autoJoin.bssid();
+
+                session.connectedBssid =
+                        "";
+
+                session.wifiStage =
+                        "AUTHENTICATING";
+
+                session.wifiStageStartTick =
+                        player.serverLevel()
+                                .getGameTime();
+
+                session.wifiStatus =
+                        "Auto-joining "
+                                + autoJoin.ssid();
+
+                session.wifiMisses =
+                        0;
+
+                return;
+            }
+
             if (!"FAILED".equals(
                     session.wifiStage
             )) {
@@ -1538,6 +1773,9 @@ public final class PhoneWirelessServerService {
         session.pendingBssid =
                 "";
 
+        session.connectedNetworkKey =
+                "";
+
         session.wifiStage =
                 session.wifiEnabled
                         ? "SCANNING"
@@ -1960,6 +2198,17 @@ public final class PhoneWirelessServerService {
         private final Map<String, String>
                 rememberedWifiPassphrases =
                 new HashMap<>();
+
+        private final Set<String>
+                knownWifiNetworks =
+                new HashSet<>();
+
+        private final Map<String, Boolean>
+                autoJoinPreferences =
+                new HashMap<>();
+
+        private String connectedNetworkKey =
+                "";
 
         private UUID servingCellId;
 

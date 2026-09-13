@@ -91,6 +91,30 @@ public final class PhoneNetworkController {
         );
     }
 
+    public void forgetWifi(
+            String bssid
+    ) {
+        FieldDeviceNetwork.sendToServer(
+                C2SPhoneWirelessActionPacket
+                        .wifiForget(
+                                bssid
+                        )
+        );
+    }
+
+    public void setWifiAutoJoin(
+            String bssid,
+            boolean enabled
+    ) {
+        FieldDeviceNetwork.sendToServer(
+                C2SPhoneWirelessActionPacket
+                        .wifiAutoJoin(
+                                bssid,
+                                enabled
+                        )
+        );
+    }
+
     public void connectWifi(
             String ssid,
             int rssi,
