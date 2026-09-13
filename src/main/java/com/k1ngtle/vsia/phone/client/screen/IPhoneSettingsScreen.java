@@ -14,19 +14,64 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
     private static final int SECONDARY = 0xFFAEAEB2;
     private static final int TERTIARY = 0xFF8E8E93;
     private static final int DIVIDER = 0xFF3A3A3C;
+
     private static final int BLUE = 0xFF0A84FF;
     private static final int GREEN = 0xFF30D158;
     private static final int ORANGE = 0xFFFF9F0A;
-    private static final int GREY = 0xFF5E5E62;
+    private static final int RED = 0xFFFF453A;
+    private static final int PINK = 0xFFFF2D55;
+    private static final int PURPLE = 0xFFBF5AF2;
+    private static final int INDIGO = 0xFF5E5CE6;
+    private static final int TEAL = 0xFF64D2FF;
+    private static final int GREY = 0xFF6D6D72;
+    private static final int BLACK = 0xFF1C1C1E;
+
     private static final int ROW_HEIGHT = 38;
+    private static final int GROUP_SPACING = 14;
+
+    private static final Row[][] GROUPS = new Row[][]{
+            {
+                    Row.AIRPLANE_MODE,
+                    Row.WIFI,
+                    Row.CELLULAR,
+                    Row.BLUETOOTH
+            },
+            {
+                    Row.NOTIFICATIONS,
+                    Row.SOUNDS_HAPTICS,
+                    Row.FOCUS,
+                    Row.SCREEN_TIME
+            },
+            {
+                    Row.GENERAL,
+                    Row.ACCESSIBILITY,
+                    Row.ACTION_BUTTON,
+                    Row.DISPLAY_BRIGHTNESS,
+                    Row.HOME_SCREEN,
+                    Row.WALLPAPER,
+                    Row.SIRI,
+                    Row.FACE_ID,
+                    Row.EMERGENCY_SOS
+            },
+            {
+                    Row.PRIVACY_SECURITY,
+                    Row.APP_STORE,
+                    Row.WALLET,
+                    Row.BATTERY,
+                    Row.APPS
+            }
+    };
 
     private int contentX;
     private int contentWidth;
     private int titleY;
     private int searchY;
-    private int group1Y;
-    private int group2Y;
-    private int group3Y;
+    private int viewportTop;
+    private int viewportBottom;
+    private int viewportHeight;
+    private int scrollOffset;
+    private int contentHeight;
+    private boolean airplaneMode;
 
     public IPhoneSettingsScreen() {
         super(Component.literal("Settings"));
@@ -35,80 +80,186 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
     @Override
     protected void init() {
         super.init();
+
         contentX = phoneX + 14;
         contentWidth = PHONE_WIDTH - 28;
         titleY = phoneY + 49;
         searchY = phoneY + 73;
-        group1Y = searchY + 36;
-        group2Y = group1Y + 134;
-        group3Y = group2Y + 100;
+        viewportTop = searchY + 36;
+        viewportBottom = phoneY + PHONE_HEIGHT - 31;
+        viewportHeight = viewportBottom - viewportTop;
+        contentHeight = computeContentHeight();
+        scrollOffset = clampScroll(scrollOffset);
+
         PhoneSubscriberClientState.get().requestRefresh();
     }
 
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+    public void render(
+            GuiGraphics graphics,
+            int mouseX,
+            int mouseY,
+            float partialTick
+    ) {
         renderPhoneShell(graphics, BACKGROUND);
         renderStatusBar(graphics);
 
-        drawUiCentered(graphics, "Settings", phoneX + PHONE_WIDTH / 2, titleY, TEXT);
+        drawUiCentered(
+                graphics,
+                "Settings",
+                phoneX + PHONE_WIDTH / 2,
+                titleY,
+                TEXT
+        );
+
         drawSearchBar(graphics, searchY);
 
-        drawGroup(graphics, group1Y, 3);
-        drawSettingsRow(graphics, group1Y, Row.WIFI, wifiSummary());
-        drawSettingsRow(graphics, group1Y + ROW_HEIGHT, Row.CELLULAR, cellularSummary());
-        drawSettingsRow(graphics, group1Y + ROW_HEIGHT * 2, Row.BROWSER, "VS:IA Web");
+        graphics.enableScissor(
+                phoneX + DISPLAY_INSET,
+                viewportTop,
+                phoneX + PHONE_WIDTH - DISPLAY_INSET,
+                viewportBottom
+        );
 
-        drawGroup(graphics, group2Y, 2);
-        drawSettingsRow(graphics, group2Y, Row.ACCESSIBILITY, "");
-        drawSettingsRow(graphics, group2Y + ROW_HEIGHT, Row.DISPLAY_TEXT_SIZE, displaySummary());
+        int logicalY = 0;
 
-        drawGroup(graphics, group3Y, 1);
-        drawSettingsRow(graphics, group3Y, Row.NETWORK_STATUS, activeInterface());
+        for (Row[] group : GROUPS) {
+            int y = sy(logicalY);
+            drawGroup(graphics, y, group);
+            logicalY += group.length * ROW_HEIGHT + GROUP_SPACING;
+        }
 
+        graphics.disableScissor();
         renderHomeIndicator(graphics);
     }
 
-    private void drawSearchBar(GuiGraphics graphics, int y) {
+    private void drawSearchBar(
+            GuiGraphics graphics,
+            int y
+    ) {
         roundedRect(graphics, contentX, y, contentWidth, 26, 10, CARD_ALT);
         drawUiText(graphics, "Search", contentX + 34, y + 9, TERTIARY);
         drawSearchIcon(graphics, contentX + 12, y + 8, TERTIARY);
     }
 
-    private void drawGroup(GuiGraphics graphics, int y, int rows) {
-        roundedRect(graphics, contentX, y, contentWidth, rows * ROW_HEIGHT, 14, CARD);
-        for (int i = 1; i < rows; i++) {
-            int dividerY = y + ROW_HEIGHT * i;
-            graphics.fill(contentX + 48, dividerY, contentX + contentWidth - 12, dividerY + 1, DIVIDER);
+    private void drawGroup(
+            GuiGraphics graphics,
+            int y,
+            Row[] rows
+    ) {
+        int height = rows.length * ROW_HEIGHT;
+
+        roundedRect(
+                graphics,
+                contentX,
+                y,
+                contentWidth,
+                height,
+                14,
+                CARD
+        );
+
+        for (int i = 0; i < rows.length; i++) {
+            int rowY = y + i * ROW_HEIGHT;
+            drawSettingsRow(graphics, rowY, rows[i]);
+
+            if (i + 1 < rows.length) {
+                int dividerY = rowY + ROW_HEIGHT;
+                graphics.fill(
+                        contentX + 48,
+                        dividerY,
+                        contentX + contentWidth - 12,
+                        dividerY + 1,
+                        DIVIDER
+                );
+            }
         }
     }
 
-    private void drawSettingsRow(GuiGraphics graphics, int y, Row row, String summary) {
+    private void drawSettingsRow(
+            GuiGraphics graphics,
+            int y,
+            Row row
+    ) {
         int iconX = contentX + 10;
         int iconY = y + 8;
+
         drawRowIcon(graphics, row, iconX, iconY);
         drawUiText(graphics, row.title, contentX + 46, y + 14, TEXT);
 
-        if (summary != null && !summary.isBlank()) {
-            String fitSummary = fitUi(summary, 82);
-            int summaryWidth = uiWidth(fitSummary);
-            drawUiText(graphics, fitSummary, contentX + contentWidth - summaryWidth - 18, y + 14, SECONDARY);
+        if (row == Row.AIRPLANE_MODE) {
+            drawToggle(
+                    graphics,
+                    contentX + contentWidth - 47,
+                    y + 9,
+                    airplaneMode
+            );
+            return;
         }
-        drawUiText(graphics, ">", contentX + contentWidth - 11, y + 14, TERTIARY);
+
+        String summary = summaryFor(row);
+
+        if (!summary.isBlank()) {
+            String fitSummary = fitUi(summary, 104);
+            int summaryWidth = uiWidth(fitSummary);
+            drawUiText(
+                    graphics,
+                    fitSummary,
+                    contentX + contentWidth - summaryWidth - 18,
+                    y + 14,
+                    SECONDARY
+            );
+        }
+
+        drawUiText(
+                graphics,
+                "›",
+                contentX + contentWidth - 11,
+                y + 14,
+                TERTIARY
+        );
     }
 
-    private void drawRowIcon(GuiGraphics graphics, Row row, int x, int y) {
+    private void drawRowIcon(
+            GuiGraphics graphics,
+            Row row,
+            int x,
+            int y
+    ) {
         roundedRect(graphics, x, y, 22, 22, 6, row.color);
+
         switch (row) {
+            case AIRPLANE_MODE -> drawPlaneIcon(graphics, x + 4, y + 5);
             case WIFI -> drawWifiIcon(graphics, x + 5, y + 5);
             case CELLULAR -> drawCellularIcon(graphics, x + 5, y + 4);
-            case BROWSER -> drawCompassIcon(graphics, x + 11, y + 11);
-            case ACCESSIBILITY -> drawAccessibilityIcon(graphics, x + 5, y + 4);
-            case DISPLAY_TEXT_SIZE -> drawTextSizeIcon(graphics, x + 4, y + 5);
-            case NETWORK_STATUS -> drawStatusIcon(graphics, x + 4, y + 4);
+            case BLUETOOTH -> drawBluetoothIcon(graphics, x + 6, y + 3);
+            case NOTIFICATIONS -> drawBellIcon(graphics, x + 5, y + 4);
+            case SOUNDS_HAPTICS -> drawSpeakerIcon(graphics, x + 4, y + 5);
+            case FOCUS -> drawMoonIcon(graphics, x + 5, y + 5);
+            case SCREEN_TIME -> drawHourglassIcon(graphics, x + 5, y + 4);
+            case GENERAL -> drawGearIcon(graphics, x + 4, y + 4);
+            case ACCESSIBILITY -> drawAccessibilityIcon(graphics, x + 4, y + 3);
+            case ACTION_BUTTON -> drawActionButtonIcon(graphics, x + 5, y + 6);
+            case DISPLAY_BRIGHTNESS -> drawDisplayBrightnessIcon(graphics, x + 3, y + 3);
+            case HOME_SCREEN -> drawHomeGridIcon(graphics, x + 4, y + 4);
+            case WALLPAPER -> drawWallpaperIcon(graphics, x + 4, y + 4);
+            case SIRI -> drawSiriIcon(graphics, x + 5, y + 5);
+            case FACE_ID -> drawFaceIdIcon(graphics, x + 4, y + 4);
+            case EMERGENCY_SOS -> drawSosIcon(graphics, x + 4, y + 6);
+            case PRIVACY_SECURITY -> drawLockIcon(graphics, x + 5, y + 4);
+            case APP_STORE -> drawAppStoreIcon(graphics, x + 5, y + 4);
+            case WALLET -> drawWalletIcon(graphics, x + 4, y + 5);
+            case BATTERY -> drawBatteryIcon(graphics, x + 4, y + 6);
+            case APPS -> drawAppsIcon(graphics, x + 4, y + 4);
         }
     }
 
-    private void drawSearchIcon(GuiGraphics graphics, int x, int y, int color) {
+    private void drawSearchIcon(
+            GuiGraphics graphics,
+            int x,
+            int y,
+            int color
+    ) {
         graphics.fill(x + 1, y + 1, x + 7, y + 2, color);
         graphics.fill(x, y + 2, x + 1, y + 6, color);
         graphics.fill(x + 7, y + 2, x + 8, y + 6, color);
@@ -116,117 +267,499 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
         graphics.fill(x + 6, y + 6, x + 10, y + 10, color);
     }
 
-    private void drawWifiIcon(GuiGraphics graphics, int x, int y) {
+    private void drawWifiIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
         graphics.fill(x + 1, y, x + 9, y + 1, TEXT);
         graphics.fill(x + 2, y + 3, x + 8, y + 4, TEXT);
         graphics.fill(x + 3, y + 6, x + 7, y + 7, TEXT);
         graphics.fill(x + 4, y + 9, x + 6, y + 10, TEXT);
     }
 
-    private void drawCellularIcon(GuiGraphics graphics, int x, int y) {
+    private void drawCellularIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
         graphics.fill(x, y + 8, x + 2, y + 12, TEXT);
         graphics.fill(x + 3, y + 6, x + 5, y + 12, TEXT);
         graphics.fill(x + 6, y + 3, x + 8, y + 12, TEXT);
         graphics.fill(x + 9, y, x + 11, y + 12, TEXT);
     }
 
-    private void drawCompassIcon(GuiGraphics graphics, int cx, int cy) {
-        roundedRect(graphics, cx - 6, cy - 6, 12, 12, 6, TEXT);
-        graphics.fill(cx - 1, cy - 5, cx + 1, cy + 1, 0xFFFF453A);
-        graphics.fill(cx, cy, cx + 2, cy + 5, BLUE);
+    private void drawPlaneIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        graphics.fill(x + 2, y + 4, x + 10, y + 6, TEXT);
+        graphics.fill(x + 5, y + 1, x + 7, y + 10, TEXT);
+        graphics.fill(x + 1, y + 5, x + 4, y + 8, TEXT);
+        graphics.fill(x + 8, y + 3, x + 12, y + 5, TEXT);
     }
 
-    private void drawAccessibilityIcon(GuiGraphics graphics, int x, int y) {
-        graphics.fill(x + 4, y + 1, x + 6, y + 3, TEXT);
-        graphics.fill(x + 3, y + 4, x + 7, y + 5, TEXT);
-        graphics.fill(x + 4, y + 5, x + 5, y + 11, TEXT);
+    private void drawBluetoothIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        graphics.fill(x + 4, y, x + 5, y + 14, TEXT);
+        graphics.fill(x + 4, y + 7, x + 10, y + 8, TEXT);
+        graphics.fill(x + 4, y, x + 9, y + 5, TEXT);
+        graphics.fill(x + 4, y + 9, x + 9, y + 14, TEXT);
+        graphics.fill(x + 1, y + 3, x + 5, y + 7, TEXT);
+        graphics.fill(x + 1, y + 8, x + 5, y + 12, TEXT);
+    }
+
+    private void drawBellIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        graphics.fill(x + 2, y + 2, x + 8, y + 3, TEXT);
+        graphics.fill(x + 1, y + 3, x + 9, y + 8, TEXT);
+        graphics.fill(x, y + 8, x + 10, y + 9, TEXT);
+        graphics.fill(x + 4, y + 9, x + 6, y + 11, TEXT);
+    }
+
+    private void drawSpeakerIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        graphics.fill(x, y + 3, x + 3, y + 9, TEXT);
+        graphics.fill(x + 3, y + 2, x + 5, y + 10, TEXT);
+        graphics.fill(x + 5, y + 4, x + 7, y + 8, TEXT);
+        graphics.fill(x + 8, y + 2, x + 9, y + 10, TEXT);
+        graphics.fill(x + 10, y + 3, x + 11, y + 9, TEXT);
+    }
+
+    private void drawMoonIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        roundedRect(graphics, x + 1, y + 1, 10, 10, 5, TEXT);
+        roundedRect(graphics, x + 5, y, 7, 10, 4, PURPLE);
+    }
+
+    private void drawHourglassIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        graphics.fill(x + 1, y, x + 9, y + 1, TEXT);
+        graphics.fill(x + 1, y + 10, x + 9, y + 11, TEXT);
+        graphics.fill(x + 2, y + 1, x + 4, y + 3, TEXT);
+        graphics.fill(x + 6, y + 1, x + 8, y + 3, TEXT);
+        graphics.fill(x + 4, y + 3, x + 6, y + 5, TEXT);
+        graphics.fill(x + 4, y + 6, x + 6, y + 8, TEXT);
+        graphics.fill(x + 2, y + 8, x + 4, y + 10, TEXT);
+        graphics.fill(x + 6, y + 8, x + 8, y + 10, TEXT);
+    }
+
+    private void drawGearIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        roundedRect(graphics, x + 2, y + 2, 8, 8, 4, TEXT);
+        graphics.fill(x + 4, y, x + 6, y + 12, TEXT);
+        graphics.fill(x, y + 4, x + 12, y + 6, TEXT);
+    }
+
+    private void drawAccessibilityIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        graphics.fill(x + 4, y, x + 6, y + 2, TEXT);
+        graphics.fill(x + 3, y + 3, x + 7, y + 4, TEXT);
+        graphics.fill(x, y + 4, x + 10, y + 5, TEXT);
+        graphics.fill(x + 4, y + 4, x + 6, y + 10, TEXT);
+        graphics.fill(x + 1, y + 10, x + 4, y + 13, TEXT);
+        graphics.fill(x + 6, y + 10, x + 9, y + 13, TEXT);
+    }
+
+    private void drawActionButtonIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        roundedRect(graphics, x, y, 12, 6, 3, TEXT);
+        graphics.fill(x + 4, y + 2, x + 8, y + 4, GREY);
+    }
+
+    private void drawDisplayBrightnessIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
         graphics.fill(x + 2, y + 7, x + 4, y + 8, TEXT);
-        graphics.fill(x + 5, y + 7, x + 8, y + 8, TEXT);
-        graphics.fill(x + 2, y + 11, x + 4, y + 13, TEXT);
-        graphics.fill(x + 5, y + 11, x + 7, y + 13, TEXT);
+        graphics.fill(x + 1, y + 8, x + 2, y + 12, TEXT);
+        graphics.fill(x + 4, y + 8, x + 5, y + 12, TEXT);
+        graphics.fill(x + 1, y + 10, x + 5, y + 11, TEXT);
+
+        graphics.fill(x + 8, y + 4, x + 11, y + 5, TEXT);
+        graphics.fill(x + 7, y + 5, x + 8, y + 12, TEXT);
+        graphics.fill(x + 11, y + 5, x + 12, y + 12, TEXT);
+        graphics.fill(x + 8, y + 8, x + 11, y + 9, TEXT);
     }
 
-    private void drawTextSizeIcon(GuiGraphics graphics, int x, int y) {
-        drawUiText(graphics, "A", x, y + 1, TEXT);
-        drawUiText(graphics, "A", x + 6, y - 1, TEXT);
+    private void drawHomeGridIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        roundedRect(graphics, x, y, 4, 4, 2, TEXT);
+        roundedRect(graphics, x + 6, y, 4, 4, 2, TEXT);
+        roundedRect(graphics, x, y + 6, 4, 4, 2, TEXT);
+        roundedRect(graphics, x + 6, y + 6, 4, 4, 2, TEXT);
     }
 
-    private void drawStatusIcon(GuiGraphics graphics, int x, int y) {
-        graphics.fill(x, y + 9, x + 2, y + 12, 0xFF30D158);
-        graphics.fill(x + 3, y + 6, x + 5, y + 12, 0xFF64D2FF);
-        graphics.fill(x + 6, y + 3, x + 8, y + 12, 0xFFFFD60A);
-        graphics.fill(x + 9, y, x + 11, y + 12, 0xFFFF453A);
+    private void drawWallpaperIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        graphics.fill(x, y, x + 11, y + 12, TEXT);
+        graphics.fill(x + 1, y + 1, x + 10, y + 11, TEAL);
+        graphics.fill(x + 2, y + 6, x + 9, y + 7, TEXT);
+    }
+
+    private void drawSiriIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        roundedRect(graphics, x, y + 2, 4, 4, 2, TEAL);
+        roundedRect(graphics, x + 6, y, 4, 4, 2, PINK);
+        roundedRect(graphics, x + 7, y + 7, 4, 4, 2, BLUE);
+        roundedRect(graphics, x + 1, y + 8, 4, 4, 2, PURPLE);
+    }
+
+    private void drawFaceIdIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        graphics.fill(x, y + 2, x + 2, y + 8, TEXT);
+        graphics.fill(x + 8, y + 2, x + 10, y + 8, TEXT);
+        graphics.fill(x + 2, y, x + 8, y + 2, TEXT);
+        graphics.fill(x + 2, y + 8, x + 8, y + 10, TEXT);
+    }
+
+    private void drawSosIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        drawUiText(graphics, "SOS", x - 1, y, TEXT);
+    }
+
+    private void drawLockIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        graphics.fill(x + 2, y + 5, x + 9, y + 12, TEXT);
+        graphics.fill(x + 3, y + 1, x + 8, y + 3, TEXT);
+        graphics.fill(x + 2, y + 2, x + 4, y + 6, TEXT);
+        graphics.fill(x + 7, y + 2, x + 9, y + 6, TEXT);
+    }
+
+    private void drawAppStoreIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        graphics.fill(x + 4, y, x + 6, y + 10, TEXT);
+        graphics.fill(x, y + 8, x + 10, y + 10, TEXT);
+        graphics.fill(x + 1, y + 3, x + 3, y + 5, TEXT);
+        graphics.fill(x + 7, y + 3, x + 9, y + 5, TEXT);
+    }
+
+    private void drawWalletIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        graphics.fill(x, y + 2, x + 12, y + 10, TEXT);
+        graphics.fill(x + 1, y + 3, x + 11, y + 9, BLACK);
+        graphics.fill(x + 7, y + 5, x + 10, y + 7, 0xFFFFD60A);
+    }
+
+    private void drawBatteryIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        graphics.fill(x, y, x + 10, y + 6, TEXT);
+        graphics.fill(x + 1, y + 1, x + 9, y + 5, GREEN);
+        graphics.fill(x + 10, y + 2, x + 12, y + 4, TEXT);
+    }
+
+    private void drawAppsIcon(
+            GuiGraphics graphics,
+            int x,
+            int y
+    ) {
+        roundedRect(graphics, x, y, 11, 11, 4, TEXT);
+        roundedRect(graphics, x + 2, y + 2, 7, 7, 3, GREY);
+    }
+
+    private void drawToggle(
+            GuiGraphics graphics,
+            int x,
+            int y,
+            boolean enabled
+    ) {
+        roundedRect(
+                graphics,
+                x,
+                y,
+                36,
+                20,
+                10,
+                enabled ? GREEN : 0xFF636366
+        );
+
+        roundedRect(
+                graphics,
+                enabled ? x + 19 : x + 3,
+                y + 3,
+                14,
+                14,
+                7,
+                0xFFFFFFFF
+        );
+    }
+
+    private String summaryFor(
+            Row row
+    ) {
+        return switch (row) {
+            case AIRPLANE_MODE -> airplaneMode ? "On" : "Off";
+            case WIFI -> wifiSummary();
+            case CELLULAR -> cellularSummary();
+            case BLUETOOTH -> "On";
+            case NOTIFICATIONS -> "";
+            case SOUNDS_HAPTICS -> "";
+            case FOCUS -> "";
+            case SCREEN_TIME -> "";
+            case GENERAL -> "";
+            case ACCESSIBILITY -> "";
+            case ACTION_BUTTON -> "";
+            case DISPLAY_BRIGHTNESS -> PhoneAccessibilityClientPreferences.largerText() ? "Text Size" : "Display";
+            case HOME_SCREEN -> "";
+            case WALLPAPER -> "";
+            case SIRI -> "";
+            case FACE_ID -> "";
+            case EMERGENCY_SOS -> "";
+            case PRIVACY_SECURITY -> "";
+            case APP_STORE -> "";
+            case WALLET -> "";
+            case BATTERY -> PhoneNetworkState.get().getBatteryPercent() + "%";
+            case APPS -> "";
+        };
     }
 
     private String wifiSummary() {
-        PhoneNetworkState.WifiStatus wifi = PhoneNetworkState.get().getWifi();
-        if (!wifi.enabled()) return "Off";
-        if (wifi.connected()) return wifi.ssid();
+        if (airplaneMode) {
+            return "Off";
+        }
+
+        PhoneNetworkState.WifiStatus wifi =
+                PhoneNetworkState.get().getWifi();
+
+        if (!wifi.enabled()) {
+            return "Off";
+        }
+
+        if (wifi.connected()) {
+            return wifi.ssid();
+        }
+
         return "Not Connected";
     }
 
     private String cellularSummary() {
+        if (airplaneMode) {
+            return "Off";
+        }
+
         if (!PhoneSubscriberClientState.get().hasActiveSubscription()) {
             return "No SIM";
         }
+
         if (!PhoneSubscriberClientState.get().snapshot().cellularDataEnabled()) {
             return "Data Off";
         }
-        PhoneNetworkState.CellularStatus cellular = PhoneNetworkState.get().getCellular();
-        if (cellular.registered()) return cellular.carrier();
+
+        PhoneNetworkState.CellularStatus cellular =
+                PhoneNetworkState.get().getCellular();
+
+        if (cellular.registered()) {
+            return cellular.carrier();
+        }
+
         return "No Service";
     }
 
-    private String displaySummary() {
-        return PhoneAccessibilityClientPreferences.largerText() ? "On" : "Off";
-    }
+    private int computeContentHeight() {
+        int total = 0;
 
-    private String activeInterface() {
-        PhoneNetworkState state = PhoneNetworkState.get();
-        if (state.isWifiUsable()) return "Wi-Fi";
-        if (state.isCellularUsable()) return state.getCellular().radioLabel();
-        return "Offline";
-    }
-
-
-    @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button == 0) {
-            if (inside(mouseX, mouseY, contentX, group1Y, contentWidth, ROW_HEIGHT)) {
-                minecraft.setScreen(new IPhoneWifiScreen());
-                return true;
-            }
-            if (inside(mouseX, mouseY, contentX, group1Y + ROW_HEIGHT, contentWidth, ROW_HEIGHT)) {
-                minecraft.setScreen(new IPhoneCellularScreen());
-                return true;
-            }
-            if (inside(mouseX, mouseY, contentX, group1Y + ROW_HEIGHT * 2, contentWidth, ROW_HEIGHT)) {
-                minecraft.setScreen(new IPhoneBrowserScreen());
-                return true;
-            }
-            if (inside(mouseX, mouseY, contentX, group2Y, contentWidth, ROW_HEIGHT)) {
-                minecraft.setScreen(new IPhoneAccessibilityScreen());
-                return true;
-            }
-            if (inside(mouseX, mouseY, contentX, group2Y + ROW_HEIGHT, contentWidth, ROW_HEIGHT)) {
-                minecraft.setScreen(new IPhoneDisplayTextSizeScreen());
-                return true;
-            }
-            if (inside(mouseX, mouseY, contentX, group3Y, contentWidth, ROW_HEIGHT)) {
-                minecraft.setScreen(new IPhoneStatusScreen());
-                return true;
+        for (int i = 0; i < GROUPS.length; i++) {
+            total += GROUPS[i].length * ROW_HEIGHT;
+            if (i + 1 < GROUPS.length) {
+                total += GROUP_SPACING;
             }
         }
+
+        return total;
+    }
+
+    private int sy(
+            int logicalY
+    ) {
+        return viewportTop + logicalY - scrollOffset;
+    }
+
+    private int clampScroll(
+            int value
+    ) {
+        int max = Math.max(0, contentHeight - viewportHeight);
+        return Math.max(0, Math.min(max, value));
+    }
+
+    @Override
+    public boolean mouseClicked(
+            double mouseX,
+            double mouseY,
+            int button
+    ) {
+        if (button == 0) {
+            if (inside(
+                    mouseX,
+                    mouseY,
+                    contentX,
+                    viewportTop,
+                    contentWidth,
+                    viewportHeight
+            )) {
+                int logicalY = (int) Math.floor(mouseY - viewportTop + scrollOffset);
+                RowHit hit = rowAt(logicalY);
+
+                if (hit != null) {
+                    if (hit.row == Row.AIRPLANE_MODE) {
+                        airplaneMode = !airplaneMode;
+                        return true;
+                    }
+
+                    switch (hit.row) {
+                        case WIFI -> {
+                            minecraft.setScreen(new IPhoneWifiScreen());
+                            return true;
+                        }
+                        case CELLULAR -> {
+                            minecraft.setScreen(new IPhoneCellularScreen());
+                            return true;
+                        }
+                        case ACCESSIBILITY -> {
+                            minecraft.setScreen(new IPhoneAccessibilityScreen());
+                            return true;
+                        }
+                        case DISPLAY_BRIGHTNESS -> {
+                            minecraft.setScreen(new IPhoneDisplayTextSizeScreen());
+                            return true;
+                        }
+                        default -> {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
+    @Override
+    public boolean mouseScrolled(
+            double mouseX,
+            double mouseY,
+            double delta
+    ) {
+        if (inside(
+                mouseX,
+                mouseY,
+                contentX,
+                viewportTop,
+                contentWidth,
+                viewportHeight
+        )) {
+            scrollOffset = clampScroll(
+                    scrollOffset + (delta > 0.0 ? -28 : 28)
+            );
+            return true;
+        }
+
+        return super.mouseScrolled(mouseX, mouseY, delta);
+    }
+
+    private RowHit rowAt(
+            int logicalY
+    ) {
+        int base = 0;
+
+        for (int gi = 0; gi < GROUPS.length; gi++) {
+            Row[] group = GROUPS[gi];
+            int height = group.length * ROW_HEIGHT;
+
+            if (logicalY >= base && logicalY < base + height) {
+                int index = (logicalY - base) / ROW_HEIGHT;
+                if (index >= 0 && index < group.length) {
+                    return new RowHit(group[index]);
+                }
+            }
+
+            base += height;
+            if (gi + 1 < GROUPS.length) {
+                base += GROUP_SPACING;
+            }
+        }
+
+        return null;
+    }
+
+    private record RowHit(Row row) {
+    }
+
     private enum Row {
+        AIRPLANE_MODE("Airplane Mode", ORANGE),
         WIFI("Wi-Fi", BLUE),
         CELLULAR("Cellular", GREEN),
-        BROWSER("Browser", BLUE),
+        BLUETOOTH("Bluetooth", BLUE),
+        NOTIFICATIONS("Notifications", RED),
+        SOUNDS_HAPTICS("Sounds & Haptics", PINK),
+        FOCUS("Focus", PURPLE),
+        SCREEN_TIME("Screen Time", INDIGO),
+        GENERAL("General", GREY),
         ACCESSIBILITY("Accessibility", BLUE),
-        DISPLAY_TEXT_SIZE("Display & Text Size", GREY),
-        NETWORK_STATUS("Network Status", ORANGE);
+        ACTION_BUTTON("Action Button", GREY),
+        DISPLAY_BRIGHTNESS("Display & Brightness", BLUE),
+        HOME_SCREEN("Home Screen & App Library", INDIGO),
+        WALLPAPER("Wallpaper", TEAL),
+        SIRI("Siri", PURPLE),
+        FACE_ID("Face ID & Passcode", GREEN),
+        EMERGENCY_SOS("Emergency SOS", RED),
+        PRIVACY_SECURITY("Privacy & Security", BLUE),
+        APP_STORE("App Store", BLUE),
+        WALLET("Wallet & Apple Pay", BLACK),
+        BATTERY("Battery", GREEN),
+        APPS("Apps", GREY);
 
         private final String title;
         private final int color;
