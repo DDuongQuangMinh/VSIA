@@ -31,8 +31,8 @@ public final class IPhoneMessagesScreen extends IPhoneScreen {
     @Override
     protected void init() {
         super.init();
-        contentX = phoneX + 12;
-        contentWidth = PHONE_WIDTH - 24;
+        contentX = phoneX + 14;
+        contentWidth = PHONE_WIDTH - 28;
         listY = phoneY + 85;
         PhoneMessagesClientState.get().requestRefresh();
     }
@@ -40,18 +40,31 @@ public final class IPhoneMessagesScreen extends IPhoneScreen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderPhoneShell(graphics, 0xFF111216);
-        graphics.fill(phoneX + 4, phoneY + 36, phoneX + PHONE_WIDTH - 4, phoneY + PHONE_HEIGHT - 20, BG);
+        graphics.fill(
+                phoneX + DISPLAY_INSET,
+                phoneY + 36,
+                phoneX + PHONE_WIDTH - DISPLAY_INSET,
+                phoneY + PHONE_HEIGHT - CONTENT_BOTTOM_INSET,
+                BG
+        );
         renderStatusBar(graphics);
 
-        graphics.drawString(font, "Messages", phoneX + 18, phoneY + 54, TEXT, false);
-        graphics.drawString(font, "+", phoneX + PHONE_WIDTH - 28, phoneY + 53, BLUE, false);
+        beginPhoneClip(graphics, 42);
+
+        drawUiText(graphics, "Messages", phoneX + 18, phoneY + 54, TEXT);
+        drawUiText(graphics, "+", phoneX + PHONE_WIDTH - 28, phoneY + 53, BLUE);
 
         PhoneMessagesSnapshot snapshot = PhoneMessagesClientState.get().snapshot();
         String service = snapshot.ownNumber().isBlank()
                 ? "No SIM"
                 : snapshot.ownNumber() + (snapshot.serviceAvailable() ? "  • SMS" : "  • No Service");
-        graphics.drawString(font, fit(service, PHONE_WIDTH - 36), phoneX + 18, phoneY + 69,
-                snapshot.serviceAvailable() ? GREEN : MUTED, false);
+        drawUiText(
+                graphics,
+                fitUi(service, PHONE_WIDTH - 42),
+                phoneX + 18,
+                phoneY + 69,
+                snapshot.serviceAvailable() ? GREEN : MUTED
+        );
 
         List<PhoneSmsMessage> messages = snapshot.messages();
         int rowHeight = 46;
@@ -59,43 +72,53 @@ public final class IPhoneMessagesScreen extends IPhoneScreen {
         int visible = Math.min(6, messages.size() - start);
 
         if (messages.isEmpty()) {
-            graphics.drawCenteredString(font, "No Messages", phoneX + PHONE_WIDTH / 2, phoneY + 192, MUTED);
-            graphics.drawCenteredString(font, "Tap + to start a conversation", phoneX + PHONE_WIDTH / 2, phoneY + 210, MUTED);
+            drawUiCentered(graphics, "No Messages", phoneX + PHONE_WIDTH / 2, phoneY + 192, MUTED);
+            drawUiWrappedCentered(
+                    graphics,
+                    "Tap + to start a conversation",
+                    phoneX + PHONE_WIDTH / 2,
+                    phoneY + 210,
+                    PHONE_WIDTH - 52,
+                    12,
+                    2,
+                    MUTED
+            );
         }
 
         for (int i = 0; i < visible; i++) {
-            PhoneSmsMessage message = messages.get(start + i);
+            PhoneSmsMessage sms = messages.get(start + i);
             int y = listY + i * rowHeight;
             roundedRect(graphics, contentX, y, contentWidth, 40, 10, 0xFFFFFFFF);
 
-            boolean incoming = snapshot.ownNumber().equals(message.to());
-            String peer = incoming ? message.from() : message.to();
+            boolean incoming = snapshot.ownNumber().equals(sms.to());
+            String peer = incoming ? sms.from() : sms.to();
             String prefix = incoming ? "" : "To ";
-            graphics.drawString(font, prefix + fit(peer, 115), contentX + 10, y + 7, TEXT, false);
 
             String time = TIME.format(
-                    Instant.ofEpochMilli(message.timestampMillis())
+                    Instant.ofEpochMilli(sms.timestampMillis())
                             .atZone(ZoneId.systemDefault())
                             .toLocalTime()
             );
-            graphics.drawString(font, time, contentX + contentWidth - 10 - font.width(time), y + 7, MUTED, false);
+            int timeWidth = uiWidth(time);
+            int peerMax = Math.max(50, contentWidth - 34 - timeWidth);
+            drawUiText(graphics, fitUi(prefix + peer, peerMax), contentX + 10, y + 7, TEXT);
+            drawUiText(graphics, time, contentX + contentWidth - 10 - timeWidth, y + 7, MUTED);
 
-            graphics.drawString(font, fit(message.body(), 165), contentX + 10, y + 22, MUTED, false);
-            String state = message.state();
-            graphics.drawString(font, state, contentX + contentWidth - 10 - font.width(state), y + 22,
-                    "DELIVERED".equalsIgnoreCase(state) ? GREEN : 0xFFFF9F0A, false);
+            String state = sms.state();
+            int stateWidth = uiWidth(state);
+            int bodyMax = Math.max(60, contentWidth - 34 - stateWidth);
+            drawUiText(graphics, fitUi(sms.body(), bodyMax), contentX + 10, y + 22, MUTED);
+            drawUiText(
+                    graphics,
+                    state,
+                    contentX + contentWidth - 10 - stateWidth,
+                    y + 22,
+                    "DELIVERED".equalsIgnoreCase(state) ? GREEN : 0xFFFF9F0A
+            );
         }
 
+        endPhoneClip(graphics);
         renderHomeIndicator(graphics);
-    }
-
-    private String fit(String value, int maxWidth) {
-        String text = value == null ? "" : value;
-        if (font.width(text) <= maxWidth) return text;
-        while (!text.isEmpty() && font.width(text + "...") > maxWidth) {
-            text = text.substring(0, text.length() - 1);
-        }
-        return text + "...";
     }
 
     @Override

@@ -17,6 +17,7 @@ public class IPhoneCellularScreen extends IPhoneScreen {
     private static final int DIVIDER = 0xFF3A3A3C;
     private static final int BLUE = 0xFF0A84FF;
     private static final int GREEN = 0xFF30D158;
+    private static final int SECTION = 0xFF8E8E93;
 
     private int contentX;
     private int contentWidth;
@@ -35,11 +36,12 @@ public class IPhoneCellularScreen extends IPhoneScreen {
         super.init();
         contentX = phoneX + 14;
         contentWidth = PHONE_WIDTH - 28;
-        dataY = phoneY + 76;
-        simY = dataY + 61;
-        networkY = simY + 63;
-        packetY = networkY + 117;
-        diagnosticsY = packetY + 95;
+
+        dataY = phoneY + 72;
+        simY = dataY + 52;
+        networkY = simY + 60;
+        packetY = networkY + 105;
+        diagnosticsY = packetY + 78;
 
         PhoneNetworkController.get().requestRefresh();
         PhoneSubscriberClientState.get().requestRefresh();
@@ -51,96 +53,98 @@ public class IPhoneCellularScreen extends IPhoneScreen {
         renderStatusBar(graphics);
         renderHeader(graphics, "Settings", "Cellular");
 
-        PhoneNetworkState.CellularStatus cellular =
-                PhoneNetworkState.get().getCellular();
-        PhoneSubscriberSnapshot subscriber =
-                PhoneSubscriberClientState.get().snapshot();
+        PhoneNetworkState.CellularStatus cellular = PhoneNetworkState.get().getCellular();
+        PhoneSubscriberSnapshot subscriber = PhoneSubscriberClientState.get().snapshot();
 
-        roundedRect(graphics, contentX, dataY, contentWidth, 48, 14, CARD);
-        graphics.drawString(font, "Cellular Data", contentX + 13, dataY + 18, TEXT, false);
+        beginPhoneClip(graphics, 68);
+
+        roundedRect(graphics, contentX, dataY, contentWidth, 44, 14, CARD);
+        drawUiText(graphics, "Cellular Data", contentX + 13, dataY + 16, TEXT);
         drawToggle(
                 graphics,
                 contentX + contentWidth - 47,
-                dataY + 14,
+                dataY + 12,
                 subscriber.cellularDataEnabled()
         );
 
-        roundedRect(graphics, contentX, simY, contentWidth, 48, 14, CARD);
-        graphics.drawString(font, "SIMs", contentX + 13, simY + 10, TEXT, false);
+        roundedRect(graphics, contentX, simY, contentWidth, 46, 14, CARD);
+        drawUiText(graphics, "SIMs", contentX + 13, simY + 8, TEXT);
         String simSummary = subscriber.hasActiveSubscription()
                 ? subscriber.carrier() + "  " + subscriber.activeType()
                 : "No SIM";
-        graphics.drawString(
-                font,
-                fit(simSummary, 115),
+        drawUiText(
+                graphics,
+                fitUi(simSummary, contentWidth - 46),
                 contentX + 13,
-                simY + 27,
-                subscriber.hasActiveSubscription() ? MUTED : 0xFFFF9F0A,
-                false
+                simY + 25,
+                subscriber.hasActiveSubscription() ? MUTED : 0xFFFF9F0A
         );
-        graphics.drawString(font, ">", contentX + contentWidth - 15, simY + 19, BLUE, false);
+        drawUiText(graphics, ">", contentX + contentWidth - 15, simY + 17, BLUE);
 
-        graphics.drawString(font, "NETWORK", contentX + 4, networkY - 16, 0xFF8E8E93, false);
-        roundedRect(graphics, contentX, networkY, contentWidth, 101, 14, CARD);
+        drawUiText(graphics, "NETWORK", contentX + 4, networkY - 14, SECTION);
+        roundedRect(graphics, contentX, networkY, contentWidth, 89, 14, CARD);
 
         pair(graphics, networkY, "Carrier",
                 subscriber.hasActiveSubscription()
                         ? subscriber.carrier()
                         : "No Service");
-        divider(graphics, networkY + 25);
-        pair(graphics, networkY + 25, "Radio",
+        divider(graphics, networkY + 22);
+        pair(graphics, networkY + 22, "Radio",
                 subscriber.hasActiveSubscription() && cellular.registered()
-                        ? fit(cellular.radioLabel() + " " + cellular.band(), 95)
+                        ? cellular.radioLabel() + " " + cellular.band()
                         : "-");
-        divider(graphics, networkY + 50);
-        pair(graphics, networkY + 50, "Signal",
+        divider(graphics, networkY + 44);
+        pair(graphics, networkY + 44, "Signal",
                 subscriber.hasActiveSubscription() && cellular.registered()
                         ? cellular.quality()
                         : "NO SERVICE");
-        divider(graphics, networkY + 75);
-        pair(graphics, networkY + 75, "Distance",
-                subscriber.hasActiveSubscription()
-                        && Double.isFinite(cellular.distanceBlocks())
+        divider(graphics, networkY + 66);
+        pair(graphics, networkY + 66, "Distance",
+                subscriber.hasActiveSubscription() && Double.isFinite(cellular.distanceBlocks())
                         ? String.format(Locale.ROOT, "%.0f m", cellular.distanceBlocks())
                         : "-");
 
-        graphics.drawString(font, "PACKET DATA", contentX + 4, packetY - 16, 0xFF8E8E93, false);
-        roundedRect(graphics, contentX, packetY, contentWidth, 79, 14, CARD);
+        drawUiText(graphics, "PACKET DATA", contentX + 4, packetY - 14, SECTION);
+        roundedRect(graphics, contentX, packetY, contentWidth, 67, 14, CARD);
         pair(graphics, packetY, "PDU Session",
                 PhoneNetworkState.get().isCellularUsable()
                         ? cellular.pduState()
                         : "INACTIVE");
-        divider(graphics, packetY + 26);
-        pair(graphics, packetY + 26, "Estimated DL",
+        divider(graphics, packetY + 22);
+        pair(graphics, packetY + 22, "Estimated DL",
                 PhoneNetworkState.get().isCellularUsable()
                         ? String.format(Locale.ROOT, "%.1f Mbps", cellular.estimatedDownlinkMbps())
                         : "0.0 Mbps");
-        divider(graphics, packetY + 52);
-        pair(graphics, packetY + 52, "Subscriber",
+        divider(graphics, packetY + 44);
+        pair(graphics, packetY + 44, "Subscriber",
                 subscriber.authenticated() ? "AUTHENTICATED" : "NOT AUTHENTICATED");
 
         roundedRect(graphics, contentX, diagnosticsY, contentWidth, 28, 12, CARD);
-        graphics.drawCenteredString(
-                font,
+        drawUiCentered(
+                graphics,
                 "Diagnostics >",
                 phoneX + PHONE_WIDTH / 2,
-                diagnosticsY + 10,
+                diagnosticsY + 9,
                 BLUE
         );
 
+        endPhoneClip(graphics);
         renderHomeIndicator(graphics);
     }
 
     private void pair(GuiGraphics graphics, int y, String key, String value) {
-        graphics.drawString(font, key, contentX + 13, y + 9, TEXT, false);
-        String shown = fit(value, 98);
-        graphics.drawString(
-                font,
+        int left = contentX + 13;
+        int right = contentX + contentWidth - 13;
+        drawUiText(graphics, key, left, y + 7, TEXT);
+
+        int valueWidth = Math.max(42, right - (left + uiWidth(key) + 10));
+        String shown = fitUi(value, valueWidth);
+        drawUiText(
+                graphics,
                 shown,
-                contentX + contentWidth - font.width(shown) - 13,
-                y + 9,
-                MUTED,
-                false
+                right - uiWidth(shown),
+                y + 7,
+                MUTED
         );
     }
 
@@ -159,17 +163,6 @@ public class IPhoneCellularScreen extends IPhoneScreen {
         roundedRect(graphics, enabled ? x + 19 : x + 3, y + 3, 14, 14, 7, 0xFFFFFFFF);
     }
 
-    private String fit(String value, int maxWidth) {
-        String text = value == null ? "" : value;
-        if (font.width(text) <= maxWidth) {
-            return text;
-        }
-        while (!text.isEmpty() && font.width(text + "...") > maxWidth) {
-            text = text.substring(0, text.length() - 1);
-        }
-        return text + "...";
-    }
-
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0) {
@@ -182,7 +175,7 @@ public class IPhoneCellularScreen extends IPhoneScreen {
                     mouseX,
                     mouseY,
                     contentX + contentWidth - 54,
-                    dataY + 5,
+                    dataY + 3,
                     50,
                     38
             )) {
@@ -193,7 +186,7 @@ public class IPhoneCellularScreen extends IPhoneScreen {
                 return true;
             }
 
-            if (inside(mouseX, mouseY, contentX, simY, contentWidth, 48)) {
+            if (inside(mouseX, mouseY, contentX, simY, contentWidth, 46)) {
                 minecraft.setScreen(new IPhoneSimManagerScreen());
                 return true;
             }

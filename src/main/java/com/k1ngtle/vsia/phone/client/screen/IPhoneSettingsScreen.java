@@ -50,7 +50,7 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
         renderPhoneShell(graphics, BACKGROUND);
         renderStatusBar(graphics);
 
-        graphics.drawCenteredString(font, "Settings", phoneX + PHONE_WIDTH / 2, titleY, TEXT);
+        drawUiCentered(graphics, "Settings", phoneX + PHONE_WIDTH / 2, titleY, TEXT);
         drawSearchBar(graphics, searchY);
 
         drawGroup(graphics, group1Y, 3);
@@ -70,7 +70,7 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
 
     private void drawSearchBar(GuiGraphics graphics, int y) {
         roundedRect(graphics, contentX, y, contentWidth, 26, 10, CARD_ALT);
-        graphics.drawString(font, "Search", contentX + 34, y + 9, TERTIARY, false);
+        drawUiText(graphics, "Search", contentX + 34, y + 9, TERTIARY);
         drawSearchIcon(graphics, contentX + 12, y + 8, TERTIARY);
     }
 
@@ -86,14 +86,14 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
         int iconX = contentX + 10;
         int iconY = y + 8;
         drawRowIcon(graphics, row, iconX, iconY);
-        graphics.drawString(font, row.title, contentX + 46, y + 14, TEXT, false);
+        drawUiText(graphics, row.title, contentX + 46, y + 14, TEXT);
 
         if (summary != null && !summary.isBlank()) {
-            String fitSummary = fit(summary, 82);
-            int summaryWidth = font.width(fitSummary);
-            graphics.drawString(font, fitSummary, contentX + contentWidth - summaryWidth - 18, y + 14, SECONDARY, false);
+            String fitSummary = fitUi(summary, 82);
+            int summaryWidth = uiWidth(fitSummary);
+            drawUiText(graphics, fitSummary, contentX + contentWidth - summaryWidth - 18, y + 14, SECONDARY);
         }
-        graphics.drawString(font, ">", contentX + contentWidth - 11, y + 14, TERTIARY, false);
+        drawUiText(graphics, ">", contentX + contentWidth - 11, y + 14, TERTIARY);
     }
 
     private void drawRowIcon(GuiGraphics graphics, Row row, int x, int y) {
@@ -147,8 +147,8 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
     }
 
     private void drawTextSizeIcon(GuiGraphics graphics, int x, int y) {
-        graphics.drawString(font, "A", x, y + 1, TEXT, false);
-        graphics.drawString(font, "A", x + 6, y - 1, TEXT, false);
+        drawUiText(graphics, "A", x, y + 1, TEXT);
+        drawUiText(graphics, "A", x + 6, y - 1, TEXT);
     }
 
     private void drawStatusIcon(GuiGraphics graphics, int x, int y) {
@@ -188,14 +188,6 @@ public class IPhoneSettingsScreen extends IPhoneScreen {
         return "Offline";
     }
 
-    private String fit(String value, int maxWidth) {
-        String text = value == null ? "" : value;
-        if (font.width(text) <= maxWidth) return text;
-        while (!text.isEmpty() && font.width(text + "...") > maxWidth) {
-            text = text.substring(0, text.length() - 1);
-        }
-        return text + "...";
-    }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {

@@ -20,6 +20,10 @@ public final class PhoneText {
                 .withStyle(style -> style.withFont(UI_FONT));
     }
 
+    public static FormattedCharSequence sequence(String text) {
+        return component(text).getVisualOrderText();
+    }
+
     public static int width(Font font, String text) {
         return font.width(component(text));
     }

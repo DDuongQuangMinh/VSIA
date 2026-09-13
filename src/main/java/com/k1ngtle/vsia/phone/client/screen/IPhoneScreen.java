@@ -1,15 +1,22 @@
 package com.k1ngtle.vsia.phone.client.screen;
 
 import com.k1ngtle.vsia.phone.client.IPhoneStatusBar;
+import com.k1ngtle.vsia.phone.client.PhoneText;
 import com.k1ngtle.vsia.phone.network.PhoneNetworkController;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.List;
 
 public abstract class IPhoneScreen extends Screen {
     public static final int PHONE_WIDTH = 236;
     public static final int PHONE_HEIGHT = 438;
+
+    protected static final int DISPLAY_INSET = 10;
+    protected static final int CONTENT_BOTTOM_INSET = 28;
 
     protected int phoneX;
     protected int phoneY;
@@ -53,8 +60,8 @@ public abstract class IPhoneScreen extends Screen {
     }
 
     protected void renderHeader(GuiGraphics graphics, String back, String title) {
-        String safeTitle = fitHeaderTitle(title == null ? "" : title, PHONE_WIDTH - 42);
-        int titleWidth = font.width(safeTitle);
+        String safeTitle = fitUi(title == null ? "" : title, PHONE_WIDTH - 42);
+        int titleWidth = uiWidth(safeTitle);
         int titleX = phoneX + (PHONE_WIDTH - titleWidth) / 2;
         int titleRight = titleX + titleWidth;
         int titleY = phoneY + 47;
@@ -64,20 +71,13 @@ public abstract class IPhoneScreen extends Screen {
             String compactBack = "‹";
             int backX = phoneX + 16;
             int minimumGap = 8;
-            int fullBackRight = backX + font.width(fullBack);
+            int fullBackRight = backX + uiWidth(fullBack);
 
             String backText = fullBackRight + minimumGap <= titleX
                     ? fullBack
                     : compactBack;
 
-            graphics.drawString(
-                    font,
-                    backText,
-                    backX,
-                    titleY,
-                    0xFF5FA9FF,
-                    false
-            );
+            drawUiText(graphics, backText, backX, titleY, 0xFF5FA9FF);
         }
 
         int rightSafe = phoneX + PHONE_WIDTH - 16;
@@ -85,27 +85,76 @@ public abstract class IPhoneScreen extends Screen {
             titleX = rightSafe - titleWidth;
         }
 
-        graphics.drawString(
-                font,
-                safeTitle,
-                titleX,
-                titleY,
-                0xFFFFFFFF,
-                false
-        );
+        drawUiText(graphics, safeTitle, titleX, titleY, 0xFFFFFFFF);
     }
 
-    private String fitHeaderTitle(String value, int maxWidth) {
-        if (font.width(value) <= maxWidth) {
-            return value;
+    protected Component uiText(String text) {
+        return PhoneText.component(text);
+    }
+
+    protected FormattedCharSequence uiSequence(String text) {
+        return PhoneText.sequence(text);
+    }
+
+    protected int uiWidth(String text) {
+        return font.width(uiText(text));
+    }
+
+    protected void drawUiText(GuiGraphics graphics, String text, int x, int y, int color) {
+        graphics.drawString(font, uiText(text), x, y, color, false);
+    }
+
+    protected void drawUiCentered(GuiGraphics graphics, String text, int centerX, int y, int color) {
+        Component component = uiText(text);
+        graphics.drawString(font, component, centerX - font.width(component) / 2, y, color, false);
+    }
+
+    protected String fitUi(String value, int maxWidth) {
+        String text = value == null ? "" : value;
+        if (uiWidth(text) <= maxWidth) {
+            return text;
         }
 
-        String text = value;
-        while (!text.isEmpty() && font.width(text + "...") > maxWidth) {
+        while (!text.isEmpty() && uiWidth(text + "...") > maxWidth) {
             text = text.substring(0, text.length() - 1);
         }
 
         return text.isEmpty() ? "..." : text + "...";
+    }
+
+    protected int drawUiWrappedCentered(
+            GuiGraphics graphics,
+            String text,
+            int centerX,
+            int y,
+            int maxWidth,
+            int lineHeight,
+            int maxLines,
+            int color
+    ) {
+        List<FormattedCharSequence> lines = font.split(uiText(text), maxWidth);
+        int count = Math.min(maxLines, lines.size());
+
+        for (int i = 0; i < count; i++) {
+            FormattedCharSequence line = lines.get(i);
+            int x = centerX - font.width(line) / 2;
+            graphics.drawString(font, line, x, y + i * lineHeight, color, false);
+        }
+
+        return count;
+    }
+
+    protected void beginPhoneClip(GuiGraphics graphics, int topOffset) {
+        graphics.enableScissor(
+                phoneX + DISPLAY_INSET,
+                phoneY + topOffset,
+                phoneX + PHONE_WIDTH - DISPLAY_INSET,
+                phoneY + PHONE_HEIGHT - CONTENT_BOTTOM_INSET
+        );
+    }
+
+    protected void endPhoneClip(GuiGraphics graphics) {
+        graphics.disableScissor();
     }
 
     protected boolean clickedHome(double mouseX, double mouseY) {

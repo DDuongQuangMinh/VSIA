@@ -52,53 +52,49 @@ public final class IPhoneSimManagerScreen extends IPhoneScreen {
         pair(graphics, statusY + 25, "Number", s.msisdn().isBlank() ? "-" : s.msisdn());
         pair(graphics, statusY + 44, "Status", s.serviceStatus());
 
-        graphics.drawString(font, "PHYSICAL SIM", x + 4, physicalY - 14, 0xFF8E8E93, false);
+        drawUiText(graphics, "PHYSICAL SIM", x + 4, physicalY - 14, 0xFF8E8E93);
         roundedRect(graphics, x, physicalY, w, 60, 14, CARD);
-        graphics.drawString(font,
+        drawUiText(graphics,
                 s.physicalSimPresent() ? "Physical SIM installed" : "No physical SIM",
                 x + 12,
                 physicalY + 11,
-                TEXT,
-                false);
-        graphics.drawString(font,
-                s.physicalSimPresent() ? "Tap to select / remove" : "Insert from inventory",
+                TEXT);
+        drawUiText(graphics,
+                fitUi(s.physicalSimPresent() ? "Tap to select / remove" : "Insert from inventory", w - 42),
                 x + 12,
                 physicalY + 31,
-                MUTED,
-                false);
-        graphics.drawString(font, ">", x + w - 15, physicalY + 25, BLUE, false);
+                MUTED);
+        drawUiText(graphics, ">", x + w - 15, physicalY + 25, BLUE);
 
-        graphics.drawString(font, "eSIM", x + 4, esimY - 14, 0xFF8E8E93, false);
+        drawUiText(graphics, "eSIM", x + 4, esimY - 14, 0xFF8E8E93);
         roundedRect(graphics, x, esimY, w, 60, 14, CARD);
-        graphics.drawString(font,
+        drawUiText(graphics,
                 s.esimPresent() ? "VSIA Mobile eSIM" : "Add eSIM",
                 x + 12,
                 esimY + 11,
-                TEXT,
-                false);
-        graphics.drawString(font,
-                s.esimPresent() ? "Tap to select profile" : "Download through SM-DP+ over Wi-Fi",
+                TEXT);
+        drawUiText(graphics,
+                fitUi(s.esimPresent() ? "Tap to select profile" : "Download through SM-DP+ over Wi-Fi", w - 42),
                 x + 12,
                 esimY + 31,
-                MUTED,
-                false);
-        graphics.drawString(font, ">", x + w - 15, esimY + 25, BLUE, false);
+                MUTED);
+        drawUiText(graphics, ">", x + w - 15, esimY + 25, BLUE);
 
         roundedRect(graphics, x, dataY, w, 46, 14, CARD);
-        graphics.drawString(font, "Cellular Data", x + 12, dataY + 18, TEXT, false);
+        drawUiText(graphics, "Cellular Data", x + 12, dataY + 18, TEXT);
         drawToggle(graphics, x + w - 45, dataY + 13, s.cellularDataEnabled());
 
-        graphics.drawCenteredString(
-                font,
+        drawUiCentered(
+                graphics,
                 "DEV: Provision Test SIM",
                 phoneX + PHONE_WIDTH / 2,
                 dataY + 61,
                 BLUE
         );
 
-        graphics.drawCenteredString(
-                font,
-                "EID " + fit(s.eid(), 150),
+        drawUiCentered(
+                graphics,
+                "EID " + fitUi(s.eid(), 150),
                 phoneX + PHONE_WIDTH / 2,
                 dataY + 81,
                 0xFF6F6F73
@@ -108,25 +104,11 @@ public final class IPhoneSimManagerScreen extends IPhoneScreen {
     }
 
     private void pair(GuiGraphics graphics, int y, String key, String value) {
-        graphics.drawString(font, key, x + 12, y + 7, TEXT, false);
-        String shown = fit(value, 102);
-        graphics.drawString(
-                font,
-                shown,
-                x + w - 12 - font.width(shown),
-                y + 7,
-                MUTED,
-                false
-        );
-    }
-
-    private String fit(String value, int maxWidth) {
-        String text = value == null ? "" : value;
-        if (font.width(text) <= maxWidth) return text;
-        while (!text.isEmpty() && font.width(text + "...") > maxWidth) {
-            text = text.substring(0, text.length() - 1);
-        }
-        return text + "...";
+        drawUiText(graphics, key, x + 12, y + 7, TEXT);
+        int right = x + w - 12;
+        int max = Math.max(44, right - (x + 12 + uiWidth(key) + 10));
+        String shown = fitUi(value, max);
+        drawUiText(graphics, shown, right - uiWidth(shown), y + 7, MUTED);
     }
 
     private void drawToggle(GuiGraphics graphics, int tx, int ty, boolean enabled) {

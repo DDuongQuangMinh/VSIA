@@ -25,7 +25,7 @@ public final class IPhoneStatusBar {
 
         graphics.drawString(
                 font,
-                LocalTime.now().format(TIME),
+                PhoneText.component(LocalTime.now().format(TIME)),
                 x + 18,
                 y + 16,
                 0xFFFFFFFF,
@@ -89,7 +89,7 @@ public final class IPhoneStatusBar {
         } else {
             graphics.drawString(
                     font,
-                    "SOS",
+                    PhoneText.component("SOS"),
                     cellularX,
                     y + 16,
                     0xFFFFFFFF,

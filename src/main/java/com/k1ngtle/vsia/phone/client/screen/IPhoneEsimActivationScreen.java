@@ -30,10 +30,11 @@ public final class IPhoneEsimActivationScreen extends IPhoneScreen {
                 fieldY,
                 contentWidth,
                 26,
-                Component.literal("Activation Code")
+                uiText("Activation Code")
         );
         activationCode.setMaxLength(192);
-        activationCode.setHint(Component.literal("LPA:1$vsia.smdp$DEV"));
+        activationCode.setHint(uiText("LPA:1$vsia.smdp$DEV"));
+        activationCode.setFormatter((value, offset) -> uiSequence(value));
         addRenderableWidget(activationCode);
     }
 
@@ -43,27 +44,24 @@ public final class IPhoneEsimActivationScreen extends IPhoneScreen {
         renderStatusBar(graphics);
         renderHeader(graphics, "SIMs", "Add eSIM");
 
-        graphics.drawCenteredString(
-                font,
+        beginPhoneClip(graphics, 68);
+
+        drawUiCentered(
+                graphics,
                 "Enter Activation Code",
                 phoneX + PHONE_WIDTH / 2,
                 phoneY + 92,
                 0xFFFFFFFF
         );
 
-        graphics.drawCenteredString(
-                font,
-                "The eSIM profile is downloaded over Wi-Fi",
+        drawUiWrappedCentered(
+                graphics,
+                "The eSIM profile is downloaded over Wi-Fi from the VSIA SM-DP+ server.",
                 phoneX + PHONE_WIDTH / 2,
                 phoneY + 113,
-                0xFFAEAEB2
-        );
-
-        graphics.drawCenteredString(
-                font,
-                "from the VSIA SM-DP+ server.",
-                phoneX + PHONE_WIDTH / 2,
-                phoneY + 126,
+                PHONE_WIDTH - 48,
+                13,
+                2,
                 0xFFAEAEB2
         );
 
@@ -77,23 +75,27 @@ public final class IPhoneEsimActivationScreen extends IPhoneScreen {
                 0xFF0A84FF
         );
 
-        graphics.drawCenteredString(
-                font,
+        drawUiCentered(
+                graphics,
                 "Activate",
                 phoneX + PHONE_WIDTH / 2,
-                phoneY + 218,
+                phoneY + 217,
                 0xFFFFFFFF
         );
 
-        graphics.drawCenteredString(
-                font,
+        drawUiWrappedCentered(
+                graphics,
                 "DEV code: " + PhoneSubscriberService.DEV_ESIM_ACTIVATION,
                 phoneX + PHONE_WIDTH / 2,
                 phoneY + 261,
+                PHONE_WIDTH - 48,
+                12,
+                2,
                 0xFF6F6F73
         );
 
         super.render(graphics, mouseX, mouseY, partialTick);
+        endPhoneClip(graphics);
         renderHomeIndicator(graphics);
     }
 

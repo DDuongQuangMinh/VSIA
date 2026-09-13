@@ -25,10 +25,10 @@ public class IPhoneHomeScreen extends IPhoneScreen {
     @Override
     protected void init() {
         super.init();
-        innerX = phoneX + 5;
-        innerY = phoneY + 5;
-        innerW = PHONE_WIDTH - 10;
-        innerH = PHONE_HEIGHT - 10;
+        innerX = phoneX + DISPLAY_INSET;
+        innerY = phoneY + DISPLAY_INSET;
+        innerW = PHONE_WIDTH - DISPLAY_INSET * 2;
+        innerH = PHONE_HEIGHT - DISPLAY_INSET * 2;
         widgetY = phoneY + 48;
         gridY = phoneY + 157;
         searchY = phoneY + 333;
@@ -84,12 +84,12 @@ public class IPhoneHomeScreen extends IPhoneScreen {
         roundedRect(g, x - 2, y - 2, w + 4, h + 4, 18, 0xAA164F7A);
         roundedRect(g, x, y, w, h, 16, 0xE8246BA6);
         roundedRect(g, x + 2, y + 2, w - 4, 18, 12, 0x2FFFFFFF);
-        g.drawString(font, "Overworld", x + 10, y + 9, TEXT, false);
-        g.drawString(font, "53°", x + 10, y + 27, TEXT, false);
+        drawUiText(g, "Overworld", x + 10, y + 9, TEXT);
+        drawUiText(g, "53°", x + 10, y + 27, TEXT);
         roundedRect(g, x + 12, y + 58, 15, 7, 3, 0xFFFFFFFF);
         roundedRect(g, x + 17, y + 54, 7, 7, 3, 0xFFFFD60A);
-        g.drawString(font, "Partly Cloudy", x + 31, y + 56, TEXT, false);
-        g.drawString(font, "H:56°  L:50°", x + 10, y + 72, 0xFFE3F5FF, false);
+        drawUiText(g, "Partly Cloudy", x + 31, y + 56, TEXT);
+        drawUiText(g, "H:56°  L:50°", x + 10, y + 72, 0xFFE3F5FF);
     }
 
     private void drawFindMyWidget(GuiGraphics g, int x, int y, int w, int h) {
@@ -102,9 +102,9 @@ public class IPhoneHomeScreen extends IPhoneScreen {
         roundedRect(g, x + w - 31, y + 12, 18, 18, 9, 0xFFFFFFFF);
         roundedRect(g, x + w - 28, y + 15, 12, 12, 6, 0xFFB99CF7);
         g.fill(x + w - 24, y + 18, x + w - 20, y + 23, 0xFF303030);
-        g.drawString(font, "Now", x + 9, y + 52, 0xFF777777, false);
-        g.drawString(font, "Current Position", x + 9, y + 64, 0xFF222222, false);
-        g.drawString(font, "VS:IA", x + 9, y + 77, 0xFF666666, false);
+        drawUiText(g, "Now", x + 9, y + 52, 0xFF777777);
+        drawUiText(g, "Current Position", x + 9, y + 64, 0xFF222222);
+        drawUiText(g, "VS:IA", x + 9, y + 77, 0xFF666666);
     }
 
     private void renderAppGrid(GuiGraphics graphics) {
@@ -146,7 +146,7 @@ public class IPhoneHomeScreen extends IPhoneScreen {
         roundedRect(graphics, x, searchY, w, h, 10, 0x4AFFFFFF);
         roundedRect(graphics, x + 10, searchY + 6, 6, 6, 3, 0xDDFFFFFF);
         graphics.fill(x + 15, searchY + 11, x + 18, searchY + 13, 0xDDFFFFFF);
-        graphics.drawString(font, "Search", x + 23, searchY + 6, 0xF0FFFFFF, false);
+        drawUiText(graphics, "Search", x + 23, searchY + 6, 0xF0FFFFFF);
     }
 
     private void renderDock(GuiGraphics graphics) {
@@ -203,8 +203,8 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 roundedRect(g, cx - 2, cy - 2, 4, 4, 2, 0xFF66666D);
             }
             case CALENDAR -> {
-                g.drawCenteredString(font, "Tue", cx, y + 5, 0xFFFF3B30);
-                g.drawCenteredString(font, "1", cx, y + 17, 0xFF111111);
+                drawUiCentered(g, "Tue", cx, y + 5, 0xFFFF3B30);
+                drawUiCentered(g, "1", cx, y + 17, 0xFF111111);
             }
             case PHOTOS -> {
                 roundedRect(g, cx - 3, cy - 12, 6, 12, 3, 0xFFFF453A);
@@ -245,7 +245,7 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 roundedRect(g, x + 7, y + 7, size - 14, size - 14, 3, 0xFFFFFFFF);
                 g.fill(x + 11, y + 11, x + size - 11, y + size - 11, 0xFFFF375F);
             }
-            case TV -> g.drawCenteredString(font, "tv", cx, cy - 3, 0xFFFFFFFF);
+            case TV -> drawUiCentered(g, "tv", cx, cy - 3, 0xFFFFFFFF);
             case PODCASTS -> {
                 roundedRect(g, cx - 3, cy - 3, 6, 6, 3, 0xFFFFFFFF);
                 roundedRect(g, cx - 7, cy - 7, 14, 14, 7, 0x66FFFFFF);
@@ -292,8 +292,8 @@ public class IPhoneHomeScreen extends IPhoneScreen {
         graphics.pose().scale(scale, scale, 1.0F);
         int sx = Math.round(centerX / scale);
         int sy = Math.round(y / scale);
-        graphics.drawCenteredString(font, text, sx + 1, sy + 1, LABEL_SHADOW);
-        graphics.drawCenteredString(font, text, sx, sy, TEXT);
+        drawUiCentered(graphics, text, sx + 1, sy + 1, LABEL_SHADOW);
+        drawUiCentered(graphics, text, sx, sy, TEXT);
         graphics.pose().popPose();
     }
 

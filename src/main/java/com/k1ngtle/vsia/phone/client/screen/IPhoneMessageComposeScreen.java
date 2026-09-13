@@ -8,10 +8,17 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 
 public final class IPhoneMessageComposeScreen extends IPhoneScreen {
+    private static final int BG = 0xFFF2F2F7;
+    private static final int TEXT = 0xFF111111;
+    private static final int MUTED = 0xFF6E6E73;
+    private static final int GREEN = 0xFF34C759;
+
     private EditBox recipient;
     private EditBox message;
     private int x;
     private int w;
+    private int bodyLeft;
+    private int bodyRight;
 
     public IPhoneMessageComposeScreen() {
         super(Component.literal("New Message"));
@@ -20,8 +27,10 @@ public final class IPhoneMessageComposeScreen extends IPhoneScreen {
     @Override
     protected void init() {
         super.init();
-        x = phoneX + 16;
-        w = PHONE_WIDTH - 32;
+        bodyLeft = phoneX + DISPLAY_INSET;
+        bodyRight = phoneX + PHONE_WIDTH - DISPLAY_INSET;
+        x = phoneX + 18;
+        w = PHONE_WIDTH - 36;
 
         recipient = new EditBox(
                 font,
@@ -29,10 +38,11 @@ public final class IPhoneMessageComposeScreen extends IPhoneScreen {
                 phoneY + 90,
                 w,
                 25,
-                Component.literal("To")
+                uiText("To")
         );
         recipient.setMaxLength(32);
-        recipient.setHint(Component.literal("+99910..."));
+        recipient.setHint(uiText("+99910..."));
+        recipient.setFormatter((value, offset) -> uiSequence(value));
         addRenderableWidget(recipient);
 
         message = new EditBox(
@@ -41,10 +51,11 @@ public final class IPhoneMessageComposeScreen extends IPhoneScreen {
                 phoneY + 134,
                 w,
                 28,
-                Component.literal("Message")
+                uiText("Message")
         );
         message.setMaxLength(320);
-        message.setHint(Component.literal("Text Message"));
+        message.setHint(uiText("Text Message"));
+        message.setFormatter((value, offset) -> uiSequence(value));
         addRenderableWidget(message);
 
         setInitialFocus(recipient);
@@ -54,12 +65,20 @@ public final class IPhoneMessageComposeScreen extends IPhoneScreen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderPhoneShell(graphics, 0xFF111216);
-        graphics.fill(phoneX + 4, phoneY + 36, phoneX + PHONE_WIDTH - 4, phoneY + PHONE_HEIGHT - 20, 0xFFF2F2F7);
+        graphics.fill(
+                bodyLeft,
+                phoneY + 36,
+                bodyRight,
+                phoneY + PHONE_HEIGHT - CONTENT_BOTTOM_INSET,
+                BG
+        );
         renderStatusBar(graphics);
         renderHeader(graphics, "Messages", "New Message");
 
-        graphics.drawString(font, "To:", x, phoneY + 78, 0xFF6E6E73, false);
-        graphics.drawString(font, "Message", x, phoneY + 122, 0xFF6E6E73, false);
+        beginPhoneClip(graphics, 68);
+
+        drawUiText(graphics, "To:", x, phoneY + 78, MUTED);
+        drawUiText(graphics, "Message", x, phoneY + 122, MUTED);
 
         roundedRect(
                 graphics,
@@ -68,33 +87,38 @@ public final class IPhoneMessageComposeScreen extends IPhoneScreen {
                 w,
                 36,
                 16,
-                0xFF34C759
+                GREEN
         );
-        graphics.drawCenteredString(
-                font,
+        drawUiCentered(
+                graphics,
                 "Send SMS",
                 phoneX + PHONE_WIDTH / 2,
-                phoneY + 198,
+                phoneY + 197,
                 0xFFFFFFFF
         );
 
         String own = PhoneMessagesClientState.get().snapshot().ownNumber();
-        graphics.drawCenteredString(
-                font,
+        drawUiCentered(
+                graphics,
                 own.isBlank() ? "No SIM / eSIM" : "From " + own,
                 phoneX + PHONE_WIDTH / 2,
                 phoneY + 238,
-                0xFF8E8E93
+                MUTED
         );
-        graphics.drawCenteredString(
-                font,
+
+        drawUiWrappedCentered(
+                graphics,
                 "DEV: enter your own number for loopback testing",
                 phoneX + PHONE_WIDTH / 2,
                 phoneY + 255,
-                0xFF8E8E93
+                PHONE_WIDTH - 52,
+                12,
+                2,
+                MUTED
         );
 
         super.render(graphics, mouseX, mouseY, partialTick);
+        endPhoneClip(graphics);
         renderHomeIndicator(graphics);
     }
 
