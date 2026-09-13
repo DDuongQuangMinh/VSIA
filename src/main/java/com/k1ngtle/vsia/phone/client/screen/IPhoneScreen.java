@@ -53,12 +53,59 @@ public abstract class IPhoneScreen extends Screen {
     }
 
     protected void renderHeader(GuiGraphics graphics, String back, String title) {
+        String safeTitle = fitHeaderTitle(title == null ? "" : title, PHONE_WIDTH - 42);
+        int titleWidth = font.width(safeTitle);
+        int titleX = phoneX + (PHONE_WIDTH - titleWidth) / 2;
+        int titleRight = titleX + titleWidth;
+        int titleY = phoneY + 47;
+
         if (back != null && !back.isBlank()) {
-            graphics.drawString(font, "‹ " + back, phoneX + 16, phoneY + 47, 0xFF5FA9FF, false);
+            String fullBack = "‹ " + back;
+            String compactBack = "‹";
+            int backX = phoneX + 16;
+            int minimumGap = 8;
+            int fullBackRight = backX + font.width(fullBack);
+
+            String backText = fullBackRight + minimumGap <= titleX
+                    ? fullBack
+                    : compactBack;
+
+            graphics.drawString(
+                    font,
+                    backText,
+                    backX,
+                    titleY,
+                    0xFF5FA9FF,
+                    false
+            );
         }
 
-        int titleWidth = font.width(title);
-        graphics.drawString(font, title, phoneX + (PHONE_WIDTH - titleWidth) / 2, phoneY + 47, 0xFFFFFFFF, false);
+        int rightSafe = phoneX + PHONE_WIDTH - 16;
+        if (titleRight > rightSafe) {
+            titleX = rightSafe - titleWidth;
+        }
+
+        graphics.drawString(
+                font,
+                safeTitle,
+                titleX,
+                titleY,
+                0xFFFFFFFF,
+                false
+        );
+    }
+
+    private String fitHeaderTitle(String value, int maxWidth) {
+        if (font.width(value) <= maxWidth) {
+            return value;
+        }
+
+        String text = value;
+        while (!text.isEmpty() && font.width(text + "...") > maxWidth) {
+            text = text.substring(0, text.length() - 1);
+        }
+
+        return text.isEmpty() ? "..." : text + "...";
     }
 
     protected boolean clickedHome(double mouseX, double mouseY) {
