@@ -34,6 +34,12 @@ public final class RadioVoiceClient {
     private int sessionId;
     private int sequence;
 
+    private String lastPlaybackErrorShown =
+            "";
+
+    private String lastPlaybackDeviceShown =
+            "";
+
     private RadioVoiceClient() {
     }
 
@@ -226,6 +232,58 @@ public final class RadioVoiceClient {
                 intelligibility,
                 emission
         );
+
+        Minecraft minecraft =
+                Minecraft.getInstance();
+
+        if (minecraft.player == null) {
+            return;
+        }
+
+        String error =
+                playback.lastError();
+
+        if (error != null
+                && !error.isBlank()
+                && !error.equals(
+                lastPlaybackErrorShown
+        )) {
+            lastPlaybackErrorShown =
+                    error;
+
+            minecraft.player
+                    .displayClientMessage(
+                            Component.literal(
+                                    "[Radio] Audio playback unavailable: "
+                                            + error
+                            ),
+                            false
+                    );
+
+            return;
+        }
+
+        String device =
+                playback.outputDeviceDescription();
+
+        if (playback.available()
+                && device != null
+                && !device.isBlank()
+                && !device.equals(
+                lastPlaybackDeviceShown
+        )) {
+            lastPlaybackDeviceShown =
+                    device;
+
+            minecraft.player
+                    .displayClientMessage(
+                            Component.literal(
+                                    "[Radio] Audio output: "
+                                            + device
+                            ),
+                            false
+                    );
+        }
     }
 
     public boolean transmitting() {

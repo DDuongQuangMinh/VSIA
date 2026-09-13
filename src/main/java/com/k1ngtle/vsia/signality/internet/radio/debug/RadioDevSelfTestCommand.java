@@ -3,6 +3,9 @@ package com.k1ngtle.vsia.signality.internet.radio.debug;
 import com.k1ngtle.vsia.Vsia;
 import com.k1ngtle.vsia.signality.internet.radio.portable.PortableRadioEndpoint;
 import com.k1ngtle.vsia.signality.internet.radio.portable.PortableRadioService;
+import com.k1ngtle.vsia.signality.internet.field.FieldDeviceNetwork;
+import com.k1ngtle.vsia.signality.internet.radio.voice.MuLawCodec;
+import com.k1ngtle.vsia.signality.internet.radio.voice.network.S2CRadioVoiceFramePacket;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -19,6 +22,9 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 
 @Mod.EventBusSubscriber(
         modid = Vsia.MOD_ID,
@@ -106,6 +112,14 @@ public final class RadioDevSelfTestCommand {
                                                         .executes(
                                                                 RadioDevSelfTestCommand::remotePosition
                                                         )
+                                        )
+                        )
+                        .then(
+                                Commands.literal(
+                                                "audiotest"
+                                        )
+                                        .executes(
+                                                RadioDevSelfTestCommand::audioTest
                                         )
                         )
                         .then(
@@ -209,6 +223,112 @@ public final class RadioDevSelfTestCommand {
                 Vec3.atCenterOf(
                         pos
                 )
+        );
+
+        return 1;
+    }
+
+    private static int audioTest(
+            CommandContext<CommandSourceStack> context
+    ) throws CommandSyntaxException {
+        ServerPlayer player =
+                context.getSource()
+                        .getPlayerOrException();
+
+        UUID sourceId =
+                UUID.nameUUIDFromBytes(
+                        (
+                                "vsia-radio-audio-test:"
+                                        + player.getUUID()
+                        )
+                                .getBytes(
+                                        StandardCharsets.UTF_8
+                                )
+                );
+
+        int sampleRate =
+                8_000;
+
+        int samplesPerFrame =
+                160;
+
+        int frames =
+                50;
+
+        double frequencyHz =
+                700.0;
+
+        double amplitude =
+                12_000.0;
+
+        for (int frame = 0;
+             frame < frames;
+             frame++) {
+            byte[] encoded =
+                    new byte[
+                            samplesPerFrame
+                    ];
+
+            for (int sampleIndex = 0;
+                 sampleIndex < samplesPerFrame;
+                 sampleIndex++) {
+                int absoluteSample =
+                        frame
+                                * samplesPerFrame
+                                + sampleIndex;
+
+                short pcm =
+                        (short) Math.round(
+                                Math.sin(
+                                        2.0
+                                                * Math.PI
+                                                * frequencyHz
+                                                * absoluteSample
+                                                / sampleRate
+                                )
+                                        * amplitude
+                        );
+
+                encoded[sampleIndex] =
+                        MuLawCodec.encode(
+                                pcm
+                        );
+            }
+
+            FieldDeviceNetwork.sendToPlayer(
+                    player,
+                    new S2CRadioVoiceFramePacket(
+                            sourceId,
+                            frame,
+                            encoded,
+                            false,
+                            40.0,
+                            1.0,
+                            "DIGITAL"
+                    )
+            );
+        }
+
+        FieldDeviceNetwork.sendToPlayer(
+                player,
+                new S2CRadioVoiceFramePacket(
+                        sourceId,
+                        frames,
+                        new byte[0],
+                        true,
+                        40.0,
+                        1.0,
+                        "DIGITAL"
+                )
+        );
+
+        player.sendSystemMessage(
+                Component.literal(
+                                "[VS:IA DEV] Sent 1.0 s / 700 Hz local radio audio test."
+                        )
+                        .withStyle(
+                                ChatFormatting.AQUA
+                        )
         );
 
         return 1;

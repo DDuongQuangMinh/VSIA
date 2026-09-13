@@ -1,12 +1,18 @@
 package com.k1ngtle.vsia.signality.internet.radio.voice.client;
 
 import com.k1ngtle.vsia.signality.internet.radio.voice.MuLawCodec;
+import net.minecraft.client.Minecraft;
 
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.DataLine;
 import javax.sound.sampled.LineUnavailableException;
+import javax.sound.sampled.Mixer;
 import javax.sound.sampled.SourceDataLine;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.TreeMap;
@@ -15,6 +21,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class RadioAudioPlayback {
+    private static final int RADIO_SAMPLE_RATE =
+            8_000;
+
     private static final int FRAME_MILLIS =
             20;
 
@@ -22,10 +31,18 @@ public final class RadioAudioPlayback {
             3;
 
     private static final int MAX_BUFFERED_FRAMES =
-            50;
+            100;
 
     private static final int MAX_CONCEAL_FRAMES =
             2;
+
+    private static final float[] OUTPUT_RATES =
+            new float[]{
+                    48_000.0F,
+                    44_100.0F,
+                    16_000.0F,
+                    8_000.0F
+            };
 
     private final Map<UUID, StreamBuffer> streams =
             new ConcurrentHashMap<>();
@@ -37,10 +54,14 @@ public final class RadioAudioPlayback {
             new Random();
 
     private volatile SourceDataLine line;
-    private volatile int outputRepeat =
-            1;
+
+    private volatile float outputSampleRate =
+            48_000.0F;
 
     private volatile String lastError =
+            "";
+
+    private volatile String outputDeviceDescription =
             "";
 
     public void enqueue(
@@ -57,6 +78,11 @@ public final class RadioAudioPlayback {
         }
 
         ensureStarted();
+
+        if (!running.get()
+                || line == null) {
+            return;
+        }
 
         streams
                 .computeIfAbsent(
@@ -86,6 +112,15 @@ public final class RadioAudioPlayback {
         return lastError;
     }
 
+    public String outputDeviceDescription() {
+        return outputDeviceDescription;
+    }
+
+    public boolean available() {
+        return running.get()
+                && line != null;
+    }
+
     public void stop() {
         running.set(
                 false
@@ -105,6 +140,11 @@ public final class RadioAudioPlayback {
             }
 
             try {
+                current.stop();
+            } catch (Exception ignored) {
+            }
+
+            try {
                 current.close();
             } catch (Exception ignored) {
             }
@@ -112,7 +152,8 @@ public final class RadioAudioPlayback {
     }
 
     private synchronized void ensureStarted() {
-        if (running.get()) {
+        if (running.get()
+                && line != null) {
             return;
         }
 
@@ -121,8 +162,11 @@ public final class RadioAudioPlayback {
         } catch (LineUnavailableException exception) {
             lastError =
                     exception.getMessage() == null
-                            ? "No compatible output device"
+                            ? "No compatible radio audio output device"
                             : exception.getMessage();
+
+            outputDeviceDescription =
+                    "";
 
             return;
         }
@@ -152,7 +196,7 @@ public final class RadioAudioPlayback {
 
                 if (selectedId == null) {
                     Thread.sleep(
-                            4L
+                            2L
                     );
 
                     continue;
@@ -172,7 +216,7 @@ public final class RadioAudioPlayback {
 
                 if (result == null) {
                     Thread.sleep(
-                            2L
+                            1L
                     );
 
                     continue;
@@ -214,22 +258,21 @@ public final class RadioAudioPlayback {
 
                 if (audio.length > 0) {
                     byte[] pcm =
-                            MuLawCodec.decodePcm16Le(
+                            decodeAndResample(
                                     audio,
-                                    outputRepeat
+                                    outputSampleRate
                             );
 
                     applyGain(
                             pcm,
-                            0.55
-                                    + 0.45
+                            0.70
+                                    + 0.30
                                     * frame.intelligibility()
                     );
 
-                    current.write(
-                            pcm,
-                            0,
-                            pcm.length
+                    writeFully(
+                            current,
+                            pcm
                     );
                 } else if (!frame.endOfTransmission()) {
                     writeSilence(
@@ -316,59 +359,181 @@ public final class RadioAudioPlayback {
 
     private void openLine()
             throws LineUnavailableException {
-        AudioFormat eightKhz =
-                format(
-                        8_000.0F
+        String preferredMinecraftDevice =
+                minecraftSoundDevice();
+
+        List<Mixer.Info> mixers =
+                sortedMixers(
+                        preferredMinecraftDevice
                 );
 
-        if (AudioSystem.isLineSupported(
-                new DataLine.Info(
-                        SourceDataLine.class,
-                        eightKhz
-                )
-        )) {
-            open(
-                    eightKhz,
-                    1
-            );
+        List<String> failures =
+                new ArrayList<>();
 
+        if (!preferredMinecraftDevice.isBlank()) {
+            for (Mixer.Info info
+                    : mixers) {
+                if (deviceMatchScore(
+                        preferredMinecraftDevice,
+                        info.getName()
+                ) <= 0) {
+                    continue;
+                }
+
+                if (tryOpenMixer(
+                        info,
+                        failures
+                )) {
+                    return;
+                }
+            }
+        }
+
+        if (tryOpenSystemDefault(
+                failures
+        )) {
             return;
         }
 
-        AudioFormat sixteenKhz =
-                format(
-                        16_000.0F
-                );
+        for (Mixer.Info info
+                : mixers) {
+            if (tryOpenMixer(
+                    info,
+                    failures
+            )) {
+                return;
+            }
+        }
 
-        open(
-                sixteenKhz,
-                2
+        throw new LineUnavailableException(
+                failures.isEmpty()
+                        ? "No Java Sound output line supports PCM mono audio"
+                        : "No usable output device. "
+                        + String.join(
+                        " | ",
+                        failures
+                )
         );
     }
 
-    private void open(
-            AudioFormat format,
-            int repeat
-    ) throws LineUnavailableException {
-        DataLine.Info info =
-                new DataLine.Info(
-                        SourceDataLine.class,
-                        format
+    private boolean tryOpenSystemDefault(
+            List<String> failures
+    ) {
+        for (float rate
+                : OUTPUT_RATES) {
+            AudioFormat format =
+                    format(
+                            rate
+                    );
+
+            try {
+                SourceDataLine output =
+                        AudioSystem.getSourceDataLine(
+                                format
+                        );
+
+                openAndStart(
+                        output,
+                        format,
+                        "System default"
                 );
 
-        SourceDataLine output =
-                (SourceDataLine) AudioSystem
-                        .getLine(
-                                info
-                        );
+                return true;
+            } catch (Exception exception) {
+                failures.add(
+                        "default "
+                                + Math.round(
+                                rate
+                        )
+                                + " Hz: "
+                                + shortMessage(
+                                exception
+                        )
+                );
+            }
+        }
+
+        return false;
+    }
+
+    private boolean tryOpenMixer(
+            Mixer.Info info,
+            List<String> failures
+    ) {
+        Mixer mixer =
+                AudioSystem.getMixer(
+                        info
+                );
+
+        for (float rate
+                : OUTPUT_RATES) {
+            AudioFormat format =
+                    format(
+                            rate
+                    );
+
+            DataLine.Info lineInfo =
+                    new DataLine.Info(
+                            SourceDataLine.class,
+                            format
+                    );
+
+            if (!mixer.isLineSupported(
+                    lineInfo
+            )) {
+                continue;
+            }
+
+            try {
+                SourceDataLine output =
+                        (SourceDataLine) mixer
+                                .getLine(
+                                        lineInfo
+                                );
+
+                openAndStart(
+                        output,
+                        format,
+                        info.getName()
+                );
+
+                return true;
+            } catch (Exception exception) {
+                failures.add(
+                        info.getName()
+                                + " "
+                                + Math.round(
+                                rate
+                        )
+                                + " Hz: "
+                                + shortMessage(
+                                exception
+                        )
+                );
+            }
+        }
+
+        return false;
+    }
+
+    private void openAndStart(
+            SourceDataLine output,
+            AudioFormat format,
+            String deviceName
+    ) throws LineUnavailableException {
+        int bufferBytes =
+                Math.max(
+                        4_096,
+                        (int) (
+                                format.getSampleRate()
+                                        * format.getFrameSize()
+                                        * 0.25
+                        )
+                );
 
         output.open(
                 format,
-                (int) (
-                        format.getSampleRate()
-                                * format.getFrameSize()
-                                * 0.18
-                )
+                bufferBytes
         );
 
         output.start();
@@ -376,11 +541,147 @@ public final class RadioAudioPlayback {
         line =
                 output;
 
-        outputRepeat =
-                repeat;
+        outputSampleRate =
+                format.getSampleRate();
+
+        outputDeviceDescription =
+                deviceName
+                        + " @ "
+                        + Math.round(
+                        outputSampleRate
+                )
+                        + " Hz";
 
         lastError =
                 "";
+    }
+
+    private static List<Mixer.Info> sortedMixers(
+            String preferred
+    ) {
+        List<Mixer.Info> result =
+                new ArrayList<>(
+                        List.of(
+                                AudioSystem.getMixerInfo()
+                        )
+                );
+
+        result.sort(
+                Comparator
+                        .comparingInt(
+                                (Mixer.Info info) ->
+                                        deviceMatchScore(
+                                                preferred,
+                                                info.getName()
+                                        )
+                        )
+                        .reversed()
+                        .thenComparing(
+                                Mixer.Info::getName,
+                                String.CASE_INSENSITIVE_ORDER
+                        )
+        );
+
+        return result;
+    }
+
+    private static int deviceMatchScore(
+            String preferred,
+            String candidate
+    ) {
+        if (preferred == null
+                || preferred.isBlank()
+                || candidate == null
+                || candidate.isBlank()) {
+            return 0;
+        }
+
+        String a =
+                normalizeDeviceName(
+                        preferred
+                );
+
+        String b =
+                normalizeDeviceName(
+                        candidate
+                );
+
+        if (a.equals(
+                b
+        )) {
+            return 100;
+        }
+
+        if (a.contains(
+                b
+        )
+                || b.contains(
+                a
+        )) {
+            return 80;
+        }
+
+        int score =
+                0;
+
+        for (String token
+                : a.split(
+                " "
+        )) {
+            if (token.length() < 3) {
+                continue;
+            }
+
+            if (b.contains(
+                    token
+            )) {
+                score +=
+                        10;
+            }
+        }
+
+        return score;
+    }
+
+    private static String normalizeDeviceName(
+            String value
+    ) {
+        return value
+                .toLowerCase(
+                        Locale.ROOT
+                )
+                .replace(
+                        "openal soft on ",
+                        ""
+                )
+                .replaceAll(
+                        "[^a-z0-9]+",
+                        " "
+                )
+                .trim();
+    }
+
+    private static String minecraftSoundDevice() {
+        try {
+            Minecraft minecraft =
+                    Minecraft.getInstance();
+
+            if (minecraft == null
+                    || minecraft.options == null) {
+                return "";
+            }
+
+            String selected =
+                    minecraft.options
+                            .soundDevice()
+                            .get();
+
+            return selected == null
+                    ? ""
+                    : selected.trim();
+        } catch (Throwable ignored) {
+            return "";
+        }
     }
 
     private static AudioFormat format(
@@ -397,22 +698,182 @@ public final class RadioAudioPlayback {
         );
     }
 
+    private static byte[] decodeAndResample(
+            byte[] muLaw,
+            float targetRate
+    ) {
+        if (muLaw == null
+                || muLaw.length == 0) {
+            return new byte[0];
+        }
+
+        short[] source =
+                new short[
+                        muLaw.length
+                ];
+
+        for (int i = 0;
+             i < muLaw.length;
+             i++) {
+            source[i] =
+                    MuLawCodec.decode(
+                            muLaw[i]
+                    );
+        }
+
+        if (Math.abs(
+                targetRate
+                        - RADIO_SAMPLE_RATE
+        ) < 1.0F) {
+            byte[] pcm =
+                    new byte[
+                            source.length
+                                    * 2
+                    ];
+
+            for (int i = 0;
+                 i < source.length;
+                 i++) {
+                writeSample(
+                        pcm,
+                        i,
+                        source[i]
+                );
+            }
+
+            return pcm;
+        }
+
+        int targetSamples =
+                Math.max(
+                        1,
+                        Math.round(
+                                source.length
+                                        * targetRate
+                                        / RADIO_SAMPLE_RATE
+                        )
+                );
+
+        byte[] pcm =
+                new byte[
+                        targetSamples
+                                * 2
+                ];
+
+        if (source.length == 1) {
+            for (int i = 0;
+                 i < targetSamples;
+                 i++) {
+                writeSample(
+                        pcm,
+                        i,
+                        source[0]
+                );
+            }
+
+            return pcm;
+        }
+
+        for (int i = 0;
+             i < targetSamples;
+             i++) {
+            double sourcePosition =
+                    (
+                            (double) i
+                                    * (
+                                    source.length - 1
+                            )
+                    )
+                            / Math.max(
+                            1,
+                            targetSamples - 1
+                    );
+
+            int left =
+                    Math.max(
+                            0,
+                            Math.min(
+                                    source.length - 1,
+                                    (int) Math.floor(
+                                            sourcePosition
+                                    )
+                            )
+                    );
+
+            int right =
+                    Math.min(
+                            source.length - 1,
+                            left + 1
+                    );
+
+            double fraction =
+                    sourcePosition
+                            - left;
+
+            double value =
+                    source[left]
+                            + (
+                            source[right]
+                                    - source[left]
+                    )
+                            * fraction;
+
+            writeSample(
+                    pcm,
+                    i,
+                    (short) Math.round(
+                            value
+                    )
+            );
+        }
+
+        return pcm;
+    }
+
+    private static void writeSample(
+            byte[] pcm,
+            int sampleIndex,
+            short sample
+    ) {
+        int index =
+                sampleIndex
+                        * 2;
+
+        pcm[index] =
+                (byte) (
+                        sample
+                                & 0xFF
+                );
+
+        pcm[index + 1] =
+                (byte) (
+                        (
+                                sample
+                                        >>> 8
+                        )
+                                & 0xFF
+                );
+    }
+
     private void writeSilence(
             SourceDataLine output
     ) {
-        byte[] silence =
-                new byte[
-                        8_000
-                                * FRAME_MILLIS
-                                / 1_000
-                                * 2
-                                * outputRepeat
-                ];
+        int samples =
+                Math.max(
+                        1,
+                        Math.round(
+                                outputSampleRate
+                                        * FRAME_MILLIS
+                                        / 1_000.0F
+                        )
+                );
 
-        output.write(
-                silence,
-                0,
-                silence.length
+        writeFully(
+                output,
+                new byte[
+                        samples
+                                * 2
+                ]
         );
     }
 
@@ -421,8 +882,14 @@ public final class RadioAudioPlayback {
             double intelligibility
     ) {
         int samples =
-                160
-                        * outputRepeat;
+                Math.max(
+                        1,
+                        Math.round(
+                                outputSampleRate
+                                        * FRAME_MILLIS
+                                        / 1_000.0F
+                        )
+                );
 
         byte[] noise =
                 new byte[
@@ -451,27 +918,42 @@ public final class RadioAudioPlayback {
                                     * amplitude
                     );
 
-            noise[i * 2] =
-                    (byte) (
-                            sample
-                                    & 0xFF
-                    );
-
-            noise[i * 2 + 1] =
-                    (byte) (
-                            (
-                                    sample
-                                            >>> 8
-                            )
-                                    & 0xFF
-                    );
+            writeSample(
+                    noise,
+                    i,
+                    sample
+            );
         }
 
-        output.write(
-                noise,
-                0,
-                noise.length
+        writeFully(
+                output,
+                noise
         );
+    }
+
+    private static void writeFully(
+            SourceDataLine output,
+            byte[] data
+    ) {
+        int offset =
+                0;
+
+        while (offset < data.length) {
+            int written =
+                    output.write(
+                            data,
+                            offset,
+                            data.length
+                                    - offset
+                    );
+
+            if (written <= 0) {
+                break;
+            }
+
+            offset +=
+                    written;
+        }
     }
 
     private static byte[] attenuateMuLaw(
@@ -483,40 +965,37 @@ public final class RadioAudioPlayback {
             return new byte[0];
         }
 
-        byte[] pcm =
-                MuLawCodec.decodePcm16Le(
-                        muLaw,
-                        1
-                );
-
-        applyGain(
-                pcm,
-                gain
-        );
-
         byte[] result =
                 new byte[
-                        pcm.length / 2
+                        muLaw.length
                 ];
 
         for (int i = 0;
-             i < result.length;
+             i < muLaw.length;
              i++) {
             short sample =
-                    (short) (
-                            (
-                                    pcm[i * 2]
-                                            & 0xFF
-                            )
-                                    | (
-                                    pcm[i * 2 + 1]
-                                            << 8
+                    MuLawCodec.decode(
+                            muLaw[i]
+                    );
+
+            int scaled =
+                    (int) Math.round(
+                            sample
+                                    * gain
+                    );
+
+            scaled =
+                    Math.max(
+                            Short.MIN_VALUE,
+                            Math.min(
+                                    Short.MAX_VALUE,
+                                    scaled
                             )
                     );
 
             result[i] =
                     MuLawCodec.encode(
-                            sample
+                            (short) scaled
                     );
         }
 
@@ -592,6 +1071,21 @@ public final class RadioAudioPlayback {
         );
     }
 
+    private static String shortMessage(
+            Exception exception
+    ) {
+        String message =
+                exception.getMessage();
+
+        if (message == null
+                || message.isBlank()) {
+            return exception.getClass()
+                    .getSimpleName();
+        }
+
+        return message;
+    }
+
     private static final class StreamBuffer {
         private final TreeMap<Integer, Frame> frames =
                 new TreeMap<>();
@@ -600,10 +1094,12 @@ public final class RadioAudioPlayback {
                 Integer.MIN_VALUE;
 
         private boolean started;
+
         private int endSequence =
                 Integer.MIN_VALUE;
 
         private Frame lastGood;
+
         private int concealCount;
 
         synchronized void offer(
@@ -613,7 +1109,7 @@ public final class RadioAudioPlayback {
                 return;
             }
 
-            if (frames.size()
+            while (frames.size()
                     >= MAX_BUFFERED_FRAMES) {
                 frames.pollFirstEntry();
             }

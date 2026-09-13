@@ -536,9 +536,6 @@ public final class PortableRadioEndpoint
         lastLiveVoiceSequence =
                 -1;
 
-        lastLiveVoiceFrameNanos =
-                0L;
-
         PortableRadioState.status(
                 stack(),
                 "LIVE PTT transmitting"
@@ -568,18 +565,17 @@ public final class PortableRadioEndpoint
             return false;
         }
 
-        long now =
-                System.nanoTime();
+        if (lastLiveVoiceSequence >= 0
+                && sequenceNumber
+                - lastLiveVoiceSequence
+                > 250) {
+            PortableRadioState.status(
+                    stack(),
+                    "LIVE PTT rejected: invalid sequence jump"
+            );
 
-        if (lastLiveVoiceFrameNanos != 0L
-                && now
-                - lastLiveVoiceFrameNanos
-                < 12_000_000L) {
             return false;
         }
-
-        lastLiveVoiceFrameNanos =
-                now;
 
         lastLiveVoiceSequence =
                 sequenceNumber;
