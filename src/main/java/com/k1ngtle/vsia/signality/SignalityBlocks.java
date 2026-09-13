@@ -323,6 +323,31 @@ public class SignalityBlocks {
     private SignalityBlocks() {
     }
 
+    // VSIA_FULL_RADIO_PACKAGE_V1
+    public static final net.minecraftforge.registries.RegistryObject<net.minecraft.world.level.block.Block> TEMPORARY_RADIO =
+            BLOCKS.register(
+                    "temporary_radio",
+                    com.k1ngtle.vsia.signality.internet.radio.device.TemporaryRadioBlock::new
+            );
+
+    public static final net.minecraftforge.registries.RegistryObject<net.minecraft.world.item.Item> TEMPORARY_RADIO_ITEM =
+            ITEMS.register(
+                    "temporary_radio",
+                    () -> new net.minecraft.world.item.BlockItem(
+                            TEMPORARY_RADIO.get(),
+                            new net.minecraft.world.item.Item.Properties().stacksTo(1)
+                    )
+            );
+
+    public static final net.minecraftforge.registries.RegistryObject<net.minecraft.world.level.block.entity.BlockEntityType<com.k1ngtle.vsia.signality.internet.radio.device.TemporaryRadioBlockEntity>> TEMPORARY_RADIO_BE =
+            BLOCK_ENTITIES.register(
+                    "temporary_radio",
+                    () -> net.minecraft.world.level.block.entity.BlockEntityType.Builder.of(
+                            com.k1ngtle.vsia.signality.internet.radio.device.TemporaryRadioBlockEntity::new,
+                            TEMPORARY_RADIO.get()
+                    ).build(null)
+            );
+
     public static void register(IEventBus eventBus) {
         BLOCKS.register(eventBus);
         ITEMS.register(eventBus);

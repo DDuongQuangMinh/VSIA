@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "vsia:block/temporary_radio" },
+    "facing=east":  { "model": "vsia:block/temporary_radio", "y": 90 },
+    "facing=south": { "model": "vsia:block/temporary_radio", "y": 180 },
+    "facing=west":  { "model": "vsia:block/temporary_radio", "y": 270 }
+  }
+}

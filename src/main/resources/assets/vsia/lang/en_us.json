@@ -1,3 +1,5 @@
 {
-  "item.vsia.temporary_iphone": "Temporary iPhone"
+    "item.vsia.temporary_iphone": "Temporary iPhone",
+    "block.vsia.temporary_radio": "Temporary Field Radio",
+    "item.vsia.temporary_radio": "Temporary Field Radio"
 }
