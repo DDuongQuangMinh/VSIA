@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "vsia:block/temporary_satellite_terminal"
+    },
+    "facing=east": {
+      "model": "vsia:block/temporary_satellite_terminal",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "vsia:block/temporary_satellite_terminal",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "vsia:block/temporary_satellite_terminal",
+      "y": 270
+    }
+  }
+}

@@ -94,6 +94,7 @@ public class ModCreativeTabs {
                                 output.accept(SignalityBlocks.RT_AC68U_ROUTER_ITEM.get());
                                 output.accept(SignalityBlocks.TEMPORARY_IPHONE_ITEM.get());
                                 output.accept(SignalityBlocks.TEMPORARY_RADIO_ITEM.get());
+                                output.accept(SignalityBlocks.TEMPORARY_SATELLITE_TERMINAL_ITEM.get());
                                 output.accept(SignalityBlocks.NETWORK_CABLE.get());
                                 output.accept(SignalityBlocks.SHIP_GRABBER.get());
                             })
