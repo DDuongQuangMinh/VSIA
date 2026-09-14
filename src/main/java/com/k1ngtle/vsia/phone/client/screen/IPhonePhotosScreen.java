@@ -26,6 +26,7 @@ public final class IPhonePhotosScreen extends IPhoneScreen {
     private int contentX;
     private int gridY;
     private int firstIndex;
+    private long openedAt;
 
     public IPhonePhotosScreen() {
         super(Component.literal("Photos"));
@@ -45,6 +46,7 @@ public final class IPhonePhotosScreen extends IPhoneScreen {
                         / 2;
 
         gridY = phoneY + 94;
+        openedAt = System.currentTimeMillis();
     }
 
     @Override
@@ -140,9 +142,21 @@ public final class IPhonePhotosScreen extends IPhoneScreen {
                         contentX
                                 + column * (CELL + GAP);
 
-                int y =
+                int baseY =
                         gridY
                                 + row * (CELL + GAP);
+
+                float progress =
+                        animationProgress(
+                                local
+                        );
+
+                int y =
+                        baseY
+                                + Math.round(
+                                (1.0F - progress)
+                                        * 18.0F
+                        );
 
                 renderThumbnail(
                         graphics,
@@ -382,12 +396,18 @@ public final class IPhonePhotosScreen extends IPhoneScreen {
                             ),
                             firstIndex + PAGE_SIZE
                     );
+
+            openedAt =
+                    System.currentTimeMillis();
         } else if (delta > 0.0D) {
             firstIndex =
                     Math.max(
                             0,
                             firstIndex - PAGE_SIZE
                     );
+
+            openedAt =
+                    System.currentTimeMillis();
         }
 
         return true;
@@ -406,6 +426,23 @@ public final class IPhonePhotosScreen extends IPhoneScreen {
                                 )
                         )
                 );
+    }
+
+    private float animationProgress(
+            int localIndex
+    ) {
+        long elapsed =
+                System.currentTimeMillis()
+                        - openedAt
+                        - localIndex * 22L;
+
+        return Math.max(
+                0.0F,
+                Math.min(
+                        1.0F,
+                        elapsed / 220.0F
+                )
+        );
     }
 
     private static int maxPageStart(

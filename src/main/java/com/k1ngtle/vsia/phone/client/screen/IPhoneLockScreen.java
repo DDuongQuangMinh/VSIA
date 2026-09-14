@@ -30,13 +30,13 @@ public final class IPhoneLockScreen extends IPhoneScreen {
         super.init();
 
         playerW = PHONE_WIDTH - 34;
-        playerH = 106;
+        playerH = 128;
         playerX =
                 phoneX
                         + (PHONE_WIDTH - playerW)
                         / 2;
 
-        playerY = phoneY + 188;
+        playerY = phoneY + 176;
     }
 
     @Override
@@ -226,33 +226,32 @@ public final class IPhoneLockScreen extends IPhoneScreen {
                 CARD
         );
 
-        int accent =
-                accentColor();
+        int accent = accentColor();
 
         roundedRect(
                 graphics,
-                playerX + 10,
-                playerY + 10,
-                42,
-                42,
-                10,
+                playerX + 11,
+                playerY + 11,
+                48,
+                48,
+                12,
                 accent
         );
 
         drawMediaGlyph(
                 graphics,
-                playerX + 31,
-                playerY + 31
+                playerX + 35,
+                playerY + 35
         );
 
         drawUiText(
                 graphics,
                 fitUi(
                         PhoneNowPlaying.title(),
-                        playerW - 76
+                        playerW - 85
                 ),
-                playerX + 62,
-                playerY + 13,
+                playerX + 70,
+                playerY + 14,
                 TEXT
         );
 
@@ -260,9 +259,9 @@ public final class IPhoneLockScreen extends IPhoneScreen {
                 graphics,
                 fitUi(
                         PhoneNowPlaying.subtitle(),
-                        playerW - 76
+                        playerW - 85
                 ),
-                playerX + 62,
+                playerX + 70,
                 playerY + 31,
                 MUTED
         );
@@ -272,19 +271,87 @@ public final class IPhoneLockScreen extends IPhoneScreen {
                 formatTime(
                         PhoneNowPlaying.elapsedMillis()
                 ),
-                playerX + 62,
-                playerY + 46,
+                playerX + 70,
+                playerY + 47,
                 MUTED
         );
 
-        int controlsY =
-                playerY + 67;
+        int progressX = playerX + 12;
+        int progressY = playerY + 69;
+        int progressW = playerW - 24;
+
+        roundedRect(
+                graphics,
+                progressX,
+                progressY,
+                progressW,
+                3,
+                2,
+                0xFF55555A
+        );
+
+        int fill = (int) Math.min(
+                progressW,
+                Math.max(
+                        0,
+                        progressW
+                                * (
+                                PhoneNowPlaying.elapsedMillis()
+                                        % 480000L
+                        )
+                                / 480000L
+                )
+        );
+
+        if (fill > 0) {
+            roundedRect(
+                    graphics,
+                    progressX,
+                    progressY,
+                    fill,
+                    3,
+                    2,
+                    accent
+            );
+        }
+
+        int controlsY = playerY + 88;
+
+        roundedRect(
+                graphics,
+                playerX + 26,
+                controlsY,
+                31,
+                31,
+                15,
+                0xFF3A3A3F
+        );
+
+        roundedRect(
+                graphics,
+                phoneX + PHONE_WIDTH / 2 - 23,
+                controlsY - 2,
+                46,
+                35,
+                17,
+                0xFF3A3A3F
+        );
+
+        roundedRect(
+                graphics,
+                playerX + playerW - 57,
+                controlsY,
+                31,
+                31,
+                15,
+                0xFF3A3A3F
+        );
 
         drawUiCentered(
                 graphics,
                 "‹‹",
-                playerX + 45,
-                controlsY,
+                playerX + 41,
+                controlsY + 11,
                 TEXT
         );
 
@@ -294,15 +361,15 @@ public final class IPhoneLockScreen extends IPhoneScreen {
                         ? "Pause"
                         : "Play",
                 phoneX + PHONE_WIDTH / 2,
-                controlsY,
+                controlsY + 10,
                 TEXT
         );
 
         drawUiCentered(
                 graphics,
                 "››",
-                playerX + playerW - 45,
-                controlsY,
+                playerX + playerW - 41,
+                controlsY + 11,
                 TEXT
         );
     }
@@ -431,7 +498,7 @@ public final class IPhoneLockScreen extends IPhoneScreen {
                         playerW / 3;
 
                 if (mouseY
-                        >= playerY + 58) {
+                        >= playerY + 80) {
                     if (mouseX
                             < playerX + third) {
                         PhoneNowPlaying.previous();

@@ -27,6 +27,7 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
     private int imageWidth;
     private int imageHeight;
     private int toolbarY;
+    private long openedAt;
 
     public IPhonePhotoViewerScreen(
             long photoId
@@ -59,6 +60,9 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
 
         toolbarY =
                 phoneY + PHONE_HEIGHT - 69;
+
+        openedAt =
+                System.currentTimeMillis();
     }
 
     @Override
@@ -169,6 +173,10 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
                     photos.size()
             );
         }
+
+        renderTransitionOverlay(
+                graphics
+        );
 
         renderHomeIndicator(
                 graphics
@@ -285,6 +293,41 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
         );
 
         graphics.disableScissor();
+    }
+
+    private void renderTransitionOverlay(
+            GuiGraphics graphics
+    ) {
+        long elapsed =
+                System.currentTimeMillis()
+                        - openedAt;
+
+        float progress =
+                Math.max(
+                        0.0F,
+                        Math.min(
+                                1.0F,
+                                elapsed / 180.0F
+                        )
+                );
+
+        int alpha =
+                Math.round(
+                        (1.0F - progress)
+                                * 170.0F
+                );
+
+        if (alpha <= 0) {
+            return;
+        }
+
+        graphics.fill(
+                displayX(),
+                displayY(),
+                displayX() + displayWidth(),
+                displayY() + displayHeight(),
+                alpha << 24
+        );
     }
 
     private void renderToolbar(

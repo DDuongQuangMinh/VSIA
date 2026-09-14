@@ -150,10 +150,10 @@ public class IPhoneHomeScreen extends IPhoneScreen {
             return;
         }
 
-        int w = 132;
-        int h = 24;
+        int w = 150;
+        int h = 31;
         int x = phoneX + (PHONE_WIDTH - w) / 2;
-        int y = searchY - 2;
+        int y = searchY - 8;
 
         roundedRect(
                 graphics,
@@ -161,8 +161,8 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 y,
                 w,
                 h,
-                12,
-                0xA816171B
+                13,
+                0xCC16171B
         );
 
         int accent =
@@ -176,18 +176,18 @@ public class IPhoneHomeScreen extends IPhoneScreen {
 
         roundedRect(
                 graphics,
-                x + 4,
-                y + 4,
-                16,
-                16,
-                5,
+                x + 5,
+                y + 5,
+                21,
+                21,
+                6,
                 accent
         );
 
         drawMiniMediaGlyph(
                 graphics,
-                x + 12,
-                y + 12,
+                x + 15,
+                y + 15,
                 PhoneNowPlaying.kind()
         );
 
@@ -195,11 +195,32 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 graphics,
                 fitUi(
                         PhoneNowPlaying.title(),
-                        79
+                        86
                 ),
-                x + 26,
-                y + 8,
+                x + 32,
+                y + 7,
                 0xFFFFFFFF
+        );
+
+        drawUiText(
+                graphics,
+                fitUi(
+                        PhoneNowPlaying.subtitle(),
+                        86
+                ),
+                x + 32,
+                y + 18,
+                0xFFB9B9BF
+        );
+
+        roundedRect(
+                graphics,
+                x + w - 27,
+                y + 5,
+                21,
+                21,
+                10,
+                0xFF303136
         );
 
         drawUiCentered(
@@ -207,10 +228,49 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 PhoneNowPlaying.playing()
                         ? "Ⅱ"
                         : "▶",
-                x + w - 15,
-                y + 8,
+                x + w - 17,
+                y + 12,
                 0xFFFFFFFF
         );
+
+        int progressW = w - 44;
+        int progressX = x + 32;
+        int progressY = y + h - 3;
+
+        roundedRect(
+                graphics,
+                progressX,
+                progressY,
+                progressW,
+                2,
+                1,
+                0xFF4A4A4F
+        );
+
+        int fill = (int) Math.min(
+                progressW,
+                Math.max(
+                        0,
+                        progressW
+                                * (
+                                PhoneNowPlaying.elapsedMillis()
+                                        % 480000L
+                        )
+                                / 480000L
+                )
+        );
+
+        if (fill > 0) {
+            roundedRect(
+                    graphics,
+                    progressX,
+                    progressY,
+                    fill,
+                    2,
+                    1,
+                    accent
+            );
+        }
     }
 
     private void drawMiniMediaGlyph(
@@ -470,10 +530,10 @@ public class IPhoneHomeScreen extends IPhoneScreen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0) {
             if (PhoneNowPlaying.hasActive()) {
-                int miniW = 132;
-                int miniH = 24;
+                int miniW = 150;
+                int miniH = 31;
                 int miniX = phoneX + (PHONE_WIDTH - miniW) / 2;
-                int miniY = searchY - 2;
+                int miniY = searchY - 8;
 
                 if (inside(
                         mouseX,
@@ -636,7 +696,7 @@ public class IPhoneHomeScreen extends IPhoneScreen {
             int first = dockX + (dockW - iconSpan) / 2;
 
             if (inside(mouseX, mouseY, first, dockY + 10, DOCK_ICON, DOCK_ICON)) {
-                minecraft.setScreen(new IPhoneCellularScreen());
+                minecraft.setScreen(new IPhonePhoneScreen());
                 return true;
             }
 

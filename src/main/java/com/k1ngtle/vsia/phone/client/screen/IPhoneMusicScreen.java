@@ -57,12 +57,12 @@ public final class IPhoneMusicScreen extends IPhoneScreen {
 
         x = phoneX + 14;
         w = PHONE_WIDTH - 28;
-        artSize = 86;
+        artSize = 76;
         artX = phoneX + (PHONE_WIDTH - artSize) / 2;
-        artY = phoneY + 77;
-        listY = phoneY + 228;
-        rowHeight = 28;
-        repeatY = phoneY + 344;
+        artY = phoneY + 74;
+        listY = phoneY + 232;
+        rowHeight = 27;
+        repeatY = phoneY + 343;
         controlsY = phoneY + 373;
     }
 
@@ -100,7 +100,7 @@ public final class IPhoneMusicScreen extends IPhoneScreen {
                 g,
                 TRACKS[track],
                 phoneX + PHONE_WIDTH / 2,
-                phoneY + 171,
+                phoneY + 158,
                 TEXT
         );
 
@@ -108,7 +108,7 @@ public final class IPhoneMusicScreen extends IPhoneScreen {
                 g,
                 ARTISTS[track],
                 phoneX + PHONE_WIDTH / 2,
-                phoneY + 185,
+                phoneY + 173,
                 MUTED
         );
 
@@ -118,7 +118,7 @@ public final class IPhoneMusicScreen extends IPhoneScreen {
                         PhoneCoreAppsState.musicElapsedMillis()
                 ),
                 x,
-                phoneY + 201,
+                phoneY + 191,
                 MUTED
         );
 
@@ -126,13 +126,13 @@ public final class IPhoneMusicScreen extends IPhoneScreen {
                 g,
                 "08:00",
                 x + w - 29,
-                phoneY + 201,
+                phoneY + 191,
                 MUTED
         );
 
         int progressWidth = w - 48;
         int progressX = x + 24;
-        int progressY = phoneY + 204;
+        int progressY = phoneY + 207;
 
         roundedRect(
                 g,
@@ -176,7 +176,7 @@ public final class IPhoneMusicScreen extends IPhoneScreen {
                 g,
                 "Up Next",
                 x + 2,
-                phoneY + 216,
+                phoneY + 219,
                 MUTED
         );
 
@@ -335,15 +335,43 @@ public final class IPhoneMusicScreen extends IPhoneScreen {
                 artX + 2,
                 artY + 2,
                 artSize - 4,
-                16,
-                12,
-                0x1FFFFFFF
+                15,
+                11,
+                0x22FFFFFF
+        );
+
+        roundedRect(
+                g,
+                artX + 7,
+                artY + 7,
+                artSize - 14,
+                artSize - 14,
+                14,
+                0x16111113
         );
 
         drawMusicNote(
                 g,
                 artX + artSize / 2,
-                artY + artSize / 2,
+                artY + artSize / 2 + 1,
+                0xFFFFFFFF
+        );
+
+        roundedRect(
+                g,
+                artX + artSize - 20,
+                artY + artSize - 18,
+                14,
+                12,
+                6,
+                0x99000000
+        );
+
+        drawUiCentered(
+                g,
+                Integer.toString(track + 1),
+                artX + artSize - 13,
+                artY + artSize - 15,
                 0xFFFFFFFF
         );
     }
