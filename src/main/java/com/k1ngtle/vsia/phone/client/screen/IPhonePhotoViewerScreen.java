@@ -109,11 +109,6 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
             );
         }
 
-        beginPhoneClip(
-                graphics,
-                62
-        );
-
         PhonePersonalAppsState.Photo photo =
                 findPhoto(
                         photos
@@ -175,10 +170,6 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
             );
         }
 
-        endPhoneClip(
-                graphics
-        );
-
         renderHomeIndicator(
                 graphics
         );
@@ -227,6 +218,14 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
 
         if (textureWidth <= 0
                 || textureHeight <= 0) {
+            drawUiCentered(
+                    graphics,
+                    "Image unavailable",
+                    phoneX + PHONE_WIDTH / 2,
+                    imageY + imageHeight / 2,
+                    MUTED
+            );
+
             return;
         }
 
@@ -273,44 +272,19 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
                 imageY + imageHeight
         );
 
-        graphics.pose()
-                .pushPose();
-
-        graphics.pose()
-                .translate(
-                        drawX,
-                        drawY,
-                        0.0F
-                );
-
-        graphics.pose()
-                .scale(
-                        scale,
-                        scale,
-                        1.0F
-                );
-
         graphics.blit(
                 texture,
-                0,
-                0,
+                drawX,
+                drawY,
                 0.0F,
                 0.0F,
-                textureWidth,
-                textureHeight,
+                drawWidth,
+                drawHeight,
                 textureWidth,
                 textureHeight
         );
 
-        graphics.pose()
-                .popPose();
-
         graphics.disableScissor();
-
-        beginPhoneClip(
-                graphics,
-                62
-        );
     }
 
     private void renderToolbar(

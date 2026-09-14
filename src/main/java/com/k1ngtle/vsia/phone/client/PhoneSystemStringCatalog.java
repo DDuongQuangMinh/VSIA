@@ -335,6 +335,7 @@ public final class PhoneSystemStringCatalog {
             "Id",
             "Image",
             "Image file missing",
+            "Image unavailable",
             "Imsi",
             "Inbox",
             "Inbox is Empty",

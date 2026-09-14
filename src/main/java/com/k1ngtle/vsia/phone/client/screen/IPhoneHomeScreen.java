@@ -443,15 +443,15 @@ public class IPhoneHomeScreen extends IPhoneScreen {
             }
             case MUSIC -> {
                 int white = 0xFFFFFFFF;
-                g.fill(cx + 8, y + 8, cx + 12, y + 23, white);
+                g.fill(cx + 6, y + 8, cx + 10, y + 23, white);
                 g.fill(cx - 7, y + 14, cx - 3, y + 28, white);
 
-                g.fill(cx - 7, y + 11, cx + 12, y + 14, white);
-                g.fill(cx - 4, y + 9, cx + 12, y + 11, white);
-                g.fill(cx - 1, y + 7, cx + 12, y + 9, white);
+                g.fill(cx - 7, y + 11, cx + 10, y + 14, white);
+                g.fill(cx - 4, y + 9, cx + 10, y + 11, white);
+                g.fill(cx - 1, y + 7, cx + 10, y + 9, white);
 
                 roundedRect(g, cx - 12, y + 24, 10, 8, 4, white);
-                roundedRect(g, cx + 5, y + 20, 11, 9, 5, white);
+                roundedRect(g, cx + 3, y + 20, 11, 9, 5, white);
             }
         }
     }
