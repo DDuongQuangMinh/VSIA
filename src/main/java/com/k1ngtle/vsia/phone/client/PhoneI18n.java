@@ -1,12 +1,57 @@
 package com.k1ngtle.vsia.phone.client;
 
+import net.minecraft.client.Minecraft;
+
+import java.io.IOException;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 
 public final class PhoneI18n {
+    private static final Map<String, Map<String, String>> EXTERNAL_PACK_CACHE =
+            new HashMap<>();
+
     private static final Map<String, String> VIETNAMESE =
             Map.ofEntries(
             Map.entry("Changing iPhone Language translates the VS:IA phone interface immediately.", "Thay đổi Ngôn ngữ iPhone sẽ dịch giao diện điện thoại VS:IA ngay lập tức."),
             Map.entry("Region changes date formatting, time zone and default units. Temperature changes the Weather widget immediately.", "Vùng thay đổi định dạng ngày, múi giờ và đơn vị mặc định. Nhiệt độ thay đổi tiện ích Thời tiết ngay lập tức."),
+            Map.entry("Add Event", "Thêm sự kiện"),
+            Map.entry("Add Reminder", "Thêm lời nhắc"),
+            Map.entry("All Notes", "Tất cả ghi chú"),
+            Map.entry("Calendar", "Lịch"),
+            Map.entry("Camera", "Camera"),
+            Map.entry("Captured", "Đã chụp"),
+            Map.entry("Clear Completed", "Xóa mục đã hoàn thành"),
+            Map.entry("Delete", "Xóa"),
+            Map.entry("Done", "Xong"),
+            Map.entry("Edit Note", "Sửa ghi chú"),
+            Map.entry("Event Title", "Tên sự kiện"),
+            Map.entry("Events", "Sự kiện"),
+            Map.entry("Front", "Trước"),
+            Map.entry("New Event", "Sự kiện mới"),
+            Map.entry("New Note", "Ghi chú mới"),
+            Map.entry("New Reminder", "Lời nhắc mới"),
+            Map.entry("No Events", "Không có sự kiện"),
+            Map.entry("No Notes", "Không có ghi chú"),
+            Map.entry("No Photos", "Không có ảnh"),
+            Map.entry("No Reminders", "Không có lời nhắc"),
+            Map.entry("Note", "Ghi chú"),
+            Map.entry("Notes", "Ghi chú"),
+            Map.entry("Photos", "Ảnh"),
+            Map.entry("Rear", "Sau"),
+            Map.entry("Reminder", "Lời nhắc"),
+            Map.entry("Reminders", "Lời nhắc"),
+            Map.entry("Save", "Lưu"),
+            Map.entry("Shutter", "Chụp"),
+            Map.entry("Stopwatch", "Bấm giờ"),
+            Map.entry("Today", "Hôm nay"),
+            Map.entry("Title", "Tiêu đề"),
+            Map.entry("Type note...", "Nhập ghi chú..."),
+            Map.entry("Type reminder...", "Nhập lời nhắc..."),
             Map.entry("24-Hour Time", "Giờ 24 giờ"),
             Map.entry("APP PRIVACY", "QUYỀN RIÊNG TƯ ỨNG DỤNG"),
             Map.entry("AUTHENTICATED", "ĐÃ XÁC THỰC"),
@@ -268,15 +313,50 @@ public final class PhoneI18n {
             return text == null ? "" : text;
         }
 
-        if (PhoneLocaleSettings.language()
-                != PhoneLocaleSettings.Language.VIETNAMESE) {
+        String languageTag =
+                PhoneLocaleSettings
+                        .language()
+                        .languageTag();
+
+        String baseLanguage =
+                languageTag == null
+                        ? "en"
+                        : languageTag
+                        .split("-")[0]
+                        .toLowerCase();
+
+        if ("en".equals(baseLanguage)) {
             return text;
         }
 
-        String exact = VIETNAMESE.get(text);
+        if ("vi".equals(baseLanguage)) {
+            String exact = VIETNAMESE.get(text);
 
-        if (exact != null) {
-            return exact;
+            if (exact != null) {
+                return exact;
+            }
+        }
+
+        String packed =
+                externalTranslation(
+                        languageTag,
+                        text
+                );
+
+        if (packed != null) {
+            return packed;
+        }
+
+        if (!baseLanguage.equals(languageTag)) {
+            packed =
+                    externalTranslation(
+                            baseLanguage,
+                            text
+                    );
+
+            if (packed != null) {
+                return packed;
+            }
         }
 
         if (text.startsWith("PhoneOS ") && text.endsWith(" is available.")) {
@@ -307,4 +387,71 @@ public final class PhoneI18n {
 
         return text;
     }
+
+    public static void clearExternalPackCache() {
+        EXTERNAL_PACK_CACHE.clear();
+    }
+
+    private static String externalTranslation(
+            String languageTag,
+            String sourceText
+    ) {
+        Map<String, String> pack =
+                EXTERNAL_PACK_CACHE.computeIfAbsent(
+                        languageTag,
+                        PhoneI18n::loadExternalPack
+                );
+
+        return pack.get(sourceText);
+    }
+
+    private static Map<String, String> loadExternalPack(
+            String languageTag
+    ) {
+        Map<String, String> result =
+                new HashMap<>();
+
+        try {
+            Minecraft minecraft =
+                    Minecraft.getInstance();
+
+            Path path =
+                    minecraft.gameDirectory
+                            .toPath()
+                            .resolve("config")
+                            .resolve("vsia")
+                            .resolve("phone_lang")
+                            .resolve(
+                                    languageTag
+                                            .toLowerCase()
+                                            + ".properties"
+                            );
+
+            if (!Files.exists(path)) {
+                return Map.of();
+            }
+
+            Properties properties =
+                    new Properties();
+
+            try (Reader reader =
+                         Files.newBufferedReader(
+                                 path,
+                                 StandardCharsets.UTF_8
+                         )) {
+                properties.load(reader);
+            }
+
+            for (String key : properties.stringPropertyNames()) {
+                result.put(
+                        key,
+                        properties.getProperty(key)
+                );
+            }
+        } catch (IOException ignored) {
+        }
+
+        return Map.copyOf(result);
+    }
+
 }

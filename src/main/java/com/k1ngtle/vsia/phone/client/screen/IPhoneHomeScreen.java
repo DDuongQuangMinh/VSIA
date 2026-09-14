@@ -360,6 +360,41 @@ public class IPhoneHomeScreen extends IPhoneScreen {
             int totalWidth = GRID_ICON + stepX * (columns - 1);
             int left = phoneX + (PHONE_WIDTH - totalWidth) / 2;
 
+            int calendarX = left + stepX;
+            int calendarY = gridY;
+            if (inside(mouseX, mouseY, calendarX, calendarY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhoneCalendarScreen());
+                return true;
+            }
+
+            int photosX = left + 2 * stepX;
+            int photosY = gridY;
+            if (inside(mouseX, mouseY, photosX, photosY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhonePhotosScreen());
+                return true;
+            }
+
+            int cameraX = left + 3 * stepX;
+            int cameraY = gridY;
+            if (inside(mouseX, mouseY, cameraX, cameraY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhoneCameraScreen());
+                return true;
+            }
+
+            int notesX = left + stepX;
+            int notesY = gridY + stepY;
+            if (inside(mouseX, mouseY, notesX, notesY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhoneNotesScreen());
+                return true;
+            }
+
+            int remindersX = left + 2 * stepX;
+            int remindersY = gridY + stepY;
+            if (inside(mouseX, mouseY, remindersX, remindersY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhoneRemindersScreen());
+                return true;
+            }
+
             int settingsX = left + 3 * stepX;
             int settingsY = gridY + 3 * stepY;
             if (inside(mouseX, mouseY, settingsX, settingsY, GRID_ICON, GRID_ICON + 10)) {

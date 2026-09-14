@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.phone.client.screen;
 
+import com.k1ngtle.vsia.phone.client.PhoneLanguageCatalog;
 import com.k1ngtle.vsia.phone.client.PhoneLocaleSettings;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -14,13 +15,17 @@ public final class IPhoneLanguagePickerScreen extends IPhoneScreen {
     private static final int BLUE = 0xFF0A84FF;
     private static final int DIVIDER = 0xFF3A3A3C;
 
-    private static final int ROW_HEIGHT = 42;
+    private static final int ROW_HEIGHT = 32;
 
     private int contentX;
     private int contentWidth;
-    private int groupY;
+    private int viewportTop;
+    private int viewportBottom;
+    private int viewportHeight;
+    private int scrollOffset;
+    private int contentHeight;
 
-    private List<PhoneLocaleSettings.Language> languages;
+    private List<PhoneLanguageCatalog.LanguageProfile> languages;
 
     public IPhoneLanguagePickerScreen() {
         super(Component.literal("Choose Language"));
@@ -32,10 +37,39 @@ public final class IPhoneLanguagePickerScreen extends IPhoneScreen {
 
         contentX = phoneX + 14;
         contentWidth = PHONE_WIDTH - 28;
-        groupY = phoneY + 86;
+        viewportTop = phoneY + 79;
+        viewportBottom = phoneY + PHONE_HEIGHT - 29;
+        viewportHeight = viewportBottom - viewportTop;
 
         languages =
                 PhoneLocaleSettings.availableLanguages();
+
+        contentHeight =
+                languages.size() * ROW_HEIGHT;
+
+        scrollOffset =
+                centerSelectedLanguage();
+    }
+
+    private int centerSelectedLanguage() {
+        String selected =
+                PhoneLocaleSettings
+                        .language()
+                        .languageTag();
+
+        for (int i = 0; i < languages.size(); i++) {
+            if (languages
+                    .get(i)
+                    .languageTag()
+                    .equalsIgnoreCase(selected)) {
+                return clampScroll(
+                        i * ROW_HEIGHT
+                                - viewportHeight / 2
+                );
+            }
+        }
+
+        return 0;
     }
 
     @Override
@@ -54,76 +88,160 @@ public final class IPhoneLanguagePickerScreen extends IPhoneScreen {
                 "Choose Language"
         );
 
-        beginPhoneClip(graphics, 68);
-
-        drawUiText(
-                graphics,
-                "LANGUAGE",
-                contentX + 4,
-                groupY - 17,
-                MUTED
+        graphics.enableScissor(
+                phoneX + DISPLAY_INSET,
+                viewportTop,
+                phoneX + PHONE_WIDTH - DISPLAY_INSET,
+                viewportBottom
         );
 
-        roundedRect(
-                graphics,
-                contentX,
-                groupY,
-                contentWidth,
-                ROW_HEIGHT * languages.size(),
-                14,
-                CARD
-        );
+        int start =
+                Math.max(
+                        0,
+                        scrollOffset / ROW_HEIGHT
+                );
 
-        for (int i = 0; i < languages.size(); i++) {
-            PhoneLocaleSettings.Language language =
+        int end =
+                Math.min(
+                        languages.size(),
+                        start
+                                + viewportHeight / ROW_HEIGHT
+                                + 3
+                );
+
+        for (int i = start; i < end; i++) {
+            PhoneLanguageCatalog.LanguageProfile profile =
                     languages.get(i);
 
             int y =
-                    groupY + i * ROW_HEIGHT;
+                    viewportTop
+                            + i * ROW_HEIGHT
+                            - scrollOffset;
 
-            drawUiText(
+            drawLanguageRow(
                     graphics,
-                    language.displayName(),
-                    contentX + 13,
-                    y + 16,
-                    TEXT
+                    y,
+                    profile,
+                    i == 0,
+                    i == languages.size() - 1
             );
-
-            if (language
-                    == PhoneLocaleSettings.language()) {
-                drawUiText(
-                        graphics,
-                        "✓",
-                        contentX + contentWidth - 21,
-                        y + 16,
-                        BLUE
-                );
-            }
-
-            if (i + 1 < languages.size()) {
-                graphics.fill(
-                        contentX + 13,
-                        y + ROW_HEIGHT,
-                        contentX + contentWidth - 13,
-                        y + ROW_HEIGHT + 1,
-                        DIVIDER
-                );
-            }
         }
 
-        drawUiWrappedCentered(
+        graphics.disableScissor();
+        renderHomeIndicator(graphics);
+    }
+
+    private void drawLanguageRow(
+            GuiGraphics graphics,
+            int y,
+            PhoneLanguageCatalog.LanguageProfile profile,
+            boolean first,
+            boolean last
+    ) {
+        if (first || last) {
+            roundedRect(
+                    graphics,
+                    contentX,
+                    y,
+                    contentWidth,
+                    ROW_HEIGHT,
+                    10,
+                    CARD
+            );
+        } else {
+            graphics.fill(
+                    contentX,
+                    y,
+                    contentX + contentWidth,
+                    y + ROW_HEIGHT,
+                    CARD
+            );
+        }
+
+        drawUiText(
                 graphics,
-                "Changing iPhone Language translates the VS:IA phone interface immediately.",
-                phoneX + PHONE_WIDTH / 2,
-                groupY + ROW_HEIGHT * languages.size() + 22,
-                PHONE_WIDTH - 48,
-                11,
-                4,
-                MUTED
+                fitUi(
+                        profile.displayName(),
+                        contentWidth - 44
+                ),
+                contentX + 12,
+                y + 11,
+                TEXT
         );
 
-        endPhoneClip(graphics);
-        renderHomeIndicator(graphics);
+        if (profile
+                .languageTag()
+                .equalsIgnoreCase(
+                        PhoneLocaleSettings
+                                .language()
+                                .languageTag()
+                )) {
+            drawUiText(
+                    graphics,
+                    "✓",
+                    contentX + contentWidth - 18,
+                    y + 11,
+                    BLUE
+            );
+        }
+
+        if (!last) {
+            graphics.fill(
+                    contentX + 12,
+                    y + ROW_HEIGHT - 1,
+                    contentX + contentWidth - 12,
+                    y + ROW_HEIGHT,
+                    DIVIDER
+            );
+        }
+    }
+
+    private int clampScroll(int value) {
+        int max =
+                Math.max(
+                        0,
+                        contentHeight - viewportHeight
+                );
+
+        return Math.max(
+                0,
+                Math.min(
+                        value,
+                        max
+                )
+        );
+    }
+
+    @Override
+    public boolean mouseScrolled(
+            double mouseX,
+            double mouseY,
+            double delta
+    ) {
+        if (inside(
+                mouseX,
+                mouseY,
+                contentX,
+                viewportTop,
+                contentWidth,
+                viewportHeight
+        )) {
+            scrollOffset =
+                    clampScroll(
+                            scrollOffset
+                                    + (delta > 0.0
+                                    ? -ROW_HEIGHT * 3
+                                    : ROW_HEIGHT * 3)
+                    );
+
+            return true;
+        }
+
+        return super.mouseScrolled(
+                mouseX,
+                mouseY,
+                delta
+        );
     }
 
     @Override
@@ -140,6 +258,7 @@ public final class IPhoneLanguagePickerScreen extends IPhoneScreen {
                 minecraft.setScreen(
                         new IPhoneLanguageRegionScreen()
                 );
+
                 return true;
             }
 
@@ -147,13 +266,17 @@ public final class IPhoneLanguagePickerScreen extends IPhoneScreen {
                     mouseX,
                     mouseY,
                     contentX,
-                    groupY,
+                    viewportTop,
                     contentWidth,
-                    ROW_HEIGHT * languages.size()
+                    viewportHeight
             )) {
+                int logicalY =
+                        (int) mouseY
+                                - viewportTop
+                                + scrollOffset;
+
                 int index =
-                        ((int) mouseY - groupY)
-                                / ROW_HEIGHT;
+                        logicalY / ROW_HEIGHT;
 
                 if (index >= 0
                         && index < languages.size()) {

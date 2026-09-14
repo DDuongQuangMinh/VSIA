@@ -12,45 +12,12 @@ import java.time.format.FormatStyle;
 import java.time.format.TextStyle;
 import java.time.temporal.WeekFields;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 public final class PhoneLocaleSettings {
-    public enum Language {
-        ENGLISH_UK("en", "GB", "English (UK)"),
-        ENGLISH_US("en", "US", "English (US)"),
-        VIETNAMESE("vi", "VN", "Tiếng Việt");
-
-        private final String languageCode;
-        private final String defaultCountryCode;
-        private final String displayName;
-
-        Language(
-                String languageCode,
-                String defaultCountryCode,
-                String displayName
-        ) {
-            this.languageCode = languageCode;
-            this.defaultCountryCode = defaultCountryCode;
-            this.displayName = displayName;
-        }
-
-        public String languageCode() {
-            return languageCode;
-        }
-
-        public String defaultCountryCode() {
-            return defaultCountryCode;
-        }
-
-        public String displayName() {
-            return displayName;
-        }
-    }
-
     public enum TemperatureUnit {
         CELSIUS("Celsius"),
         FAHRENHEIT("Fahrenheit");
@@ -362,8 +329,8 @@ public final class PhoneLocaleSettings {
             Map.entry("ZW", "Africa/Harare")
             );
 
-    private static Language language =
-            Language.ENGLISH_UK;
+    private static PhoneLanguageCatalog.LanguageProfile language =
+            PhoneLanguageCatalog.englishUk();
 
     private static String regionCode = "GB";
 
@@ -379,18 +346,27 @@ public final class PhoneLocaleSettings {
     private PhoneLocaleSettings() {
     }
 
-    public static Language language() {
+    public static PhoneLanguageCatalog.LanguageProfile language() {
         return language;
     }
 
-    public static void setLanguage(Language value) {
+    public static void setLanguage(
+            PhoneLanguageCatalog.LanguageProfile value
+    ) {
         language = value == null
-                ? Language.ENGLISH_UK
+                ? PhoneLanguageCatalog.englishUk()
                 : value;
     }
 
-    public static List<Language> availableLanguages() {
-        return List.of(Language.values());
+    public static void setLanguageTag(String languageTag) {
+        language =
+                PhoneLanguageCatalog.byTag(
+                        languageTag
+                );
+    }
+
+    public static List<PhoneLanguageCatalog.LanguageProfile> availableLanguages() {
+        return PhoneLanguageCatalog.all();
     }
 
     public static String regionCode() {
@@ -468,16 +444,18 @@ public final class PhoneLocaleSettings {
     }
 
     public static Locale uiLocale() {
-        return new Locale(
-                language.languageCode(),
-                regionCode
+        return Locale.forLanguageTag(
+                language.languageTag()
+                        + "-"
+                        + regionCode
         );
     }
 
     public static Locale regionLocale() {
-        return new Locale(
-                language.languageCode(),
-                regionCode
+        return Locale.forLanguageTag(
+                language.languageTag()
+                        + "-"
+                        + regionCode
         );
     }
 
@@ -637,7 +615,9 @@ public final class PhoneLocaleSettings {
     }
 
     public static void resetToDefaults() {
-        language = Language.ENGLISH_UK;
+        language =
+                PhoneLanguageCatalog.englishUk();
+
         setRegionCode("GB");
     }
 

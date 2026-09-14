@@ -36,6 +36,7 @@ public final class PhoneResetService {
         PhoneNotificationManager.get().clearHistory();
         PhoneClockClientState.reset();
         PhoneSystemSettings.clearUsageData();
+        PhonePersonalAppsState.clearAll();
 
         PhoneNetworkController.get().requestRefresh();
     }
