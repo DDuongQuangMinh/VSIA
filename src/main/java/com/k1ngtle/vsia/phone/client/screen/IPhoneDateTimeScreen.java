@@ -1,13 +1,9 @@
 package com.k1ngtle.vsia.phone.client.screen;
 
-import com.k1ngtle.vsia.phone.client.PhoneSystemSettings;
 import com.k1ngtle.vsia.phone.client.PhoneLocaleSettings;
+import com.k1ngtle.vsia.phone.client.PhoneSystemSettings;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
-
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
 
 public final class IPhoneDateTimeScreen extends IPhoneScreen {
     private static final int BG = 0xFF1C1C1E;
@@ -17,6 +13,7 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
     private static final int GREEN = 0xFF30D158;
     private static final int DIVIDER = 0xFF3A3A3C;
 
+    private static final int ROW_HEIGHT = 38;
 
     private int contentX;
     private int contentWidth;
@@ -29,6 +26,7 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
     @Override
     protected void init() {
         super.init();
+
         contentX = phoneX + 14;
         contentWidth = PHONE_WIDTH - 28;
         groupY = phoneY + 84;
@@ -43,7 +41,12 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
     ) {
         renderPhoneShell(graphics, BG);
         renderStatusBar(graphics);
-        renderHeader(graphics, "General", "Date & Time");
+
+        renderHeader(
+                graphics,
+                "General",
+                "Date & Time"
+        );
 
         beginPhoneClip(graphics, 68);
 
@@ -52,7 +55,7 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
                 contentX,
                 groupY,
                 contentWidth,
-                38 * 3,
+                ROW_HEIGHT * 4,
                 14,
                 CARD
         );
@@ -74,46 +77,53 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
 
         divider(
                 graphics,
-                groupY + 38
+                groupY + ROW_HEIGHT
         );
 
         pair(
                 graphics,
-                groupY + 38,
+                groupY + ROW_HEIGHT,
                 "Date",
-                PhoneLocaleSettings.formatDate(LocalDate.now())
+                PhoneLocaleSettings.formatDate(
+                        PhoneLocaleSettings.currentDate()
+                )
         );
 
         divider(
                 graphics,
-                groupY + 76
-        );
-
-        String time = LocalTime.now().format(
-                PhoneSystemSettings.use24HourTime()
-                        ? DateTimeFormatter.ofPattern(
-                        "HH:mm"
-                )
-                        : DateTimeFormatter.ofPattern(
-                        "h:mm"
-                )
+                groupY + ROW_HEIGHT * 2
         );
 
         pair(
                 graphics,
-                groupY + 76,
+                groupY + ROW_HEIGHT * 2,
                 "Time",
-                time
+                PhoneLocaleSettings.formatTime(
+                        PhoneLocaleSettings.currentTime(),
+                        PhoneSystemSettings.use24HourTime()
+                )
+        );
+
+        divider(
+                graphics,
+                groupY + ROW_HEIGHT * 3
+        );
+
+        pair(
+                graphics,
+                groupY + ROW_HEIGHT * 3,
+                "Time Zone",
+                PhoneLocaleSettings.timeZoneId()
         );
 
         drawUiWrappedCentered(
                 graphics,
-                "The simulated phone follows the client system clock.",
+                "The simulated phone follows the selected region's time zone.",
                 phoneX + PHONE_WIDTH / 2,
-                groupY + 134,
-                PHONE_WIDTH - 50,
+                groupY + ROW_HEIGHT * 4 + 20,
+                PHONE_WIDTH - 48,
                 11,
-                3,
+                4,
                 MUTED
         );
 
@@ -135,12 +145,26 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
                 TEXT
         );
 
+        int available =
+                Math.max(
+                        58,
+                        contentWidth
+                                - uiWidth(left)
+                                - 40
+                );
+
+        String shown =
+                fitUi(
+                        right,
+                        available
+                );
+
         drawUiText(
                 graphics,
-                right,
+                shown,
                 contentX
                         + contentWidth
-                        - uiWidth(right)
+                        - uiWidth(shown)
                         - 13,
                 y + 14,
                 MUTED
@@ -173,12 +197,16 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
                 36,
                 20,
                 10,
-                enabled ? GREEN : 0xFF636366
+                enabled
+                        ? GREEN
+                        : 0xFF636366
         );
 
         roundedRect(
                 graphics,
-                enabled ? x + 19 : x + 3,
+                enabled
+                        ? x + 19
+                        : x + 3,
                 y + 3,
                 14,
                 14,
@@ -201,6 +229,7 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
                 minecraft.setScreen(
                         new IPhoneGeneralScreen()
                 );
+
                 return true;
             }
 
@@ -210,12 +239,13 @@ public final class IPhoneDateTimeScreen extends IPhoneScreen {
                     contentX,
                     groupY,
                     contentWidth,
-                    38
+                    ROW_HEIGHT
             )) {
                 PhoneSystemSettings.setUse24HourTime(
                         !PhoneSystemSettings
                                 .use24HourTime()
                 );
+
                 return true;
             }
         }

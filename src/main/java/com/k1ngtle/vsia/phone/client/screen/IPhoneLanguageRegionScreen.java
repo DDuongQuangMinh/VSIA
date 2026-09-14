@@ -24,6 +24,7 @@ public final class IPhoneLanguageRegionScreen extends IPhoneScreen {
     @Override
     protected void init() {
         super.init();
+
         contentX = phoneX + 14;
         contentWidth = PHONE_WIDTH - 28;
         groupY = phoneY + 82;
@@ -60,44 +61,65 @@ public final class IPhoneLanguageRegionScreen extends IPhoneScreen {
                 graphics,
                 groupY,
                 "iPhone Language",
-                PhoneLocaleSettings.language().displayName()
+                PhoneLocaleSettings.language().displayName(),
+                true
         );
-        divider(graphics, groupY + ROW_HEIGHT);
+
+        divider(
+                graphics,
+                groupY + ROW_HEIGHT
+        );
 
         row(
                 graphics,
                 groupY + ROW_HEIGHT,
                 "Region",
-                PhoneLocaleSettings.region().displayName()
+                PhoneLocaleSettings.regionDisplayName(),
+                true
         );
-        divider(graphics, groupY + ROW_HEIGHT * 2);
+
+        divider(
+                graphics,
+                groupY + ROW_HEIGHT * 2
+        );
 
         row(
                 graphics,
                 groupY + ROW_HEIGHT * 2,
                 "Temperature",
-                PhoneLocaleSettings.temperatureUnit().displayName()
+                PhoneLocaleSettings.temperatureUnit().displayName(),
+                true
         );
-        divider(graphics, groupY + ROW_HEIGHT * 3);
+
+        divider(
+                graphics,
+                groupY + ROW_HEIGHT * 3
+        );
 
         row(
                 graphics,
                 groupY + ROW_HEIGHT * 3,
                 "Measurement System",
-                PhoneLocaleSettings.measurementSystem().displayName()
+                PhoneLocaleSettings.measurementSystem().displayName(),
+                true
         );
-        divider(graphics, groupY + ROW_HEIGHT * 4);
+
+        divider(
+                graphics,
+                groupY + ROW_HEIGHT * 4
+        );
 
         row(
                 graphics,
                 groupY + ROW_HEIGHT * 4,
                 "First Day of Week",
-                PhoneLocaleSettings.firstDayOfWeek().displayName()
+                PhoneLocaleSettings.firstDayOfWeek().displayName(),
+                true
         );
 
         drawUiWrappedCentered(
                 graphics,
-                "Region changes date formatting and default units. Temperature changes the Weather widget immediately.",
+                "Region changes date formatting, time zone and default units. Temperature changes the Weather widget immediately.",
                 phoneX + PHONE_WIDTH / 2,
                 groupY + ROW_HEIGHT * 5 + 19,
                 PHONE_WIDTH - 48,
@@ -114,20 +136,25 @@ public final class IPhoneLanguageRegionScreen extends IPhoneScreen {
             GuiGraphics graphics,
             int y,
             String left,
-            String right
+            String right,
+            boolean chevron
     ) {
         drawUiText(
                 graphics,
-                fitUi(left, 106),
+                fitUi(
+                        left,
+                        108
+                ),
                 contentX + 13,
                 y + 14,
                 TEXT
         );
 
-        String shown = fitUi(
-                right,
-                94
-        );
+        String shown =
+                fitUi(
+                        right,
+                        96
+                );
 
         drawUiText(
                 graphics,
@@ -135,18 +162,20 @@ public final class IPhoneLanguageRegionScreen extends IPhoneScreen {
                 contentX
                         + contentWidth
                         - uiWidth(shown)
-                        - 21,
+                        - (chevron ? 21 : 13),
                 y + 14,
                 MUTED
         );
 
-        drawUiText(
-                graphics,
-                "›",
-                contentX + contentWidth - 11,
-                y + 14,
-                MUTED
-        );
+        if (chevron) {
+            drawUiText(
+                    graphics,
+                    "›",
+                    contentX + contentWidth - 11,
+                    y + 14,
+                    MUTED
+            );
+        }
     }
 
     private void divider(
@@ -199,26 +228,38 @@ public final class IPhoneLanguageRegionScreen extends IPhoneScreen {
                             / ROW_HEIGHT;
 
             switch (row) {
-                case 0 ->
-                        PhoneLocaleSettings.cycleLanguage();
+                case 0 -> {
+                    minecraft.setScreen(
+                            new IPhoneLanguagePickerScreen()
+                    );
+                    return true;
+                }
 
-                case 1 ->
-                        PhoneLocaleSettings.cycleRegion();
+                case 1 -> {
+                    minecraft.setScreen(
+                            new IPhoneRegionPickerScreen()
+                    );
+                    return true;
+                }
 
-                case 2 ->
-                        PhoneLocaleSettings.cycleTemperatureUnit();
+                case 2 -> {
+                    PhoneLocaleSettings.cycleTemperatureUnit();
+                    return true;
+                }
 
-                case 3 ->
-                        PhoneLocaleSettings.cycleMeasurementSystem();
+                case 3 -> {
+                    PhoneLocaleSettings.cycleMeasurementSystem();
+                    return true;
+                }
 
-                case 4 ->
-                        PhoneLocaleSettings.cycleFirstDayOfWeek();
+                case 4 -> {
+                    PhoneLocaleSettings.cycleFirstDayOfWeek();
+                    return true;
+                }
 
                 default -> {
                 }
             }
-
-            return true;
         }
 
         return super.mouseClicked(

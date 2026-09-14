@@ -6,10 +6,6 @@ import com.k1ngtle.vsia.phone.client.PhoneSystemSettings;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
-
 public final class IPhoneClockScreen extends IPhoneScreen {
     private static final int BG = 0xFF000000;
     private static final int CARD = 0xFF1C1C1E;
@@ -37,7 +33,7 @@ public final class IPhoneClockScreen extends IPhoneScreen {
         contentX = phoneX + 14;
         contentWidth = PHONE_WIDTH - 28;
         clockY = phoneY + 82;
-        stopwatchY = phoneY + 205;
+        stopwatchY = phoneY + 220;
         leftButtonX = contentX + 14;
         rightButtonX = contentX + contentWidth - 74;
     }
@@ -67,7 +63,7 @@ public final class IPhoneClockScreen extends IPhoneScreen {
                 contentX,
                 clockY,
                 contentWidth,
-                96,
+                110,
                 14,
                 CARD
         );
@@ -80,16 +76,12 @@ public final class IPhoneClockScreen extends IPhoneScreen {
                 MUTED
         );
 
-        String time =
-                LocalTime.now().format(
-                        PhoneSystemSettings.use24HourTime()
-                                ? DateTimeFormatter.ofPattern("HH:mm:ss")
-                                : DateTimeFormatter.ofPattern("h:mm:ss")
-                );
-
         drawUiCentered(
                 graphics,
-                time,
+                PhoneLocaleSettings.formatTime(
+                        PhoneLocaleSettings.currentTime(),
+                        PhoneSystemSettings.use24HourTime()
+                ),
                 phoneX + PHONE_WIDTH / 2,
                 clockY + 36,
                 ORANGE
@@ -98,11 +90,19 @@ public final class IPhoneClockScreen extends IPhoneScreen {
         drawUiCentered(
                 graphics,
                 PhoneLocaleSettings.formatDate(
-                        LocalDate.now()
+                        PhoneLocaleSettings.currentDate()
                 ),
                 phoneX + PHONE_WIDTH / 2,
                 clockY + 60,
                 TEXT
+        );
+
+        drawUiCentered(
+                graphics,
+                PhoneLocaleSettings.timeZoneId(),
+                phoneX + PHONE_WIDTH / 2,
+                clockY + 81,
+                MUTED
         );
 
         drawUiText(

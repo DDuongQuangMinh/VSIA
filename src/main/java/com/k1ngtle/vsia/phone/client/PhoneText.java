@@ -16,7 +16,14 @@ public final class PhoneText {
     }
 
     public static Component component(String text) {
-        return Component.literal(text == null ? "" : text)
+        String localized =
+                PhoneI18n.translate(
+                        text == null
+                                ? ""
+                                : text
+                );
+
+        return Component.literal(localized)
                 .withStyle(
                         style -> style
                                 .withFont(UI_FONT)

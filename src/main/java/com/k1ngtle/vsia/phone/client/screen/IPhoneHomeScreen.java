@@ -244,8 +244,21 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 roundedRect(g, cx - 2, cy - 2, 4, 4, 2, 0xFF66666D);
             }
             case CALENDAR -> {
-                drawUiCentered(g, "Tue", cx, y + 5, 0xFFFF3B30);
-                drawUiCentered(g, "1", cx, y + 17, 0xFF111111);
+                drawUiCentered(
+                        g,
+                        PhoneLocaleSettings.calendarWeekdayShort(),
+                        cx,
+                        y + 5,
+                        0xFFFF3B30
+                );
+
+                drawUiCentered(
+                        g,
+                        PhoneLocaleSettings.calendarDayOfMonth(),
+                        cx,
+                        y + 17,
+                        0xFF111111
+                );
             }
             case PHOTOS -> {
                 roundedRect(g, cx - 3, cy - 12, 6, 12, 3, 0xFFFF453A);

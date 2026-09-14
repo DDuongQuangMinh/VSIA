@@ -27,7 +27,7 @@ public final class IPhoneStatusBar {
         graphics.drawString(
                 font,
                 PhoneText.component(
-                        LocalTime.now().format(
+                        PhoneLocaleSettings.currentTime().format(
                                 PhoneSystemSettings.use24HourTime()
                                         ? TIME_24
                                         : TIME_12
