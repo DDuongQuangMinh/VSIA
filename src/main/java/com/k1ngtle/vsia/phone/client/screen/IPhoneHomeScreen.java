@@ -360,6 +360,13 @@ public class IPhoneHomeScreen extends IPhoneScreen {
             int totalWidth = GRID_ICON + stepX * (columns - 1);
             int left = phoneX + (PHONE_WIDTH - totalWidth) / 2;
 
+            int faceTimeX = left;
+            int faceTimeY = gridY;
+            if (inside(mouseX, mouseY, faceTimeX, faceTimeY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhoneFaceTimeScreen());
+                return true;
+            }
+
             int calendarX = left + stepX;
             int calendarY = gridY;
             if (inside(mouseX, mouseY, calendarX, calendarY, GRID_ICON, GRID_ICON + 10)) {
@@ -381,6 +388,13 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 return true;
             }
 
+            int mailX = left;
+            int mailY = gridY + stepY;
+            if (inside(mouseX, mouseY, mailX, mailY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhoneMailScreen());
+                return true;
+            }
+
             int notesX = left + stepX;
             int notesY = gridY + stepY;
             if (inside(mouseX, mouseY, notesX, notesY, GRID_ICON, GRID_ICON + 10)) {
@@ -392,6 +406,55 @@ public class IPhoneHomeScreen extends IPhoneScreen {
             int remindersY = gridY + stepY;
             if (inside(mouseX, mouseY, remindersX, remindersY, GRID_ICON, GRID_ICON + 10)) {
                 minecraft.setScreen(new IPhoneRemindersScreen());
+                return true;
+            }
+
+            int newsX = left;
+            int newsY = gridY + 2 * stepY;
+            if (inside(mouseX, mouseY, newsX, newsY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhoneNewsScreen());
+                return true;
+            }
+
+            int tvX = left + stepX;
+            int tvY = gridY + 2 * stepY;
+            if (inside(mouseX, mouseY, tvX, tvY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhoneTVScreen());
+                return true;
+            }
+
+            int podcastsX = left + 2 * stepX;
+            int podcastsY = gridY + 2 * stepY;
+            if (inside(mouseX, mouseY, podcastsX, podcastsY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhonePodcastsScreen());
+                return true;
+            }
+
+            int appStoreX = left + 3 * stepX;
+            int appStoreY = gridY + 2 * stepY;
+            if (inside(mouseX, mouseY, appStoreX, appStoreY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhoneAppStoreScreen());
+                return true;
+            }
+
+            int mapsX = left;
+            int mapsY = gridY + 3 * stepY;
+            if (inside(mouseX, mouseY, mapsX, mapsY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhoneMapsScreen());
+                return true;
+            }
+
+            int healthX = left + stepX;
+            int healthY = gridY + 3 * stepY;
+            if (inside(mouseX, mouseY, healthX, healthY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhoneHealthScreen());
+                return true;
+            }
+
+            int walletX = left + 2 * stepX;
+            int walletY = gridY + 3 * stepY;
+            if (inside(mouseX, mouseY, walletX, walletY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhoneWalletScreen());
                 return true;
             }
 
@@ -431,7 +494,7 @@ public class IPhoneHomeScreen extends IPhoneScreen {
             }
 
             if (inside(mouseX, mouseY, first + gap * 3, dockY + 10, DOCK_ICON, DOCK_ICON)) {
-                minecraft.setScreen(new IPhoneStatusScreen());
+                minecraft.setScreen(new IPhoneMusicScreen());
                 return true;
             }
         }
