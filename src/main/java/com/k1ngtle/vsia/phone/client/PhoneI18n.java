@@ -303,7 +303,9 @@ public final class PhoneI18n {
 
     public static String translate(String text) {
         if (text == null || text.isEmpty()) {
-            return text == null ? "" : text;
+            return text == null
+                    ? ""
+                    : text;
         }
 
         String languageTag =
@@ -311,28 +313,22 @@ public final class PhoneI18n {
                         .language()
                         .languageTag();
 
-        String baseLanguage =
+        String safeTag =
                 languageTag == null
                         ? "en"
                         : languageTag
-                        .split("-")[0]
                         .toLowerCase();
+
+        String baseLanguage =
+                safeTag.split("-")[0];
 
         if ("en".equals(baseLanguage)) {
             return text;
         }
 
-        if ("vi".equals(baseLanguage)) {
-            String exact = VIETNAMESE.get(text);
-
-            if (exact != null) {
-                return exact;
-            }
-        }
-
         String packed =
                 externalTranslation(
-                        languageTag,
+                        safeTag,
                         text
                 );
 
@@ -340,7 +336,7 @@ public final class PhoneI18n {
             return packed;
         }
 
-        if (!baseLanguage.equals(languageTag)) {
+        if (!baseLanguage.equals(safeTag)) {
             packed =
                     externalTranslation(
                             baseLanguage,
@@ -352,33 +348,193 @@ public final class PhoneI18n {
             }
         }
 
-        if (text.startsWith("PhoneOS ") && text.endsWith(" is available.")) {
-            String version =
-                    text.substring(
-                            "PhoneOS ".length(),
-                            text.length() - " is available.".length()
+        String patterned =
+                translatePattern(
+                        safeTag,
+                        baseLanguage,
+                        text
+                );
+
+        if (patterned != null) {
+            return patterned;
+        }
+
+        if ("vi".equals(baseLanguage)) {
+            String exact =
+                    VIETNAMESE.get(
+                            text
                     );
 
-            return "PhoneOS "
-                    + version
-                    + " đã sẵn sàng.";
+            if (exact != null) {
+                return exact;
+            }
         }
 
-        if (text.startsWith("Downloading PhoneOS ")) {
-            return "Đang tải "
-                    + text.substring("Downloading ".length());
-        }
+        if (PhoneSystemStringCatalog.contains(
+                text
+        )) {
+            String automatic =
+                    PhoneAutoTranslationService
+                            .translateOrQueue(
+                                    safeTag,
+                                    text
+                            );
 
-        if (text.startsWith("From ")) {
-            return "Từ "
-                    + text.substring("From ".length());
-        }
-
-        if (text.startsWith("H:")) {
-            return text;
+            if (automatic != null
+                    && !automatic.isBlank()) {
+                return automatic;
+            }
         }
 
         return text;
+    }
+
+    private static String translatePattern(
+            String languageTag,
+            String baseLanguage,
+            String text
+    ) {
+        if (text.startsWith("PhoneOS ")
+                && text.endsWith(" is available.")) {
+            String value =
+                    text.substring(
+                            "PhoneOS ".length(),
+                            text.length()
+                                    - " is available.".length()
+                    );
+
+            String template =
+                    externalTemplate(
+                            languageTag,
+                            baseLanguage,
+                            "PhoneOS %s is available."
+                    );
+
+            if (template != null) {
+                return safeFormat(
+                        template,
+                        value
+                );
+            }
+
+            if ("vi".equals(baseLanguage)) {
+                return "PhoneOS "
+                        + value
+                        + " đã sẵn sàng.";
+            }
+        }
+
+        if (text.startsWith("Downloading PhoneOS ")) {
+            String value =
+                    text.substring(
+                            "Downloading PhoneOS ".length()
+                    );
+
+            String template =
+                    externalTemplate(
+                            languageTag,
+                            baseLanguage,
+                            "Downloading PhoneOS %s"
+                    );
+
+            if (template != null) {
+                return safeFormat(
+                        template,
+                        value
+                );
+            }
+
+            if ("vi".equals(baseLanguage)) {
+                return "Đang tải PhoneOS "
+                        + value;
+            }
+        }
+
+        if (text.startsWith("From ")) {
+            String value =
+                    text.substring(
+                            "From ".length()
+                    );
+
+            String template =
+                    externalTemplate(
+                            languageTag,
+                            baseLanguage,
+                            "From %s"
+                    );
+
+            if (template != null) {
+                return safeFormat(
+                        template,
+                        value
+                );
+            }
+
+            if ("vi".equals(baseLanguage)) {
+                return "Từ "
+                        + value;
+            }
+        }
+
+        return null;
+    }
+
+    private static String externalTemplate(
+            String languageTag,
+            String baseLanguage,
+            String sourceTemplate
+    ) {
+        String packed =
+                externalTranslation(
+                        languageTag,
+                        sourceTemplate
+                );
+
+        if (packed != null) {
+            return packed;
+        }
+
+        if (!baseLanguage.equals(languageTag)) {
+            packed =
+                    externalTranslation(
+                            baseLanguage,
+                            sourceTemplate
+                    );
+
+            if (packed != null) {
+                return packed;
+            }
+        }
+
+        if (PhoneSystemStringCatalog.contains(
+                sourceTemplate
+        )) {
+            return PhoneAutoTranslationService
+                    .translateOrQueue(
+                            languageTag,
+                            sourceTemplate
+                    );
+        }
+
+        return null;
+    }
+
+    private static String safeFormat(
+            String template,
+            String value
+    ) {
+        try {
+            return String.format(
+                    template,
+                    value
+            );
+        } catch (Exception ignored) {
+            return template
+                    .replace(
+                            "%s",
+                            value
+                    );
+        }
     }
 
     public static void clearExternalPackCache() {

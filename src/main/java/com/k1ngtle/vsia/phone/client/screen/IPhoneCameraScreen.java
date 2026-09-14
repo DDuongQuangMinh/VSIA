@@ -1,9 +1,11 @@
 package com.k1ngtle.vsia.phone.client.screen;
 
+import com.k1ngtle.vsia.phone.client.PhoneCameraCaptureService;
 import com.k1ngtle.vsia.phone.client.PhonePersonalAppsState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 
 public final class IPhoneCameraScreen extends IPhoneScreen {
     private static final int BG = 0xFF000000;
@@ -49,34 +51,68 @@ public final class IPhoneCameraScreen extends IPhoneScreen {
             int mouseY,
             float partialTick
     ) {
+        PhoneCameraCaptureService.updatePreview(
+                previewWidth,
+                previewHeight,
+                zoom,
+                frontCamera
+        );
+
+        String completedStill =
+                PhoneCameraCaptureService
+                        .consumeCompletedStillPath();
+
+        if (!completedStill.isBlank()) {
+            PhonePersonalAppsState.capturePhoto(
+                    frontCamera,
+                    zoom,
+                    completedStill
+            );
+
+            flashUntil =
+                    System.currentTimeMillis()
+                            + 220L;
+        }
+
         renderPhoneShell(graphics, BG);
         renderStatusBar(graphics);
 
         beginPhoneClip(graphics, 48);
 
-        int previewColor =
-                worldPreviewColor();
+        ResourceLocation preview =
+                PhoneCameraCaptureService.previewLocation();
 
-        roundedRect(
-                graphics,
-                previewX,
-                previewY,
-                previewWidth,
-                previewHeight,
-                8,
-                previewColor
-        );
+        if (preview != null) {
+            graphics.blit(
+                    preview,
+                    previewX,
+                    previewY,
+                    0.0F,
+                    0.0F,
+                    previewWidth,
+                    previewHeight,
+                    previewWidth,
+                    previewHeight
+            );
+        } else {
+            roundedRect(
+                    graphics,
+                    previewX,
+                    previewY,
+                    previewWidth,
+                    previewHeight,
+                    8,
+                    0xFF252528
+            );
 
-        graphics.fill(
-                previewX,
-                previewY + previewHeight / 2,
-                previewX + previewWidth,
-                previewY + previewHeight,
-                darken(
-                        previewColor,
-                        0.64F
-                )
-        );
+            drawUiCentered(
+                    graphics,
+                    "Camera Preview",
+                    phoneX + PHONE_WIDTH / 2,
+                    previewY + previewHeight / 2,
+                    MUTED
+            );
+        }
 
         drawUiCentered(
                 graphics,
@@ -99,8 +135,7 @@ public final class IPhoneCameraScreen extends IPhoneScreen {
         Minecraft minecraft =
                 Minecraft.getInstance();
 
-        if (minecraft.player != null
-                && minecraft.level != null) {
+        if (minecraft.player != null) {
             String position =
                     minecraft.player
                             .blockPosition()
@@ -217,6 +252,12 @@ public final class IPhoneCameraScreen extends IPhoneScreen {
     }
 
     @Override
+    public void removed() {
+        PhoneCameraCaptureService.releasePreview();
+        super.removed();
+    }
+
+    @Override
     public boolean mouseClicked(
             double mouseX,
             double mouseY,
@@ -231,7 +272,9 @@ public final class IPhoneCameraScreen extends IPhoneScreen {
                     54,
                     28
             )) {
-                frontCamera = !frontCamera;
+                frontCamera =
+                        !frontCamera;
+
                 return true;
             }
 
@@ -259,14 +302,8 @@ public final class IPhoneCameraScreen extends IPhoneScreen {
                     36,
                     36
             )) {
-                PhonePersonalAppsState.capturePhoto(
-                        frontCamera,
-                        zoom
-                );
-
-                flashUntil =
-                        System.currentTimeMillis()
-                                + 220L;
+                PhoneCameraCaptureService
+                        .requestStillCapture();
 
                 return true;
             }
@@ -277,92 +314,5 @@ public final class IPhoneCameraScreen extends IPhoneScreen {
                 mouseY,
                 button
         );
-    }
-
-    private int worldPreviewColor() {
-        Minecraft minecraft =
-                Minecraft.getInstance();
-
-        if (minecraft.level == null) {
-            return 0xFF3A3A3C;
-        }
-
-        String dimension =
-                minecraft.level
-                        .dimension()
-                        .location()
-                        .toString();
-
-        if (dimension.contains("nether")) {
-            return 0xFF70352F;
-        }
-
-        if (dimension.contains("end")) {
-            return 0xFF4B496A;
-        }
-
-        long dayTime =
-                minecraft.level.getDayTime()
-                        % 24000L;
-
-        if (dayTime >= 13000L
-                && dayTime <= 23000L) {
-            return 0xFF1B2943;
-        }
-
-        return 0xFF6CA6C9;
-    }
-
-    private static int darken(
-            int color,
-            float factor
-    ) {
-        int a =
-                color >>> 24
-                        & 0xFF;
-
-        int r =
-                color >>> 16
-                        & 0xFF;
-
-        int g =
-                color >>> 8
-                        & 0xFF;
-
-        int b =
-                color
-                        & 0xFF;
-
-        r =
-                Math.max(
-                        0,
-                        Math.min(
-                                255,
-                                Math.round(r * factor)
-                        )
-                );
-
-        g =
-                Math.max(
-                        0,
-                        Math.min(
-                                255,
-                                Math.round(g * factor)
-                        )
-                );
-
-        b =
-                Math.max(
-                        0,
-                        Math.min(
-                                255,
-                                Math.round(b * factor)
-                        )
-                );
-
-        return a << 24
-                | r << 16
-                | g << 8
-                | b;
     }
 }

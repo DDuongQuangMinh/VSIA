@@ -1,6 +1,8 @@
 package com.k1ngtle.vsia.phone.client.screen;
 
+import com.k1ngtle.vsia.phone.client.PhoneAutoTranslationService;
 import com.k1ngtle.vsia.phone.client.PhoneLanguageCatalog;
+import com.k1ngtle.vsia.phone.client.PhoneSystemStringCatalog;
 import com.k1ngtle.vsia.phone.client.PhoneLocaleSettings;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -282,6 +284,12 @@ public final class IPhoneLanguagePickerScreen extends IPhoneScreen {
                         && index < languages.size()) {
                     PhoneLocaleSettings.setLanguage(
                             languages.get(index)
+                    );
+
+                    PhoneAutoTranslationService.prefetch(
+                            languages.get(index)
+                                    .languageTag(),
+                            PhoneSystemStringCatalog.all()
                     );
 
                     minecraft.setScreen(

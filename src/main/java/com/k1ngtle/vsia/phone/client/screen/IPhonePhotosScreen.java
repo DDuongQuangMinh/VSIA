@@ -2,13 +2,14 @@ package com.k1ngtle.vsia.phone.client.screen;
 
 import com.k1ngtle.vsia.phone.client.PhoneLocaleSettings;
 import com.k1ngtle.vsia.phone.client.PhonePersonalAppsState;
+import com.k1ngtle.vsia.phone.client.PhonePhotoTextureCache;
 import com.k1ngtle.vsia.phone.client.PhoneSystemSettings;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.List;
 
 public final class IPhonePhotosScreen extends IPhoneScreen {
@@ -92,36 +93,62 @@ public final class IPhonePhotosScreen extends IPhoneScreen {
                 int y =
                         listY + i * ROW_HEIGHT;
 
-                int thumb =
-                        thumbnailColor(
-                                photo.dimension()
+                ResourceLocation texture =
+                        PhonePhotoTextureCache.textureFor(
+                                photo
                         );
 
-                roundedRect(
-                        graphics,
-                        contentX + 8,
-                        y + 7,
-                        41,
-                        41,
-                        8,
-                        thumb
-                );
+                if (texture != null) {
+                    graphics.blit(
+                            texture,
+                            contentX + 8,
+                            y + 7,
+                            0.0F,
+                            0.0F,
+                            41,
+                            41,
+                            PhonePhotoTextureCache.textureWidth(
+                                    photo.id()
+                            ),
+                            PhonePhotoTextureCache.textureHeight(
+                                    photo.id()
+                            )
+                    );
+                } else {
+                    int thumb =
+                            thumbnailColor(
+                                    photo.dimension()
+                            );
 
-                graphics.fill(
-                        contentX + 8,
-                        y + 28,
-                        contentX + 49,
-                        y + 48,
-                        darken(
-                                thumb,
-                                0.63F
-                        )
-                );
+                    roundedRect(
+                            graphics,
+                            contentX + 8,
+                            y + 7,
+                            41,
+                            41,
+                            8,
+                            thumb
+                    );
+
+                    graphics.fill(
+                            contentX + 8,
+                            y + 28,
+                            contentX + 49,
+                            y + 48,
+                            darken(
+                                    thumb,
+                                    0.63F
+                            )
+                    );
+                }
 
                 drawUiText(
                         graphics,
-                        formatTimestamp(
-                                photo.capturedAt()
+                        fitUi(
+                                formatTimestamp(
+                                        photo.capturedAt()
+                                ),
+                                contentWidth - 78
                         ),
                         contentX + 58,
                         y + 10,
@@ -141,14 +168,17 @@ public final class IPhonePhotosScreen extends IPhoneScreen {
 
                 drawUiText(
                         graphics,
-                        photo.x()
-                                + ", "
-                                + photo.y()
-                                + ", "
-                                + photo.z()
-                                + " · "
-                                + photo.zoom()
-                                + "x",
+                        fitUi(
+                                photo.x()
+                                        + ", "
+                                        + photo.y()
+                                        + ", "
+                                        + photo.z()
+                                        + " · "
+                                        + photo.zoom()
+                                        + "x",
+                                contentWidth - 78
+                        ),
                         contentX + 58,
                         y + 39,
                         BLUE
@@ -158,6 +188,54 @@ public final class IPhonePhotosScreen extends IPhoneScreen {
 
         endPhoneClip(graphics);
         renderHomeIndicator(graphics);
+    }
+
+    @Override
+    public boolean mouseClicked(
+            double mouseX,
+            double mouseY,
+            int button
+    ) {
+        if (button == 0) {
+            List<PhonePersonalAppsState.Photo> photos =
+                    PhonePersonalAppsState.photos();
+
+            int visible =
+                    Math.min(
+                            6,
+                            photos.size()
+                    );
+
+            if (inside(
+                    mouseX,
+                    mouseY,
+                    contentX,
+                    listY,
+                    contentWidth,
+                    visible * ROW_HEIGHT
+            )) {
+                int index =
+                        ((int) mouseY - listY)
+                                / ROW_HEIGHT;
+
+                if (index >= 0
+                        && index < visible) {
+                    minecraft.setScreen(
+                            new IPhonePhotoViewerScreen(
+                                    photos.get(index).id()
+                            )
+                    );
+
+                    return true;
+                }
+            }
+        }
+
+        return super.mouseClicked(
+                mouseX,
+                mouseY,
+                button
+        );
     }
 
     private String formatTimestamp(long millis) {

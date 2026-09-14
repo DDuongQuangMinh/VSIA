@@ -48,7 +48,8 @@ public final class PhonePersonalAppsState {
             int z,
             float yaw,
             boolean frontCamera,
-            int zoom
+            int zoom,
+            String imagePath
     ) {
     }
 
@@ -347,6 +348,18 @@ public final class PhonePersonalAppsState {
             boolean frontCamera,
             int zoom
     ) {
+        return capturePhoto(
+                frontCamera,
+                zoom,
+                ""
+        );
+    }
+
+    public static synchronized Photo capturePhoto(
+            boolean frontCamera,
+            int zoom,
+            String imagePath
+    ) {
         ensureLoaded();
 
         Minecraft minecraft =
@@ -393,7 +406,10 @@ public final class PhonePersonalAppsState {
                                         4,
                                         zoom
                                 )
-                        )
+                        ),
+                        imagePath == null
+                                ? ""
+                                : imagePath
                 );
 
         PHOTOS.add(photo);
@@ -405,8 +421,28 @@ public final class PhonePersonalAppsState {
     public static synchronized void deletePhoto(long id) {
         ensureLoaded();
 
+        Photo target =
+                null;
+
+        for (Photo photo : PHOTOS) {
+            if (photo.id() == id) {
+                target = photo;
+                break;
+            }
+        }
+
+        if (target != null) {
+            deletePhotoFile(
+                    target
+            );
+        }
+
         PHOTOS.removeIf(
                 photo -> photo.id() == id
+        );
+
+        PhonePhotoTextureCache.release(
+                id
         );
 
         save();
@@ -418,7 +454,16 @@ public final class PhonePersonalAppsState {
         NOTES.clear();
         EVENTS.clear();
         REMINDERS.clear();
+
+        for (Photo photo :
+                List.copyOf(PHOTOS)) {
+            deletePhotoFile(
+                    photo
+            );
+        }
+
         PHOTOS.clear();
+        PhonePhotoTextureCache.clear();
 
         save();
     }
@@ -525,6 +570,11 @@ public final class PhonePersonalAppsState {
                     long id =
                             Long.parseLong(parts[1]);
 
+                    String imagePath =
+                            parts.length > 10
+                                    ? decode(parts[10])
+                                    : "";
+
                     PHOTOS.add(
                             new Photo(
                                     id,
@@ -535,7 +585,8 @@ public final class PhonePersonalAppsState {
                                     Integer.parseInt(parts[6]),
                                     Float.parseFloat(parts[7]),
                                     Boolean.parseBoolean(parts[8]),
-                                    Integer.parseInt(parts[9])
+                                    Integer.parseInt(parts[9]),
+                                    imagePath
                             )
                     );
 
@@ -624,6 +675,10 @@ public final class PhonePersonalAppsState {
                                 + photo.frontCamera()
                                 + "|"
                                 + photo.zoom()
+                                + "|"
+                                + encode(
+                                photo.imagePath()
+                )
                 );
             }
 
@@ -648,6 +703,25 @@ public final class PhonePersonalAppsState {
                 .resolve("config")
                 .resolve("vsia")
                 .resolve("phone_personal_apps.dat");
+    }
+
+    private static void deletePhotoFile(
+            Photo photo
+    ) {
+        if (photo == null
+                || photo.imagePath() == null
+                || photo.imagePath().isBlank()) {
+            return;
+        }
+
+        try {
+            Files.deleteIfExists(
+                    Path.of(
+                            photo.imagePath()
+                    )
+            );
+        } catch (IOException ignored) {
+        }
     }
 
     private static String encode(String value) {
