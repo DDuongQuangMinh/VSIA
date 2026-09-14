@@ -14,16 +14,18 @@ import java.util.List;
 
 public final class IPhonePhotosScreen extends IPhoneScreen {
     private static final int BG = 0xFF111113;
-    private static final int CARD = 0xFF2C2C2E;
     private static final int TEXT = 0xFFFFFFFF;
     private static final int MUTED = 0xFFAEAEB2;
     private static final int BLUE = 0xFF0A84FF;
 
-    private static final int ROW_HEIGHT = 55;
+    private static final int COLUMNS = 3;
+    private static final int CELL = 64;
+    private static final int GAP = 4;
+    private static final int PAGE_SIZE = 12;
 
     private int contentX;
-    private int contentWidth;
-    private int listY;
+    private int gridY;
+    private int firstIndex;
 
     public IPhonePhotosScreen() {
         super(Component.literal("Photos"));
@@ -33,9 +35,16 @@ public final class IPhonePhotosScreen extends IPhoneScreen {
     protected void init() {
         super.init();
 
-        contentX = phoneX + 14;
-        contentWidth = PHONE_WIDTH - 28;
-        listY = phoneY + 82;
+        int gridWidth =
+                COLUMNS * CELL
+                        + (COLUMNS - 1) * GAP;
+
+        contentX =
+                phoneX
+                        + (PHONE_WIDTH - gridWidth)
+                        / 2;
+
+        gridY = phoneY + 94;
     }
 
     @Override
@@ -45,149 +54,220 @@ public final class IPhonePhotosScreen extends IPhoneScreen {
             int mouseY,
             float partialTick
     ) {
-        renderPhoneShell(graphics, BG);
-        renderStatusBar(graphics);
+        renderPhoneShell(
+                graphics,
+                BG
+        );
+
+        renderStatusBar(
+                graphics
+        );
 
         drawUiCentered(
                 graphics,
                 "Photos",
                 phoneX + PHONE_WIDTH / 2,
-                phoneY + 51,
+                phoneY + 49,
                 TEXT
         );
 
-        beginPhoneClip(graphics, 68);
-
         List<PhonePersonalAppsState.Photo> photos =
                 PhonePersonalAppsState.photos();
+
+        drawUiText(
+                graphics,
+                "Recents",
+                phoneX + 16,
+                phoneY + 72,
+                TEXT
+        );
+
+        drawUiText(
+                graphics,
+                Integer.toString(
+                        photos.size()
+                ),
+                phoneX + PHONE_WIDTH - 28,
+                phoneY + 72,
+                MUTED
+        );
+
+        beginPhoneClip(
+                graphics,
+                84
+        );
 
         if (photos.isEmpty()) {
             drawUiCentered(
                     graphics,
                     "No Photos",
                     phoneX + PHONE_WIDTH / 2,
-                    listY + 40,
+                    gridY + 48,
                     MUTED
             );
-        } else {
-            int visible =
-                    Math.min(
-                            6,
-                            photos.size()
-                    );
 
-            roundedRect(
+            drawUiCentered(
                     graphics,
-                    contentX,
-                    listY,
-                    contentWidth,
-                    visible * ROW_HEIGHT,
-                    14,
-                    CARD
+                    "Take a photo with Camera",
+                    phoneX + PHONE_WIDTH / 2,
+                    gridY + 68,
+                    BLUE
+            );
+        } else {
+            clampFirstIndex(
+                    photos.size()
             );
 
-            for (int i = 0; i < visible; i++) {
-                PhonePersonalAppsState.Photo photo =
-                        photos.get(i);
+            int end =
+                    Math.min(
+                            photos.size(),
+                            firstIndex + PAGE_SIZE
+                    );
+
+            for (int index = firstIndex;
+                 index < end;
+                 index++) {
+                int local =
+                        index - firstIndex;
+
+                int column =
+                        local % COLUMNS;
+
+                int row =
+                        local / COLUMNS;
+
+                int x =
+                        contentX
+                                + column * (CELL + GAP);
 
                 int y =
-                        listY + i * ROW_HEIGHT;
+                        gridY
+                                + row * (CELL + GAP);
 
-                ResourceLocation texture =
-                        PhonePhotoTextureCache.textureFor(
-                                photo
+                renderThumbnail(
+                        graphics,
+                        photos.get(index),
+                        x,
+                        y
+                );
+            }
+
+            if (photos.size()
+                    > PAGE_SIZE) {
+                String page =
+                        (
+                                firstIndex / PAGE_SIZE + 1
+                        )
+                                + " / "
+                                + (
+                                (
+                                        photos.size()
+                                                + PAGE_SIZE - 1
+                                )
+                                        / PAGE_SIZE
                         );
 
-                if (texture != null) {
-                    graphics.blit(
-                            texture,
-                            contentX + 8,
-                            y + 7,
-                            0.0F,
-                            0.0F,
-                            41,
-                            41,
-                            PhonePhotoTextureCache.textureWidth(
-                                    photo.id()
-                            ),
-                            PhonePhotoTextureCache.textureHeight(
-                                    photo.id()
-                            )
-                    );
-                } else {
-                    int thumb =
-                            thumbnailColor(
-                                    photo.dimension()
-                            );
-
-                    roundedRect(
-                            graphics,
-                            contentX + 8,
-                            y + 7,
-                            41,
-                            41,
-                            8,
-                            thumb
-                    );
-
-                    graphics.fill(
-                            contentX + 8,
-                            y + 28,
-                            contentX + 49,
-                            y + 48,
-                            darken(
-                                    thumb,
-                                    0.63F
-                            )
-                    );
-                }
-
-                drawUiText(
+                drawUiCentered(
                         graphics,
-                        fitUi(
-                                formatTimestamp(
-                                        photo.capturedAt()
-                                ),
-                                contentWidth - 78
-                        ),
-                        contentX + 58,
-                        y + 10,
-                        TEXT
-                );
-
-                drawUiText(
-                        graphics,
-                        fitUi(
-                                photo.dimension(),
-                                contentWidth - 78
-                        ),
-                        contentX + 58,
-                        y + 25,
+                        page,
+                        phoneX + PHONE_WIDTH / 2,
+                        phoneY + PHONE_HEIGHT - 42,
                         MUTED
-                );
-
-                drawUiText(
-                        graphics,
-                        fitUi(
-                                photo.x()
-                                        + ", "
-                                        + photo.y()
-                                        + ", "
-                                        + photo.z()
-                                        + " · "
-                                        + photo.zoom()
-                                        + "x",
-                                contentWidth - 78
-                        ),
-                        contentX + 58,
-                        y + 39,
-                        BLUE
                 );
             }
         }
 
-        endPhoneClip(graphics);
-        renderHomeIndicator(graphics);
+        endPhoneClip(
+                graphics
+        );
+
+        renderHomeIndicator(
+                graphics
+        );
+    }
+
+    private void renderThumbnail(
+            GuiGraphics graphics,
+            PhonePersonalAppsState.Photo photo,
+            int x,
+            int y
+    ) {
+        ResourceLocation texture =
+                PhonePhotoTextureCache.textureFor(
+                        photo
+                );
+
+        roundedRect(
+                graphics,
+                x,
+                y,
+                CELL,
+                CELL,
+                7,
+                0xFF242426
+        );
+
+        if (texture != null) {
+            graphics.blit(
+                    texture,
+                    x + 1,
+                    y + 1,
+                    0.0F,
+                    0.0F,
+                    CELL - 2,
+                    CELL - 2,
+                    PhonePhotoTextureCache.textureWidth(
+                            photo.id()
+                    ),
+                    PhonePhotoTextureCache.textureHeight(
+                            photo.id()
+                    )
+            );
+        } else {
+            int color =
+                    thumbnailColor(
+                            photo.dimension()
+                    );
+
+            graphics.fill(
+                    x + 1,
+                    y + 1,
+                    x + CELL - 1,
+                    y + CELL - 1,
+                    color
+            );
+
+            graphics.fill(
+                    x + 1,
+                    y + CELL / 2,
+                    x + CELL - 1,
+                    y + CELL - 1,
+                    darken(
+                            color,
+                            0.62F
+                    )
+            );
+        }
+
+        roundedRect(
+                graphics,
+                x + 4,
+                y + CELL - 16,
+                CELL - 8,
+                12,
+                6,
+                0x88000000
+        );
+
+        drawUiCentered(
+                graphics,
+                formatThumbnailTime(
+                        photo.capturedAt()
+                ),
+                x + CELL / 2,
+                y + CELL - 13,
+                0xFFFFFFFF
+        );
     }
 
     @Override
@@ -200,33 +280,71 @@ public final class IPhonePhotosScreen extends IPhoneScreen {
             List<PhonePersonalAppsState.Photo> photos =
                     PhonePersonalAppsState.photos();
 
-            int visible =
-                    Math.min(
-                            6,
-                            photos.size()
-                    );
+            if (!photos.isEmpty()) {
+                clampFirstIndex(
+                        photos.size()
+                );
 
-            if (inside(
-                    mouseX,
-                    mouseY,
-                    contentX,
-                    listY,
-                    contentWidth,
-                    visible * ROW_HEIGHT
-            )) {
-                int index =
-                        ((int) mouseY - listY)
-                                / ROW_HEIGHT;
+                int gridWidth =
+                        COLUMNS * CELL
+                                + (COLUMNS - 1) * GAP;
 
-                if (index >= 0
-                        && index < visible) {
-                    minecraft.setScreen(
-                            new IPhonePhotoViewerScreen(
-                                    photos.get(index).id()
-                            )
-                    );
+                int gridHeight =
+                        4 * CELL
+                                + 3 * GAP;
 
-                    return true;
+                if (inside(
+                        mouseX,
+                        mouseY,
+                        contentX,
+                        gridY,
+                        gridWidth,
+                        gridHeight
+                )) {
+                    int relativeX =
+                            (int) mouseX
+                                    - contentX;
+
+                    int relativeY =
+                            (int) mouseY
+                                    - gridY;
+
+                    int column =
+                            relativeX
+                                    / (CELL + GAP);
+
+                    int row =
+                            relativeY
+                                    / (CELL + GAP);
+
+                    int inCellX =
+                            relativeX
+                                    % (CELL + GAP);
+
+                    int inCellY =
+                            relativeY
+                                    % (CELL + GAP);
+
+                    if (column < COLUMNS
+                            && row < 4
+                            && inCellX < CELL
+                            && inCellY < CELL) {
+                        int index =
+                                firstIndex
+                                        + row * COLUMNS
+                                        + column;
+
+                        if (index >= 0
+                                && index < photos.size()) {
+                            minecraft.setScreen(
+                                    new IPhonePhotoViewerScreen(
+                                            photos.get(index).id()
+                                    )
+                            );
+
+                            return true;
+                        }
+                    }
                 }
             }
         }
@@ -238,7 +356,75 @@ public final class IPhonePhotosScreen extends IPhoneScreen {
         );
     }
 
-    private String formatTimestamp(long millis) {
+    @Override
+    public boolean mouseScrolled(
+            double mouseX,
+            double mouseY,
+            double delta
+    ) {
+        List<PhonePersonalAppsState.Photo> photos =
+                PhonePersonalAppsState.photos();
+
+        if (photos.size()
+                <= PAGE_SIZE) {
+            return super.mouseScrolled(
+                    mouseX,
+                    mouseY,
+                    delta
+            );
+        }
+
+        if (delta < 0.0D) {
+            firstIndex =
+                    Math.min(
+                            maxPageStart(
+                                    photos.size()
+                            ),
+                            firstIndex + PAGE_SIZE
+                    );
+        } else if (delta > 0.0D) {
+            firstIndex =
+                    Math.max(
+                            0,
+                            firstIndex - PAGE_SIZE
+                    );
+        }
+
+        return true;
+    }
+
+    private void clampFirstIndex(
+            int size
+    ) {
+        firstIndex =
+                Math.max(
+                        0,
+                        Math.min(
+                                firstIndex,
+                                maxPageStart(
+                                        size
+                                )
+                        )
+                );
+    }
+
+    private static int maxPageStart(
+            int size
+    ) {
+        if (size <= PAGE_SIZE) {
+            return 0;
+        }
+
+        return (
+                (size - 1)
+                        / PAGE_SIZE
+        )
+                * PAGE_SIZE;
+    }
+
+    private String formatThumbnailTime(
+            long millis
+    ) {
         LocalDateTime time =
                 LocalDateTime.ofInstant(
                         Instant.ofEpochMilli(
@@ -247,11 +433,7 @@ public final class IPhonePhotosScreen extends IPhoneScreen {
                         PhoneLocaleSettings.regionZoneId()
                 );
 
-        return PhoneLocaleSettings.formatDate(
-                time.toLocalDate()
-        )
-                + " "
-                + PhoneLocaleSettings.formatTime(
+        return PhoneLocaleSettings.formatTime(
                 time.toLocalTime(),
                 PhoneSystemSettings.use24HourTime()
         );
@@ -261,12 +443,16 @@ public final class IPhonePhotosScreen extends IPhoneScreen {
             String dimension
     ) {
         if (dimension != null
-                && dimension.contains("nether")) {
+                && dimension.contains(
+                "nether"
+        )) {
             return 0xFF80483D;
         }
 
         if (dimension != null
-                && dimension.contains("end")) {
+                && dimension.contains(
+                "end"
+        )) {
             return 0xFF5A5778;
         }
 
@@ -293,9 +479,17 @@ public final class IPhonePhotosScreen extends IPhoneScreen {
                 color
                         & 0xFF;
 
-        r = Math.round(r * factor);
-        g = Math.round(g * factor);
-        b = Math.round(b * factor);
+        r = Math.round(
+                r * factor
+        );
+
+        g = Math.round(
+                g * factor
+        );
+
+        b = Math.round(
+                b * factor
+        );
 
         return a << 24
                 | r << 16

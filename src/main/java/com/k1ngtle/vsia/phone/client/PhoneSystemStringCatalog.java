@@ -13,6 +13,7 @@ public final class PhoneSystemStringCatalog {
             " in ",
             " is available.",
             " network(s) in range",
+            " of ",
             " radio access.\n\n",
             " → HTTP → ",
             "% · Low Power",
@@ -333,6 +334,7 @@ public final class PhoneSystemStringCatalog {
             "Iccid",
             "Id",
             "Image",
+            "Image file missing",
             "Imsi",
             "Inbox",
             "Inbox is Empty",
@@ -364,6 +366,7 @@ public final class PhoneSystemStringCatalog {
             "Loading Website",
             "Local Network",
             "Local Network access is disabled.",
+            "Lock Screen",
             "Low Power Mode",
             "Low Power Mode reduces background wireless refresh frequency.",
             "MINECRAFT-VSIA",
@@ -411,6 +414,7 @@ public final class PhoneSystemStringCatalog {
             "No Bookmarks Yet",
             "No Connection",
             "No Events",
+            "No Media Playing",
             "No Messages",
             "No Notes",
             "No Photos",
@@ -485,6 +489,7 @@ public final class PhoneSystemStringCatalog {
             "PhoneOS Version",
             "PhoneOS is up to date.",
             "Photo",
+            "Photo unavailable",
             "Photos",
             "Physical SIM installed",
             "PhysicalCellId",
@@ -523,6 +528,7 @@ public final class PhoneSystemStringCatalog {
             "Read & Speak",
             "Ready",
             "Rear",
+            "Recents",
             "Reduce Transparency",
             "Region",
             "Region changes date formatting, time zone and default units. Temperature changes the Weather widget immediately.",
@@ -614,9 +620,11 @@ public final class PhoneSystemStringCatalog {
             "TV",
             "Tab Closed",
             "Tabs",
+            "Take a photo with Camera",
             "Tap + to start a conversation",
             "Tap Check for Update.",
             "Tap to Apply",
+            "Tap to Open",
             "Tap to select / remove",
             "Tap to select profile",
             "Tap to switch",
@@ -661,6 +669,7 @@ public final class PhoneSystemStringCatalog {
             "Unknown local phone transport",
             "Unmute",
             "Unprovisioned physical USIM",
+            "Up Next",
             "Update downloaded and ready to install.",
             "Use:\n",
             "V",
@@ -826,8 +835,7 @@ public final class PhoneSystemStringCatalog {
     }
 
     public static boolean contains(String text) {
-        return text != null
-                && STRINGS.contains(text);
+        return text != null && STRINGS.contains(text);
     }
 
     public static Set<String> all() {

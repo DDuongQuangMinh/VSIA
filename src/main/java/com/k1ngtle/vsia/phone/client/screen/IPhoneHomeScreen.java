@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.phone.client.screen;
 
+import com.k1ngtle.vsia.phone.client.PhoneNowPlaying;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
@@ -49,7 +50,7 @@ public class IPhoneHomeScreen extends IPhoneScreen {
         renderWallpaper(graphics);
         renderWidgets(graphics);
         renderAppGrid(graphics);
-        renderSearchPill(graphics);
+        renderSearchOrNowPlaying(graphics);
         renderDock(graphics);
 
         graphics.disableScissor();
@@ -143,6 +144,156 @@ public class IPhoneHomeScreen extends IPhoneScreen {
         }
     }
 
+    private void renderSearchOrNowPlaying(GuiGraphics graphics) {
+        if (!PhoneNowPlaying.hasActive()) {
+            renderSearchPill(graphics);
+            return;
+        }
+
+        int w = 132;
+        int h = 24;
+        int x = phoneX + (PHONE_WIDTH - w) / 2;
+        int y = searchY - 2;
+
+        roundedRect(
+                graphics,
+                x,
+                y,
+                w,
+                h,
+                12,
+                0xA816171B
+        );
+
+        int accent =
+                PhoneNowPlaying.kind()
+                        == PhoneNowPlaying.Kind.MUSIC
+                        ? 0xFFFF375F
+                        : PhoneNowPlaying.kind()
+                        == PhoneNowPlaying.Kind.PODCAST
+                        ? 0xFFBF5AF2
+                        : 0xFF0A84FF;
+
+        roundedRect(
+                graphics,
+                x + 4,
+                y + 4,
+                16,
+                16,
+                5,
+                accent
+        );
+
+        drawMiniMediaGlyph(
+                graphics,
+                x + 12,
+                y + 12,
+                PhoneNowPlaying.kind()
+        );
+
+        drawUiText(
+                graphics,
+                fitUi(
+                        PhoneNowPlaying.title(),
+                        79
+                ),
+                x + 26,
+                y + 8,
+                0xFFFFFFFF
+        );
+
+        drawUiCentered(
+                graphics,
+                PhoneNowPlaying.playing()
+                        ? "Ⅱ"
+                        : "▶",
+                x + w - 15,
+                y + 8,
+                0xFFFFFFFF
+        );
+    }
+
+    private void drawMiniMediaGlyph(
+            GuiGraphics graphics,
+            int cx,
+            int cy,
+            PhoneNowPlaying.Kind kind
+    ) {
+        if (kind
+                == PhoneNowPlaying.Kind.MUSIC) {
+            graphics.fill(
+                    cx + 2,
+                    cy - 6,
+                    cx + 4,
+                    cy + 4,
+                    0xFFFFFFFF
+            );
+
+            graphics.fill(
+                    cx - 4,
+                    cy - 3,
+                    cx + 4,
+                    cy - 1,
+                    0xFFFFFFFF
+            );
+
+            roundedRect(
+                    graphics,
+                    cx - 7,
+                    cy + 2,
+                    5,
+                    4,
+                    2,
+                    0xFFFFFFFF
+            );
+
+            roundedRect(
+                    graphics,
+                    cx + 1,
+                    cy,
+                    5,
+                    4,
+                    2,
+                    0xFFFFFFFF
+            );
+
+            return;
+        }
+
+        if (kind
+                == PhoneNowPlaying.Kind.PODCAST) {
+            roundedRect(
+                    graphics,
+                    cx - 2,
+                    cy - 2,
+                    4,
+                    4,
+                    2,
+                    0xFFFFFFFF
+            );
+
+            roundedRect(
+                    graphics,
+                    cx - 5,
+                    cy - 5,
+                    10,
+                    10,
+                    5,
+                    0x55FFFFFF
+            );
+
+            return;
+        }
+
+        drawUiCentered(
+                graphics,
+                "tv",
+                cx,
+                cy - 4,
+                0xFFFFFFFF
+        );
+    }
+
     private void renderSearchPill(GuiGraphics graphics) {
         int w = 68;
         int h = 19;
@@ -188,10 +339,9 @@ public class IPhoneHomeScreen extends IPhoneScreen {
 
         switch (kind) {
             case PHONE -> {
-                roundedRect(g, x + 8, y + 20, 7, 6, 3, TEXT);
-                g.fill(x + 10, y + 15, x + 17, y + 23, TEXT);
-                roundedRect(g, x + 16, y + 9, 9, 7, 4, TEXT);
-                g.fill(x + 15, y + 13, x + 23, y + 18, TEXT);
+                roundedRect(g, x + 8, y + 7, 7, 8, 4, TEXT);
+                g.fill(x + 11, y + 12, x + 19, y + 21, TEXT);
+                roundedRect(g, x + 20, y + 20, 7, 7, 4, TEXT);
             }
             case MESSAGES -> {
                 roundedRect(g, x + 6, y + 7, size - 12, size - 15, 10, TEXT);
@@ -258,10 +408,10 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 roundedRect(g, cx - 2, cy + 3, 4, 10, 2, 0xFFFFFFFF);
             }
             case APPSTORE -> {
-                g.fill(cx - 1, y + 10, cx + 1, y + 24, 0xFFFFFFFF);
-                g.fill(x + 10, y + 21, x + size - 10, y + 23, 0xFFFFFFFF);
-                g.fill(x + 11, y + 21, x + 18, y + 10, 0xFFFFFFFF);
-                g.fill(x + size - 18, y + 10, x + size - 11, y + 21, 0xFFFFFFFF);
+                g.fill(cx - 1, y + 7, cx + 1, y + size - 7, 0xFFFFFFFF);
+                g.fill(x + 8, y + size - 10, x + size - 8, y + size - 8, 0xFFFFFFFF);
+                g.fill(x + 10, y + 8, x + 13, y + 11, 0xFFFFFFFF);
+                g.fill(x + size - 13, y + 8, x + size - 10, y + 11, 0xFFFFFFFF);
             }
             case MAPS -> {
                 roundedRect(g, x + 5, y + 5, size - 10, size - 10, 4, 0xFFFFFFFF);
@@ -274,9 +424,9 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 roundedRect(g, cx - 1, cy + 3, 3, 5, 1, 0xFF0A84FF);
             }
             case HEALTH -> {
-                roundedRect(g, cx - 8, cy - 8, 8, 8, 4, 0xFFFF375F);
-                roundedRect(g, cx, cy - 8, 8, 8, 4, 0xFFFF375F);
-                g.fill(cx - 7, cy - 4, cx + 7, cy + 5, 0xFFFF375F);
+                roundedRect(g, cx - 8, cy - 7, 8, 8, 4, 0xFFFF375F);
+                roundedRect(g, cx, cy - 7, 8, 8, 4, 0xFFFF375F);
+                g.fill(cx - 7, cy - 2, cx + 7, cy + 5, 0xFFFF375F);
                 g.fill(cx - 5, cy + 5, cx + 5, cy + 11, 0xFFFF375F);
             }
             case WALLET -> {
@@ -286,15 +436,22 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 g.fill(x + 9, y + 19, x + size - 9, y + 22, 0xFF30D158);
             }
             case FACETIME -> {
-                roundedRect(g, x + 8, y + 12, 16, 10, 4, 0xFFFFFFFF);
-                g.fill(x + 20, y + 14, x + 27, y + 17, 0xFFFFFFFF);
-                g.fill(x + 20, y + 17, x + 25, y + 21, 0xFFFFFFFF);
+                roundedRect(g, x + 7, y + 10, size - 16, size - 18, 6, 0xFFFFFFFF);
+                g.fill(x + 16, y + 13, x + 22, y + 22, 0xFFFFFFFF);
+                g.fill(x + size - 13, y + 14, x + size - 7, y + 18, 0xFFFFFFFF);
+                g.fill(x + size - 13, y + 18, x + size - 9, y + 22, 0xFFFFFFFF);
             }
             case MUSIC -> {
-                g.fill(cx + 11, y + 8, cx + 15, y + 24, 0xFFFFFFFF);
-                g.fill(cx - 2, y + 11, x + size - 9, y + 15, 0xFFFFFFFF);
-                roundedRect(g, cx - 11, y + 21, 9, 8, 4, 0xFFFFFFFF);
-                roundedRect(g, cx + 4, y + 18, 10, 10, 5, 0xFFFFFFFF);
+                int white = 0xFFFFFFFF;
+                g.fill(cx + 8, y + 8, cx + 12, y + 23, white);
+                g.fill(cx - 7, y + 14, cx - 3, y + 28, white);
+
+                g.fill(cx - 7, y + 11, cx + 12, y + 14, white);
+                g.fill(cx - 4, y + 9, cx + 12, y + 11, white);
+                g.fill(cx - 1, y + 7, cx + 12, y + 9, white);
+
+                roundedRect(g, cx - 12, y + 24, 10, 8, 4, white);
+                roundedRect(g, cx + 5, y + 20, 11, 9, 5, white);
             }
         }
     }
@@ -312,6 +469,48 @@ public class IPhoneHomeScreen extends IPhoneScreen {
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0) {
+            if (PhoneNowPlaying.hasActive()) {
+                int miniW = 132;
+                int miniH = 24;
+                int miniX = phoneX + (PHONE_WIDTH - miniW) / 2;
+                int miniY = searchY - 2;
+
+                if (inside(
+                        mouseX,
+                        mouseY,
+                        miniX,
+                        miniY,
+                        miniW,
+                        miniH
+                )) {
+                    if (mouseX
+                            >= miniX + miniW - 30) {
+                        PhoneNowPlaying.toggle();
+                    } else {
+                        switch (PhoneNowPlaying.kind()) {
+                            case MUSIC ->
+                                    minecraft.setScreen(
+                                            new IPhoneMusicScreen()
+                                    );
+
+                            case PODCAST ->
+                                    minecraft.setScreen(
+                                            new IPhonePodcastsScreen()
+                                    );
+
+                            case TV ->
+                                    minecraft.setScreen(
+                                            new IPhoneTVScreen()
+                                    );
+
+                            default -> {
+                            }
+                        }
+                    }
+
+                    return true;
+                }
+            }
             int stepX = 52;
             int stepY = 42;
             int columns = 4;

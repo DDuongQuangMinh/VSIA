@@ -10,12 +10,15 @@ import net.minecraft.resources.ResourceLocation;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.List;
 
 public final class IPhonePhotoViewerScreen extends IPhoneScreen {
     private static final int BG = 0xFF000000;
     private static final int TEXT = 0xFFFFFFFF;
     private static final int MUTED = 0xFFAEAEB2;
+    private static final int BLUE = 0xFF5FA9FF;
     private static final int RED = 0xFFFF453A;
+    private static final int TOOLBAR = 0xCC1C1C1E;
 
     private final long photoId;
 
@@ -23,22 +26,39 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
     private int imageY;
     private int imageWidth;
     private int imageHeight;
-    private int deleteY;
+    private int toolbarY;
 
-    public IPhonePhotoViewerScreen(long photoId) {
-        super(Component.literal("Photo"));
-        this.photoId = photoId;
+    public IPhonePhotoViewerScreen(
+            long photoId
+    ) {
+        super(
+                Component.literal(
+                        "Photo"
+                )
+        );
+
+        this.photoId =
+                photoId;
     }
 
     @Override
     protected void init() {
         super.init();
 
-        imageX = phoneX + 10;
-        imageY = phoneY + 67;
-        imageWidth = PHONE_WIDTH - 20;
-        imageHeight = 238;
-        deleteY = phoneY + PHONE_HEIGHT - 68;
+        imageX =
+                phoneX + 12;
+
+        imageY =
+                phoneY + 72;
+
+        imageWidth =
+                PHONE_WIDTH - 24;
+
+        imageHeight =
+                235;
+
+        toolbarY =
+                phoneY + PHONE_HEIGHT - 69;
     }
 
     @Override
@@ -48,53 +68,70 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
             int mouseY,
             float partialTick
     ) {
-        renderPhoneShell(graphics, BG);
-        renderStatusBar(graphics);
+        renderPhoneShell(
+                graphics,
+                BG
+        );
+
+        renderStatusBar(
+                graphics
+        );
 
         drawUiText(
                 graphics,
                 "‹ Photos",
                 phoneX + 16,
-                phoneY + 47,
-                0xFF5FA9FF
+                phoneY + 48,
+                BLUE
+        );
+
+        List<PhonePersonalAppsState.Photo> photos =
+                PhonePersonalAppsState.photos();
+
+        int index =
+                indexOf(
+                        photos,
+                        photoId
+                );
+
+        if (index >= 0) {
+            String position =
+                    (index + 1)
+                            + " of "
+                            + photos.size();
+
+            drawUiText(
+                    graphics,
+                    position,
+                    phoneX + PHONE_WIDTH - 16 - uiWidth(position),
+                    phoneY + 48,
+                    MUTED
+            );
+        }
+
+        beginPhoneClip(
+                graphics,
+                62
         );
 
         PhonePersonalAppsState.Photo photo =
-                findPhoto();
-
-        beginPhoneClip(graphics, 58);
+                findPhoto(
+                        photos
+                );
 
         if (photo == null) {
             drawUiCentered(
                     graphics,
-                    "No Photos",
+                    "Photo unavailable",
                     phoneX + PHONE_WIDTH / 2,
-                    imageY + 40,
+                    imageY + 90,
                     MUTED
             );
         } else {
-            ResourceLocation texture =
-                    PhonePhotoTextureCache.textureFor(
-                            photo
-                    );
-
-            if (texture != null) {
-                graphics.blit(
-                        texture,
-                        imageX,
-                        imageY,
-                        0.0F,
-                        0.0F,
-                        imageWidth,
-                        imageHeight,
-                        PhonePhotoTextureCache.textureWidth(
-                                photo.id()
-                        ),
-                        PhonePhotoTextureCache.textureHeight(
-                                photo.id()
-                        )
-                );
-            }
+            renderPhoto(
+                    graphics,
+                    photo
+            );
 
             drawUiCentered(
                     graphics,
@@ -102,45 +139,228 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
                             photo.capturedAt()
                     ),
                     phoneX + PHONE_WIDTH / 2,
-                    imageY + imageHeight + 18,
+                    imageY + imageHeight + 15,
                     TEXT
             );
 
-            drawUiCentered(
-                    graphics,
-                    photo.dimension()
+            String details =
+                    shortDimension(
+                            photo.dimension()
+                    )
                             + " · "
                             + photo.x()
                             + ", "
                             + photo.y()
                             + ", "
-                            + photo.z(),
-                    phoneX + PHONE_WIDTH / 2,
-                    imageY + imageHeight + 36,
-                    MUTED
-            );
-
-            roundedRect(
-                    graphics,
-                    phoneX + 24,
-                    deleteY,
-                    PHONE_WIDTH - 48,
-                    34,
-                    12,
-                    0xFF252528
-            );
+                            + photo.z()
+                            + " · "
+                            + photo.zoom()
+                            + "x";
 
             drawUiCentered(
                     graphics,
-                    "Delete",
+                    fitUi(
+                            details,
+                            PHONE_WIDTH - 50
+                    ),
                     phoneX + PHONE_WIDTH / 2,
-                    deleteY + 12,
-                    RED
+                    imageY + imageHeight + 31,
+                    MUTED
+            );
+
+            renderToolbar(
+                    graphics,
+                    index,
+                    photos.size()
             );
         }
 
-        endPhoneClip(graphics);
-        renderHomeIndicator(graphics);
+        endPhoneClip(
+                graphics
+        );
+
+        renderHomeIndicator(
+                graphics
+        );
+    }
+
+    private void renderPhoto(
+            GuiGraphics graphics,
+            PhonePersonalAppsState.Photo photo
+    ) {
+        ResourceLocation texture =
+                PhonePhotoTextureCache.textureFor(
+                        photo
+                );
+
+        roundedRect(
+                graphics,
+                imageX,
+                imageY,
+                imageWidth,
+                imageHeight,
+                12,
+                0xFF121214
+        );
+
+        if (texture == null) {
+            drawUiCentered(
+                    graphics,
+                    "Image file missing",
+                    phoneX + PHONE_WIDTH / 2,
+                    imageY + imageHeight / 2,
+                    MUTED
+            );
+
+            return;
+        }
+
+        int textureWidth =
+                PhonePhotoTextureCache.textureWidth(
+                        photo.id()
+                );
+
+        int textureHeight =
+                PhonePhotoTextureCache.textureHeight(
+                        photo.id()
+                );
+
+        if (textureWidth <= 0
+                || textureHeight <= 0) {
+            return;
+        }
+
+        float scale =
+                Math.min(
+                        imageWidth
+                                / (float) textureWidth,
+                        imageHeight
+                                / (float) textureHeight
+                );
+
+        int drawWidth =
+                Math.max(
+                        1,
+                        Math.round(
+                                textureWidth
+                                        * scale
+                        )
+                );
+
+        int drawHeight =
+                Math.max(
+                        1,
+                        Math.round(
+                                textureHeight
+                                        * scale
+                        )
+                );
+
+        int drawX =
+                imageX
+                        + (imageWidth - drawWidth)
+                        / 2;
+
+        int drawY =
+                imageY
+                        + (imageHeight - drawHeight)
+                        / 2;
+
+        graphics.enableScissor(
+                imageX,
+                imageY,
+                imageX + imageWidth,
+                imageY + imageHeight
+        );
+
+        graphics.pose()
+                .pushPose();
+
+        graphics.pose()
+                .translate(
+                        drawX,
+                        drawY,
+                        0.0F
+                );
+
+        graphics.pose()
+                .scale(
+                        scale,
+                        scale,
+                        1.0F
+                );
+
+        graphics.blit(
+                texture,
+                0,
+                0,
+                0.0F,
+                0.0F,
+                textureWidth,
+                textureHeight,
+                textureWidth,
+                textureHeight
+        );
+
+        graphics.pose()
+                .popPose();
+
+        graphics.disableScissor();
+
+        beginPhoneClip(
+                graphics,
+                62
+        );
+    }
+
+    private void renderToolbar(
+            GuiGraphics graphics,
+            int index,
+            int total
+    ) {
+        roundedRect(
+                graphics,
+                phoneX + 18,
+                toolbarY,
+                PHONE_WIDTH - 36,
+                38,
+                14,
+                TOOLBAR
+        );
+
+        drawUiCentered(
+                graphics,
+                index > 0
+                        ? "‹"
+                        : "·",
+                phoneX + 48,
+                toolbarY + 14,
+                index > 0
+                        ? TEXT
+                        : MUTED
+        );
+
+        drawUiCentered(
+                graphics,
+                "Delete",
+                phoneX + PHONE_WIDTH / 2,
+                toolbarY + 14,
+                RED
+        );
+
+        drawUiCentered(
+                graphics,
+                index >= 0
+                        && index + 1 < total
+                        ? "›"
+                        : "·",
+                phoneX + PHONE_WIDTH - 48,
+                toolbarY + 14,
+                index >= 0
+                        && index + 1 < total
+                        ? TEXT
+                        : MUTED
+        );
     }
 
     @Override
@@ -150,13 +370,9 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
             int button
     ) {
         if (button == 0) {
-            if (inside(
+            if (clickedBack(
                     mouseX,
-                    mouseY,
-                    phoneX + 8,
-                    phoneY + 39,
-                    70,
-                    30
+                    mouseY
             )) {
                 minecraft.setScreen(
                         new IPhonePhotosScreen()
@@ -168,18 +384,84 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
             if (inside(
                     mouseX,
                     mouseY,
-                    phoneX + 24,
-                    deleteY,
-                    PHONE_WIDTH - 48,
-                    34
+                    phoneX + 18,
+                    toolbarY,
+                    PHONE_WIDTH - 36,
+                    38
             )) {
+                List<PhonePersonalAppsState.Photo> photos =
+                        PhonePersonalAppsState.photos();
+
+                int index =
+                        indexOf(
+                                photos,
+                                photoId
+                        );
+
+                int third =
+                        (PHONE_WIDTH - 36)
+                                / 3;
+
+                if (mouseX
+                        < phoneX + 18 + third) {
+                    if (index > 0) {
+                        minecraft.setScreen(
+                                new IPhonePhotoViewerScreen(
+                                        photos.get(
+                                                index - 1
+                                        ).id()
+                                )
+                        );
+                    }
+
+                    return true;
+                }
+
+                if (mouseX
+                        >= phoneX + 18 + third * 2) {
+                    if (index >= 0
+                            && index + 1 < photos.size()) {
+                        minecraft.setScreen(
+                                new IPhonePhotoViewerScreen(
+                                        photos.get(
+                                                index + 1
+                                        ).id()
+                                )
+                        );
+                    }
+
+                    return true;
+                }
+
                 PhonePersonalAppsState.deletePhoto(
                         photoId
                 );
 
-                minecraft.setScreen(
-                        new IPhonePhotosScreen()
-                );
+                List<PhonePersonalAppsState.Photo> remaining =
+                        PhonePersonalAppsState.photos();
+
+                if (remaining.isEmpty()) {
+                    minecraft.setScreen(
+                            new IPhonePhotosScreen()
+                    );
+                } else {
+                    int nextIndex =
+                            Math.max(
+                                    0,
+                                    Math.min(
+                                            index,
+                                            remaining.size() - 1
+                                    )
+                            );
+
+                    minecraft.setScreen(
+                            new IPhonePhotoViewerScreen(
+                                    remaining.get(
+                                            nextIndex
+                                    ).id()
+                            )
+                    );
+                }
 
                 return true;
             }
@@ -192,10 +474,13 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
         );
     }
 
-    private PhonePersonalAppsState.Photo findPhoto() {
+    private PhonePersonalAppsState.Photo findPhoto(
+            List<PhonePersonalAppsState.Photo> photos
+    ) {
         for (PhonePersonalAppsState.Photo photo :
-                PhonePersonalAppsState.photos()) {
-            if (photo.id() == photoId) {
+                photos) {
+            if (photo.id()
+                    == photoId) {
                 return photo;
             }
         }
@@ -203,7 +488,26 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
         return null;
     }
 
-    private String formatTimestamp(long millis) {
+    private static int indexOf(
+            List<PhonePersonalAppsState.Photo> photos,
+            long id
+    ) {
+        for (int i = 0;
+             i < photos.size();
+             i++) {
+            if (photos.get(
+                    i
+            ).id() == id) {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private String formatTimestamp(
+            long millis
+    ) {
         LocalDateTime time =
                 LocalDateTime.ofInstant(
                         Instant.ofEpochMilli(
@@ -219,6 +523,40 @@ public final class IPhonePhotoViewerScreen extends IPhoneScreen {
                 + PhoneLocaleSettings.formatTime(
                 time.toLocalTime(),
                 PhoneSystemSettings.use24HourTime()
+        );
+    }
+
+    private static String shortDimension(
+            String dimension
+    ) {
+        if (dimension == null
+                || dimension.isBlank()) {
+            return "Unknown";
+        }
+
+        int separator =
+                dimension.lastIndexOf(
+                        ':'
+                );
+
+        String value =
+                separator >= 0
+                        ? dimension.substring(
+                        separator + 1
+                )
+                        : dimension;
+
+        if (value.isBlank()) {
+            return dimension;
+        }
+
+        return Character.toUpperCase(
+                value.charAt(
+                        0
+                )
+        )
+                + value.substring(
+                1
         );
     }
 }

@@ -1,6 +1,7 @@
 package com.k1ngtle.vsia.phone.client.screen;
 
 import com.k1ngtle.vsia.phone.client.PhoneCoreAppsState;
+import com.k1ngtle.vsia.phone.client.PhoneNowPlaying;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -31,6 +32,10 @@ public final class IPhoneTVScreen extends IPhoneScreen {
     @Override
     protected void init() {
         super.init();
+        PhoneNowPlaying.mark(
+                PhoneNowPlaying.Kind.TV
+        );
+
         x = phoneX + 14;
         w = PHONE_WIDTH - 28;
         previewY = phoneY + 82;
