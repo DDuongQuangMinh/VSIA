@@ -33,7 +33,7 @@ public final class IPhoneFaceTimeScreen extends IPhoneScreen {
         x = phoneX + 14;
         w = PHONE_WIDTH - 28;
         listY = phoneY + 84;
-        actionY = phoneY + PHONE_HEIGHT - 72;
+        actionY = phoneY + PHONE_HEIGHT - 78;
     }
 
     @Override
@@ -44,26 +44,25 @@ public final class IPhoneFaceTimeScreen extends IPhoneScreen {
         beginPhoneClip(g, 68);
 
         if (PhoneCoreAppsState.faceTimeActive()) {
-            roundedRect(g, x, listY, w, 150, 16, CARD);
-            drawUiCentered(g, "Connected", phoneX + PHONE_WIDTH / 2, listY + 18, GREEN);
-            drawUiCentered(g, PhoneCoreAppsState.faceTimeTarget(), phoneX + PHONE_WIDTH / 2, listY + 47, TEXT);
-            drawUiCentered(g, formatDuration(PhoneCoreAppsState.faceTimeSeconds()), phoneX + PHONE_WIDTH / 2, listY + 70, MUTED);
-            drawUiWrappedCentered(
-                    g,
-                    "FaceTime is linked to the current multiplayer player list. Video transport is simulated locally.",
-                    phoneX + PHONE_WIDTH / 2,
-                    listY + 95,
-                    w - 28,
-                    11,
-                    4,
-                    MUTED
-            );
+            roundedRect(g, x, listY, w, 176, 16, CARD);
+            drawUiCentered(g, "Connected", phoneX + PHONE_WIDTH / 2, listY + 16, GREEN);
+            drawUiCentered(g, PhoneCoreAppsState.faceTimeTarget(), phoneX + PHONE_WIDTH / 2, listY + 42, TEXT);
+            drawUiCentered(g, formatDuration(PhoneCoreAppsState.faceTimeSeconds()), phoneX + PHONE_WIDTH / 2, listY + 64, MUTED);
 
-            roundedRect(g, x, actionY, w, 36, 12, 0xFF3A2022);
-            drawUiCentered(g, "End Call", phoneX + PHONE_WIDTH / 2, actionY + 13, RED);
+            roundedRect(g, phoneX + 79, listY + 82, 78, 52, 16, 0xFF3A3A3C);
+            drawUiCentered(g, PhoneCoreAppsState.faceTimeCameraEnabled() ? "Camera On" : "Camera Off", phoneX + PHONE_WIDTH / 2, listY + 101, TEXT);
+            drawUiCentered(g, PhoneCoreAppsState.faceTimeMuted() ? "Muted" : "Mic Live", phoneX + PHONE_WIDTH / 2, listY + 116, MUTED);
+
+            roundedRect(g, x, actionY, 62, 36, 12, 0xFF17371F);
+            drawUiCentered(g, PhoneCoreAppsState.faceTimeMuted() ? "Unmute" : "Mute", x + 31, actionY + 13, GREEN);
+
+            roundedRect(g, x + 72, actionY, 62, 36, 12, 0xFF1B3041);
+            drawUiCentered(g, PhoneCoreAppsState.faceTimeCameraEnabled() ? "Camera" : "Enable", x + 103, actionY + 13, 0xFF64D2FF);
+
+            roundedRect(g, x + 144, actionY, w - 144, 36, 12, 0xFF492023);
+            drawUiCentered(g, "End", x + 144 + (w - 144) / 2, actionY + 13, RED);
         } else {
             List<String> players = onlinePlayers();
-
             drawUiText(g, "CONTACTS", x + 4, listY - 17, MUTED);
 
             if (players.isEmpty()) {
@@ -76,8 +75,8 @@ public final class IPhoneFaceTimeScreen extends IPhoneScreen {
                 for (int i = 0; i < visible; i++) {
                     int y = listY + i * ROW;
                     roundedRect(g, x + 10, y + 8, 25, 25, 13, GREEN);
-                    drawUiCentered(g, players.get(i).substring(0, 1).toUpperCase(), x + 22, y + 17, TEXT);
-                    drawUiText(g, fitUi(players.get(i), w - 80), x + 44, y + 15, TEXT);
+                    drawUiCentered(g, "▸", x + 22, y + 17, TEXT);
+                    drawUiText(g, fitUi(players.get(i), w - 90), x + 44, y + 15, TEXT);
                     drawUiText(g, "Video", x + w - 40, y + 15, GREEN);
 
                     if (i + 1 < visible) {
@@ -95,7 +94,17 @@ public final class IPhoneFaceTimeScreen extends IPhoneScreen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0) {
             if (PhoneCoreAppsState.faceTimeActive()) {
-                if (inside(mouseX, mouseY, x, actionY, w, 36)) {
+                if (inside(mouseX, mouseY, x, actionY, 62, 36)) {
+                    PhoneCoreAppsState.toggleFaceTimeMuted();
+                    return true;
+                }
+
+                if (inside(mouseX, mouseY, x + 72, actionY, 62, 36)) {
+                    PhoneCoreAppsState.toggleFaceTimeCameraEnabled();
+                    return true;
+                }
+
+                if (inside(mouseX, mouseY, x + 144, actionY, w - 144, 36)) {
                     PhoneCoreAppsState.endFaceTime();
                     return true;
                 }

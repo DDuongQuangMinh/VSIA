@@ -34,19 +34,24 @@ public final class PhoneCoreAppsState {
 
     private static String faceTimeTarget = "";
     private static long faceTimeStartedAt;
+    private static boolean faceTimeMuted;
+    private static boolean faceTimeCameraEnabled = true;
 
     private static int tvChannel;
     private static boolean tvPlaying = true;
+    private static int tvVolume = 65;
 
     private static int podcastEpisode;
     private static boolean podcastPlaying;
     private static long podcastStartedAt;
     private static long podcastAccumulated;
+    private static int podcastSpeedIndex;
 
     private static int musicTrack;
     private static boolean musicPlaying;
     private static long musicStartedAt;
     private static long musicAccumulated;
+    private static boolean musicRepeat;
 
     private static boolean fitnessInstalled = true;
     private static boolean fitnessWorkoutActive;
@@ -97,6 +102,60 @@ public final class PhoneCoreAppsState {
                                 "1250.0"
                         ),
                         1250.0D
+                );
+
+        faceTimeMuted =
+                Boolean.parseBoolean(
+                        properties.getProperty(
+                                "faceTimeMuted",
+                                "false"
+                        )
+                );
+
+        faceTimeCameraEnabled =
+                Boolean.parseBoolean(
+                        properties.getProperty(
+                                "faceTimeCameraEnabled",
+                                "true"
+                        )
+                );
+
+        tvVolume =
+                Math.max(
+                        0,
+                        Math.min(
+                                100,
+                                parseInt(
+                                        properties.getProperty(
+                                                "tvVolume",
+                                                "65"
+                                        ),
+                                        65
+                                )
+                        )
+                );
+
+        podcastSpeedIndex =
+                Math.max(
+                        0,
+                        Math.min(
+                                2,
+                                parseInt(
+                                        properties.getProperty(
+                                                "podcastSpeedIndex",
+                                                "0"
+                                        ),
+                                        0
+                                )
+                        )
+                );
+
+        musicRepeat =
+                Boolean.parseBoolean(
+                        properties.getProperty(
+                                "musicRepeat",
+                                "false"
+                        )
                 );
 
         int count =
@@ -272,11 +331,13 @@ public final class PhoneCoreAppsState {
 
         faceTimeStartedAt =
                 System.currentTimeMillis();
+        save();
     }
 
     public static synchronized void endFaceTime() {
         faceTimeTarget = "";
         faceTimeStartedAt = 0L;
+        save();
     }
 
     public static synchronized long faceTimeSeconds() {
@@ -292,6 +353,24 @@ public final class PhoneCoreAppsState {
         );
     }
 
+    public static synchronized boolean faceTimeMuted() {
+        return faceTimeMuted;
+    }
+
+    public static synchronized void toggleFaceTimeMuted() {
+        faceTimeMuted = !faceTimeMuted;
+        save();
+    }
+
+    public static synchronized boolean faceTimeCameraEnabled() {
+        return faceTimeCameraEnabled;
+    }
+
+    public static synchronized void toggleFaceTimeCameraEnabled() {
+        faceTimeCameraEnabled = !faceTimeCameraEnabled;
+        save();
+    }
+
     public static synchronized int tvChannel() {
         return tvChannel;
     }
@@ -300,6 +379,7 @@ public final class PhoneCoreAppsState {
         tvChannel =
                 (tvChannel + 1)
                         % 3;
+        save();
     }
 
     public static synchronized boolean tvPlaying() {
@@ -308,6 +388,26 @@ public final class PhoneCoreAppsState {
 
     public static synchronized void toggleTv() {
         tvPlaying = !tvPlaying;
+        save();
+    }
+
+    public static synchronized int tvVolume() {
+        return tvVolume;
+    }
+
+    public static synchronized void adjustTvVolume(
+            int delta
+    ) {
+        tvVolume =
+                Math.max(
+                        0,
+                        Math.min(
+                                100,
+                                tvVolume + delta
+                        )
+                );
+
+        save();
     }
 
     public static synchronized int podcastEpisode() {
@@ -329,6 +429,7 @@ public final class PhoneCoreAppsState {
         podcastAccumulated = 0L;
         podcastStartedAt =
                 System.currentTimeMillis();
+        save();
     }
 
     public static synchronized boolean podcastPlaying() {
@@ -345,6 +446,8 @@ public final class PhoneCoreAppsState {
                     System.currentTimeMillis();
             podcastPlaying = true;
         }
+
+        save();
     }
 
     public static synchronized long podcastElapsedMillis() {
@@ -355,6 +458,50 @@ public final class PhoneCoreAppsState {
         return podcastAccumulated
                 + System.currentTimeMillis()
                 - podcastStartedAt;
+    }
+
+    public static synchronized void skipPodcastMillis(
+            long delta
+    ) {
+        long updated =
+                Math.max(
+                        0L,
+                        podcastElapsedMillis()
+                                + delta
+                );
+
+        podcastAccumulated = updated;
+
+        if (podcastPlaying) {
+            podcastStartedAt =
+                    System.currentTimeMillis();
+        }
+
+        save();
+    }
+
+    public static synchronized String podcastSpeedLabel() {
+        return switch (podcastSpeedIndex) {
+            case 1 -> "1.5x";
+            case 2 -> "2x";
+            default -> "1x";
+        };
+    }
+
+    public static synchronized void cyclePodcastSpeed() {
+        podcastSpeedIndex =
+                (podcastSpeedIndex + 1)
+                        % 3;
+
+        save();
+    }
+
+    public static synchronized float podcastPitch() {
+        return switch (podcastSpeedIndex) {
+            case 1 -> 1.5F;
+            case 2 -> 2.0F;
+            default -> 1.0F;
+        };
     }
 
     public static synchronized int musicTrack() {
@@ -369,6 +516,7 @@ public final class PhoneCoreAppsState {
         musicAccumulated = 0L;
         musicStartedAt =
                 System.currentTimeMillis();
+        save();
     }
 
     public static synchronized void previousMusicTrack() {
@@ -381,6 +529,7 @@ public final class PhoneCoreAppsState {
         musicAccumulated = 0L;
         musicStartedAt =
                 System.currentTimeMillis();
+        save();
     }
 
     public static synchronized boolean musicPlaying() {
@@ -397,6 +546,8 @@ public final class PhoneCoreAppsState {
                     System.currentTimeMillis();
             musicPlaying = true;
         }
+
+        save();
     }
 
     public static synchronized long musicElapsedMillis() {
@@ -407,6 +558,15 @@ public final class PhoneCoreAppsState {
         return musicAccumulated
                 + System.currentTimeMillis()
                 - musicStartedAt;
+    }
+
+    public static synchronized boolean musicRepeat() {
+        return musicRepeat;
+    }
+
+    public static synchronized void toggleMusicRepeat() {
+        musicRepeat = !musicRepeat;
+        save();
     }
 
     public static synchronized boolean fitnessInstalled() {
@@ -538,16 +698,22 @@ public final class PhoneCoreAppsState {
 
         tvChannel = 0;
         tvPlaying = true;
+        tvVolume = 65;
+
+        faceTimeMuted = false;
+        faceTimeCameraEnabled = true;
 
         podcastEpisode = 0;
         podcastPlaying = false;
         podcastStartedAt = 0L;
         podcastAccumulated = 0L;
+        podcastSpeedIndex = 0;
 
         musicTrack = 0;
         musicPlaying = false;
         musicStartedAt = 0L;
         musicAccumulated = 0L;
+        musicRepeat = false;
 
         fitnessInstalled = true;
         fitnessWorkoutActive = false;
@@ -574,6 +740,41 @@ public final class PhoneCoreAppsState {
                 "walletBalance",
                 Double.toString(
                         walletBalance
+                )
+        );
+
+        properties.setProperty(
+                "faceTimeMuted",
+                Boolean.toString(
+                        faceTimeMuted
+                )
+        );
+
+        properties.setProperty(
+                "faceTimeCameraEnabled",
+                Boolean.toString(
+                        faceTimeCameraEnabled
+                )
+        );
+
+        properties.setProperty(
+                "tvVolume",
+                Integer.toString(
+                        tvVolume
+                )
+        );
+
+        properties.setProperty(
+                "podcastSpeedIndex",
+                Integer.toString(
+                        podcastSpeedIndex
+                )
+        );
+
+        properties.setProperty(
+                "musicRepeat",
+                Boolean.toString(
+                        musicRepeat
                 )
         );
 

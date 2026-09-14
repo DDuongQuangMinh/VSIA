@@ -1,0 +1,82 @@
+{
+  "phone.music.overworld_signal": {
+    "sounds": [
+      {
+        "name": "vsia:phone/music/overworld_signal",
+        "stream": true
+      }
+    ]
+  },
+  "phone.music.night_operations": {
+    "sounds": [
+      {
+        "name": "vsia:phone/music/night_operations",
+        "stream": true
+      }
+    ]
+  },
+  "phone.music.digital_horizon": {
+    "sounds": [
+      {
+        "name": "vsia:phone/music/digital_horizon",
+        "stream": true
+      }
+    ]
+  },
+  "phone.music.return_to_base": {
+    "sounds": [
+      {
+        "name": "vsia:phone/music/return_to_base",
+        "stream": true
+      }
+    ]
+  },
+  "phone.podcast.building_vsia": {
+    "sounds": [
+      {
+        "name": "vsia:phone/podcast/building_vsia",
+        "stream": true
+      }
+    ]
+  },
+  "phone.podcast.signals_networks": {
+    "sounds": [
+      {
+        "name": "vsia:phone/podcast/signals_networks",
+        "stream": true
+      }
+    ]
+  },
+  "phone.podcast.ships_physics": {
+    "sounds": [
+      {
+        "name": "vsia:phone/podcast/ships_physics",
+        "stream": true
+      }
+    ]
+  },
+  "phone.tv.vsia_live": {
+    "sounds": [
+      {
+        "name": "vsia:phone/tv/vsia_live",
+        "stream": true
+      }
+    ]
+  },
+  "phone.tv.world_weather": {
+    "sounds": [
+      {
+        "name": "vsia:phone/tv/world_weather",
+        "stream": true
+      }
+    ]
+  },
+  "phone.tv.network_ops": {
+    "sounds": [
+      {
+        "name": "vsia:phone/tv/network_ops",
+        "stream": true
+      }
+    ]
+  }
+}

@@ -27,6 +27,7 @@ public final class IPhonePodcastsScreen extends IPhoneScreen {
     private int w;
     private int listY;
     private int playerY;
+    private int transportY;
 
     public IPhonePodcastsScreen() {
         super(Component.literal("Podcasts"));
@@ -38,7 +39,8 @@ public final class IPhonePodcastsScreen extends IPhoneScreen {
         x = phoneX + 14;
         w = PHONE_WIDTH - 28;
         listY = phoneY + 82;
-        playerY = phoneY + 300;
+        playerY = phoneY + 274;
+        transportY = playerY + 64;
     }
 
     @Override
@@ -55,17 +57,22 @@ public final class IPhonePodcastsScreen extends IPhoneScreen {
             drawUiCentered(g, "◉", x + 24, y + 18, TEXT);
             drawUiText(g, fitUi(TITLES[i], w - 58), x + 49, y + 10, TEXT);
             drawUiText(g, SHOWS[i], x + 49, y + 27, MUTED);
-
             if (PhoneCoreAppsState.podcastEpisode() == i) {
                 drawUiText(g, "Now", x + w - 30, y + 27, PURPLE);
             }
         }
 
-        roundedRect(g, x, playerY, w, 54, 14, CARD);
+        roundedRect(g, x, playerY, w, 56, 14, CARD);
         int current = PhoneCoreAppsState.podcastEpisode();
-        drawUiText(g, fitUi(TITLES[current], w - 70), x + 12, playerY + 11, TEXT);
-        drawUiText(g, formatTime(PhoneCoreAppsState.podcastElapsedMillis()), x + 12, playerY + 31, MUTED);
-        drawUiText(g, PhoneCoreAppsState.podcastPlaying() ? "Pause" : "Play", x + w - 45, playerY + 21, PURPLE);
+        drawUiText(g, fitUi(TITLES[current], w - 80), x + 12, playerY + 10, TEXT);
+        drawUiText(g, SHOWS[current], x + 12, playerY + 28, MUTED);
+        drawUiText(g, formatTime(PhoneCoreAppsState.podcastElapsedMillis()), x + 12, playerY + 42, MUTED);
+        drawUiText(g, PhoneCoreAppsState.podcastSpeedLabel(), x + w - 26, playerY + 42, PURPLE);
+
+        roundedRect(g, x, transportY, w, 44, 14, CARD);
+        drawUiCentered(g, "-15", x + 34, transportY + 15, TEXT);
+        drawUiCentered(g, PhoneCoreAppsState.podcastPlaying() ? "Pause" : "Play", phoneX + PHONE_WIDTH / 2, transportY + 15, PURPLE);
+        drawUiCentered(g, "+30", x + w - 34, transportY + 15, TEXT);
 
         endPhoneClip(g);
         renderHomeIndicator(g);
@@ -76,20 +83,28 @@ public final class IPhonePodcastsScreen extends IPhoneScreen {
         if (button == 0) {
             for (int i = 0; i < TITLES.length; i++) {
                 int y = listY + i * 56;
-
                 if (inside(mouseX, mouseY, x, y, w, 48)) {
                     PhoneCoreAppsState.setPodcastEpisode(i);
-
                     if (!PhoneCoreAppsState.podcastPlaying()) {
                         PhoneCoreAppsState.togglePodcast();
                     }
-
                     return true;
                 }
             }
 
-            if (inside(mouseX, mouseY, x, playerY, w, 54)) {
-                PhoneCoreAppsState.togglePodcast();
+            if (inside(mouseX, mouseY, x, playerY, w, 56)) {
+                PhoneCoreAppsState.cyclePodcastSpeed();
+                return true;
+            }
+
+            if (inside(mouseX, mouseY, x, transportY, w, 44)) {
+                if (mouseX < x + w / 3.0D) {
+                    PhoneCoreAppsState.skipPodcastMillis(-15000L);
+                } else if (mouseX > x + w * 2.0D / 3.0D) {
+                    PhoneCoreAppsState.skipPodcastMillis(30000L);
+                } else {
+                    PhoneCoreAppsState.togglePodcast();
+                }
                 return true;
             }
         }

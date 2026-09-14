@@ -1,7 +1,5 @@
 package com.k1ngtle.vsia.phone.client.screen;
 
-import com.k1ngtle.vsia.phone.client.PhoneSystemSettings;
-import com.k1ngtle.vsia.phone.client.PhoneLocaleSettings;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
@@ -62,45 +60,17 @@ public class IPhoneHomeScreen extends IPhoneScreen {
     }
 
     private void renderWallpaper(GuiGraphics graphics) {
-        switch (PhoneSystemSettings.wallpaper()) {
-            case AERO -> {
-                graphics.fill(innerX, innerY, innerX + innerW, innerY + innerH, 0xFF65CDE2);
-                graphics.fill(innerX, innerY + 88, innerX + innerW, innerY + innerH, 0xFF55DAC6);
-                graphics.fill(innerX, innerY + 194, innerX + innerW, innerY + innerH, 0xFF16B6D4);
-                graphics.fill(innerX, innerY + 274, innerX + innerW, innerY + innerH, 0xFF087EC9);
-                graphics.fill(innerX, innerY + 348, innerX + innerW, innerY + innerH, 0xFF075CB9);
+        graphics.fill(innerX, innerY, innerX + innerW, innerY + innerH, 0xFF65CDE2);
+        graphics.fill(innerX, innerY + 88, innerX + innerW, innerY + innerH, 0xFF55DAC6);
+        graphics.fill(innerX, innerY + 194, innerX + innerW, innerY + innerH, 0xFF16B6D4);
+        graphics.fill(innerX, innerY + 274, innerX + innerW, innerY + innerH, 0xFF087EC9);
+        graphics.fill(innerX, innerY + 348, innerX + innerW, innerY + innerH, 0xFF075CB9);
 
-                roundedRect(graphics, innerX - 34, innerY + 92, 156, 102, 52, 0x4CFFFFFF);
-                roundedRect(graphics, innerX + 92, innerY - 24, 150, 142, 62, 0x453357D0);
-                roundedRect(graphics, innerX + 126, innerY + 86, 135, 174, 62, 0x382A4EAC);
-                roundedRect(graphics, innerX - 45, innerY + 231, 165, 112, 58, 0x394EF0C2);
-                roundedRect(graphics, innerX + 50, innerY + 306, 185, 108, 54, 0x3431C9F3);
-            }
-
-            case DUSK -> {
-                graphics.fill(innerX, innerY, innerX + innerW, innerY + innerH, 0xFF9C6FE4);
-                graphics.fill(innerX, innerY + 95, innerX + innerW, innerY + innerH, 0xFF7954CE);
-                graphics.fill(innerX, innerY + 198, innerX + innerW, innerY + innerH, 0xFF5638A4);
-                graphics.fill(innerX, innerY + 292, innerX + innerW, innerY + innerH, 0xFF332B78);
-                graphics.fill(innerX, innerY + 357, innerX + innerW, innerY + innerH, 0xFF20204E);
-
-                roundedRect(graphics, innerX - 28, innerY + 108, 150, 100, 50, 0x3CFFD6F3);
-                roundedRect(graphics, innerX + 100, innerY + 42, 150, 140, 62, 0x3CFF9FD7);
-                roundedRect(graphics, innerX + 50, innerY + 300, 176, 105, 54, 0x30359EF5);
-            }
-
-            case GRAPHITE -> {
-                graphics.fill(innerX, innerY, innerX + innerW, innerY + innerH, 0xFF696D75);
-                graphics.fill(innerX, innerY + 92, innerX + innerW, innerY + innerH, 0xFF52565F);
-                graphics.fill(innerX, innerY + 194, innerX + innerW, innerY + innerH, 0xFF383C44);
-                graphics.fill(innerX, innerY + 286, innerX + innerW, innerY + innerH, 0xFF24272E);
-                graphics.fill(innerX, innerY + 354, innerX + innerW, innerY + innerH, 0xFF16181D);
-
-                roundedRect(graphics, innerX - 38, innerY + 94, 165, 110, 54, 0x25FFFFFF);
-                roundedRect(graphics, innerX + 112, innerY + 76, 142, 170, 62, 0x202A2E35);
-                roundedRect(graphics, innerX + 35, innerY + 312, 190, 100, 50, 0x20383C44);
-            }
-        }
+        roundedRect(graphics, innerX - 34, innerY + 92, 156, 102, 52, 0x4CFFFFFF);
+        roundedRect(graphics, innerX + 92, innerY - 24, 150, 142, 62, 0x453357D0);
+        roundedRect(graphics, innerX + 126, innerY + 86, 135, 174, 62, 0x382A4EAC);
+        roundedRect(graphics, innerX - 45, innerY + 231, 165, 112, 58, 0x394EF0C2);
+        roundedRect(graphics, innerX + 50, innerY + 306, 185, 108, 54, 0x3431C9F3);
     }
 
     private void renderWidgets(GuiGraphics graphics) {
@@ -117,13 +87,11 @@ public class IPhoneHomeScreen extends IPhoneScreen {
         roundedRect(g, x, y, w, h, 16, 0xE8246BA6);
         roundedRect(g, x + 2, y + 2, w - 4, 18, 12, 0x2FFFFFFF);
         drawUiText(g, "Overworld", x + 10, y + 9, TEXT);
-        drawUiText(g, PhoneLocaleSettings.formatTemperature(12.0), x + 10, y + 27, TEXT);
+        drawUiText(g, "12°", x + 10, y + 27, TEXT);
         roundedRect(g, x + 12, y + 58, 15, 7, 3, 0xFFFFFFFF);
         roundedRect(g, x + 17, y + 54, 7, 7, 3, 0xFFFFD60A);
-        drawUiText(g, PhoneLocaleSettings.partlyCloudyLabel(), x + 31, y + 56, TEXT);
-        drawUiText(g, "H:" + PhoneLocaleSettings.formatTemperature(13.0)
-                + "  L:" + PhoneLocaleSettings.formatTemperature(10.0),
-                x + 10, y + 72, 0xFFE3F5FF);
+        drawUiText(g, "Partly Cloudy", x + 31, y + 56, TEXT);
+        drawUiText(g, "H:13°  L:10°", x + 10, y + 72, 0xFFE3F5FF);
     }
 
     private void drawFindMyWidget(GuiGraphics g, int x, int y, int w, int h) {
@@ -137,7 +105,7 @@ public class IPhoneHomeScreen extends IPhoneScreen {
         roundedRect(g, x + w - 28, y + 15, 12, 12, 6, 0xFFB99CF7);
         g.fill(x + w - 24, y + 18, x + w - 20, y + 23, 0xFF303030);
         drawUiText(g, "Now", x + 9, y + 52, 0xFF777777);
-        drawUiText(g, PhoneLocaleSettings.currentPositionLabel(), x + 9, y + 64, 0xFF222222);
+        drawUiText(g, "Current Position", x + 9, y + 64, 0xFF222222);
         drawUiText(g, "VS:IA", x + 9, y + 77, 0xFF666666);
     }
 
@@ -176,10 +144,6 @@ public class IPhoneHomeScreen extends IPhoneScreen {
     }
 
     private void renderSearchPill(GuiGraphics graphics) {
-        if (!PhoneSystemSettings.showHomeSearch()) {
-            return;
-        }
-
         int w = 68;
         int h = 19;
         int x = phoneX + (PHONE_WIDTH - w) / 2;
@@ -213,7 +177,7 @@ public class IPhoneHomeScreen extends IPhoneScreen {
             case CLOCK, TV, WALLET -> 0xFF1B1B1D;
             case NEWS, MUSIC -> 0xFFFF3B61;
             case PODCASTS -> 0xFFAF42D4;
-            case MAPS -> 0xFF7FD09A;
+            case MAPS -> 0xFF8FD7A5;
         };
 
         roundedRect(g, x, y, size, size, 9, bg);
@@ -224,9 +188,10 @@ public class IPhoneHomeScreen extends IPhoneScreen {
 
         switch (kind) {
             case PHONE -> {
-                roundedRect(g, x + 8, y + 7, 7, 8, 4, TEXT);
-                g.fill(x + 11, y + 12, x + 19, y + 21, TEXT);
-                roundedRect(g, x + 20, y + 20, 7, 7, 4, TEXT);
+                roundedRect(g, x + 8, y + 20, 7, 6, 3, TEXT);
+                g.fill(x + 10, y + 15, x + 17, y + 23, TEXT);
+                roundedRect(g, x + 16, y + 9, 9, 7, 4, TEXT);
+                g.fill(x + 15, y + 13, x + 23, y + 18, TEXT);
             }
             case MESSAGES -> {
                 roundedRect(g, x + 6, y + 7, size - 12, size - 15, 10, TEXT);
@@ -244,21 +209,8 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 roundedRect(g, cx - 2, cy - 2, 4, 4, 2, 0xFF66666D);
             }
             case CALENDAR -> {
-                drawUiCentered(
-                        g,
-                        PhoneLocaleSettings.calendarWeekdayShort(),
-                        cx,
-                        y + 5,
-                        0xFFFF3B30
-                );
-
-                drawUiCentered(
-                        g,
-                        PhoneLocaleSettings.calendarDayOfMonth(),
-                        cx,
-                        y + 17,
-                        0xFF111111
-                );
+                drawUiCentered(g, "Mon", cx, y + 5, 0xFFFF3B30);
+                drawUiCentered(g, "14", cx, y + 17, 0xFF111111);
             }
             case PHOTOS -> {
                 roundedRect(g, cx - 3, cy - 12, 6, 12, 3, 0xFFFF453A);
@@ -306,21 +258,26 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 roundedRect(g, cx - 2, cy + 3, 4, 10, 2, 0xFFFFFFFF);
             }
             case APPSTORE -> {
-                g.fill(cx - 1, y + 7, cx + 1, y + size - 7, 0xFFFFFFFF);
-                g.fill(x + 8, y + size - 10, x + size - 8, y + size - 8, 0xFFFFFFFF);
-                g.fill(x + 10, y + 8, x + 13, y + 11, 0xFFFFFFFF);
-                g.fill(x + size - 13, y + 8, x + size - 10, y + 11, 0xFFFFFFFF);
+                g.fill(cx - 1, y + 10, cx + 1, y + 24, 0xFFFFFFFF);
+                g.fill(x + 10, y + 21, x + size - 10, y + 23, 0xFFFFFFFF);
+                g.fill(x + 11, y + 21, x + 18, y + 10, 0xFFFFFFFF);
+                g.fill(x + size - 18, y + 10, x + size - 11, y + 21, 0xFFFFFFFF);
             }
             case MAPS -> {
-                g.fill(x + 5, y + 5, x + 12, y + size - 5, 0xFF6BD86B);
-                g.fill(x + 12, y + 5, x + 21, y + size - 5, 0xFFE8EDF2);
-                g.fill(x + 21, y + 5, x + size - 5, y + size - 5, 0xFF6BB5EF);
-                roundedRect(g, cx - 3, cy - 3, 7, 7, 4, 0xFF0A84FF);
+                roundedRect(g, x + 5, y + 5, size - 10, size - 10, 4, 0xFFFFFFFF);
+                g.fill(x + 6, y + 5, x + 13, y + size - 5, 0xFF74D95D);
+                g.fill(x + 13, y + 5, x + 20, y + size - 5, 0xFFF5F7FA);
+                g.fill(x + 20, y + 5, x + size - 6, y + size - 5, 0xFF6AB6F3);
+                g.fill(cx - 1, y + 8, cx + 1, y + size - 9, 0xFFFFFFFF);
+                roundedRect(g, cx - 3, cy - 4, 7, 9, 3, 0xFF0A84FF);
+                roundedRect(g, cx - 2, cy - 3, 5, 5, 2, 0xFFFFFFFF);
+                roundedRect(g, cx - 1, cy + 3, 3, 5, 1, 0xFF0A84FF);
             }
             case HEALTH -> {
                 roundedRect(g, cx - 8, cy - 8, 8, 8, 4, 0xFFFF375F);
                 roundedRect(g, cx, cy - 8, 8, 8, 4, 0xFFFF375F);
-                g.fill(cx - 6, cy - 4, cx + 6, cy + 6, 0xFFFF375F);
+                g.fill(cx - 7, cy - 4, cx + 7, cy + 5, 0xFFFF375F);
+                g.fill(cx - 5, cy + 5, cx + 5, cy + 11, 0xFFFF375F);
             }
             case WALLET -> {
                 roundedRect(g, x + 6, y + 8, size - 12, size - 15, 4, 0xFF3A3A3C);
@@ -329,14 +286,15 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 g.fill(x + 9, y + 19, x + size - 9, y + 22, 0xFF30D158);
             }
             case FACETIME -> {
-                roundedRect(g, x + 7, y + 9, size - 16, size - 18, 4, 0xFFFFFFFF);
-                g.fill(x + size - 11, y + 12, x + size - 6, y + size - 12, 0xFFFFFFFF);
+                roundedRect(g, x + 8, y + 12, 16, 10, 4, 0xFFFFFFFF);
+                g.fill(x + 20, y + 14, x + 27, y + 17, 0xFFFFFFFF);
+                g.fill(x + 20, y + 17, x + 25, y + 21, 0xFFFFFFFF);
             }
             case MUSIC -> {
-                g.fill(cx + 1, y + 8, cx + 4, y + 24, 0xFFFFFFFF);
-                g.fill(cx + 3, y + 8, x + size - 8, y + 11, 0xFFFFFFFF);
-                roundedRect(g, cx - 8, y + 22, 9, 7, 4, 0xFFFFFFFF);
-                roundedRect(g, cx + 2, y + 20, 9, 7, 4, 0xFFFFFFFF);
+                g.fill(cx + 2, y + 8, cx + 5, y + 23, 0xFFFFFFFF);
+                g.fill(cx + 4, y + 8, x + size - 8, y + 11, 0xFFFFFFFF);
+                roundedRect(g, cx - 8, y + 21, 8, 7, 4, 0xFFFFFFFF);
+                roundedRect(g, cx + 3, y + 19, 8, 7, 4, 0xFFFFFFFF);
             }
         }
     }
@@ -409,6 +367,13 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 return true;
             }
 
+            int clockX = left + 3 * stepX;
+            int clockY = gridY + stepY;
+            if (inside(mouseX, mouseY, clockX, clockY, GRID_ICON, GRID_ICON + 10)) {
+                minecraft.setScreen(new IPhoneClockScreen());
+                return true;
+            }
+
             int newsX = left;
             int newsY = gridY + 2 * stepY;
             if (inside(mouseX, mouseY, newsX, newsY, GRID_ICON, GRID_ICON + 10)) {
@@ -465,18 +430,11 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 return true;
             }
 
-            int clockX = left + 3 * stepX;
-            int clockY = gridY + stepY;
-            if (inside(mouseX, mouseY, clockX, clockY, GRID_ICON, GRID_ICON + 10)) {
-                minecraft.setScreen(new IPhoneClockScreen());
-                return true;
-            }
-
             int dockX = phoneX + 12;
-            int dockWidth = PHONE_WIDTH - 24;
+            int dockW = PHONE_WIDTH - 24;
             int gap = 43;
             int iconSpan = DOCK_ICON + gap * 3;
-            int first = dockX + (dockWidth - iconSpan) / 2;
+            int first = dockX + (dockW - iconSpan) / 2;
 
             if (inside(mouseX, mouseY, first, dockY + 10, DOCK_ICON, DOCK_ICON)) {
                 minecraft.setScreen(new IPhoneCellularScreen());

@@ -28,6 +28,7 @@ public final class IPhoneMusicScreen extends IPhoneScreen {
     private int x;
     private int w;
     private int artY;
+    private int listY;
     private int controlsY;
 
     public IPhoneMusicScreen() {
@@ -40,7 +41,8 @@ public final class IPhoneMusicScreen extends IPhoneScreen {
         x = phoneX + 14;
         w = PHONE_WIDTH - 28;
         artY = phoneY + 82;
-        controlsY = phoneY + 300;
+        listY = artY + 190;
+        controlsY = phoneY + PHONE_HEIGHT - 74;
     }
 
     @Override
@@ -52,29 +54,27 @@ public final class IPhoneMusicScreen extends IPhoneScreen {
 
         int track = PhoneCoreAppsState.musicTrack();
 
-        roundedRect(g, phoneX + 50, artY, PHONE_WIDTH - 100, 140, 18, 0xFFFF3B61);
-        roundedRect(g, phoneX + 74, artY + 24, PHONE_WIDTH - 148, 92, 28, 0xFF1C1C1E);
-        drawUiCentered(g, "♫", phoneX + PHONE_WIDTH / 2, artY + 60, TEXT);
+        roundedRect(g, phoneX + 48, artY, PHONE_WIDTH - 96, 132, 18, PINK);
+        drawUiCentered(g, "♪", phoneX + PHONE_WIDTH / 2, artY + 47, TEXT);
+        drawUiCentered(g, TRACKS[track], phoneX + PHONE_WIDTH / 2, artY + 146, TEXT);
+        drawUiCentered(g, ARTISTS[track], phoneX + PHONE_WIDTH / 2, artY + 163, MUTED);
+        drawUiCentered(g, formatTime(PhoneCoreAppsState.musicElapsedMillis()), phoneX + PHONE_WIDTH / 2, artY + 179, MUTED);
 
-        drawUiCentered(g, TRACKS[track], phoneX + PHONE_WIDTH / 2, artY + 157, TEXT);
-        drawUiCentered(g, ARTISTS[track], phoneX + PHONE_WIDTH / 2, artY + 175, MUTED);
-        drawUiCentered(g, formatTime(PhoneCoreAppsState.musicElapsedMillis()), phoneX + PHONE_WIDTH / 2, artY + 197, MUTED);
+        for (int i = 0; i < TRACKS.length; i++) {
+            int y = listY + i * 28;
+            roundedRect(g, x, y, w, 24, 8, track == i ? 0xFF3A1F2A : CARD);
+            drawUiText(g, fitUi(TRACKS[i], w - 74), x + 10, y + 8, TEXT);
+            drawUiText(g, ARTISTS[i], x + w - 58, y + 8, MUTED);
+        }
 
-        roundedRect(g, x, controlsY, w, 54, 14, CARD);
-        drawUiCentered(g, "‹‹", x + 42, controlsY + 20, TEXT);
-        drawUiCentered(g, PhoneCoreAppsState.musicPlaying() ? "Pause" : "Play", phoneX + PHONE_WIDTH / 2, controlsY + 20, PINK);
-        drawUiCentered(g, "››", x + w - 42, controlsY + 20, TEXT);
+        roundedRect(g, x, controlsY, w, 42, 12, CARD);
+        drawUiCentered(g, "‹‹", x + 34, controlsY + 15, TEXT);
+        drawUiCentered(g, PhoneCoreAppsState.musicPlaying() ? "Pause" : "Play", phoneX + PHONE_WIDTH / 2, controlsY + 15, PINK);
+        drawUiCentered(g, "››", x + w - 34, controlsY + 15, TEXT);
 
-        drawUiWrappedCentered(
-                g,
-                "VS:IA Music currently provides local playback state. Add licensed audio assets later for actual track audio.",
-                phoneX + PHONE_WIDTH / 2,
-                controlsY + 70,
-                w - 18,
-                11,
-                4,
-                MUTED
-        );
+        roundedRect(g, x, controlsY - 30, w, 24, 10, 0xFF1D1D20);
+        drawUiText(g, "Repeat", x + 10, controlsY - 22, MUTED);
+        drawUiText(g, PhoneCoreAppsState.musicRepeat() ? "On" : "Off", x + w - 22, controlsY - 22, PINK);
 
         endPhoneClip(g);
         renderHomeIndicator(g);
@@ -82,16 +82,35 @@ public final class IPhoneMusicScreen extends IPhoneScreen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button == 0 && inside(mouseX, mouseY, x, controlsY, w, 54)) {
-            if (mouseX < x + w / 3.0D) {
-                PhoneCoreAppsState.previousMusicTrack();
-            } else if (mouseX > x + w * 2.0D / 3.0D) {
-                PhoneCoreAppsState.nextMusicTrack();
-            } else {
-                PhoneCoreAppsState.toggleMusic();
+        if (button == 0) {
+            for (int i = 0; i < TRACKS.length; i++) {
+                int y = listY + i * 28;
+                if (inside(mouseX, mouseY, x, y, w, 24)) {
+                    while (PhoneCoreAppsState.musicTrack() != i) {
+                        PhoneCoreAppsState.nextMusicTrack();
+                    }
+                    if (!PhoneCoreAppsState.musicPlaying()) {
+                        PhoneCoreAppsState.toggleMusic();
+                    }
+                    return true;
+                }
             }
 
-            return true;
+            if (inside(mouseX, mouseY, x, controlsY - 30, w, 24)) {
+                PhoneCoreAppsState.toggleMusicRepeat();
+                return true;
+            }
+
+            if (inside(mouseX, mouseY, x, controlsY, w, 42)) {
+                if (mouseX < x + w / 3.0D) {
+                    PhoneCoreAppsState.previousMusicTrack();
+                } else if (mouseX > x + w * 2.0D / 3.0D) {
+                    PhoneCoreAppsState.nextMusicTrack();
+                } else {
+                    PhoneCoreAppsState.toggleMusic();
+                }
+                return true;
+            }
         }
 
         return super.mouseClicked(mouseX, mouseY, button);

@@ -24,5 +24,6 @@ public final class PhoneCoreAppsClientEvents {
         }
 
         PhoneCoreAppsState.tick();
+        PhoneMediaAudioService.tick();
     }
 }
