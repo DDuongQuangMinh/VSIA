@@ -10,6 +10,7 @@ public final class IPhoneMusicScreen extends IPhoneScreen {
     private static final int TEXT = 0xFFFFFFFF;
     private static final int MUTED = 0xFFAEAEB2;
     private static final int PINK = 0xFFFF375F;
+    private static final int SOFT_PINK = 0xFF4A2330;
 
     private static final String[] TRACKS = {
             "Overworld Signal",
@@ -41,7 +42,7 @@ public final class IPhoneMusicScreen extends IPhoneScreen {
         x = phoneX + 14;
         w = PHONE_WIDTH - 28;
         artY = phoneY + 82;
-        listY = artY + 190;
+        listY = artY + 188;
         controlsY = phoneY + PHONE_HEIGHT - 74;
     }
 
@@ -54,27 +55,30 @@ public final class IPhoneMusicScreen extends IPhoneScreen {
 
         int track = PhoneCoreAppsState.musicTrack();
 
-        roundedRect(g, phoneX + 48, artY, PHONE_WIDTH - 96, 132, 18, PINK);
-        drawUiCentered(g, "♪", phoneX + PHONE_WIDTH / 2, artY + 47, TEXT);
-        drawUiCentered(g, TRACKS[track], phoneX + PHONE_WIDTH / 2, artY + 146, TEXT);
-        drawUiCentered(g, ARTISTS[track], phoneX + PHONE_WIDTH / 2, artY + 163, MUTED);
-        drawUiCentered(g, formatTime(PhoneCoreAppsState.musicElapsedMillis()), phoneX + PHONE_WIDTH / 2, artY + 179, MUTED);
+        roundedRect(g, phoneX + 48, artY, PHONE_WIDTH - 96, 130, 18, PINK);
+        roundedRect(g, phoneX + 51, artY + 3, PHONE_WIDTH - 102, 18, 12, 0x18FFFFFF);
+        drawAlbumNote(g, phoneX + PHONE_WIDTH / 2, artY + 51);
+
+        drawUiCentered(g, TRACKS[track], phoneX + PHONE_WIDTH / 2, artY + 145, TEXT);
+        drawUiCentered(g, ARTISTS[track], phoneX + PHONE_WIDTH / 2, artY + 160, MUTED);
+        drawUiCentered(g, formatTime(PhoneCoreAppsState.musicElapsedMillis()), phoneX + PHONE_WIDTH / 2, artY + 175, MUTED);
 
         for (int i = 0; i < TRACKS.length; i++) {
             int y = listY + i * 28;
-            roundedRect(g, x, y, w, 24, 8, track == i ? 0xFF3A1F2A : CARD);
-            drawUiText(g, fitUi(TRACKS[i], w - 74), x + 10, y + 8, TEXT);
-            drawUiText(g, ARTISTS[i], x + w - 58, y + 8, MUTED);
+            boolean selected = track == i;
+            roundedRect(g, x, y, w, 24, 8, selected ? SOFT_PINK : CARD);
+            drawUiText(g, fitUi(TRACKS[i], w - 58), x + 10, y + 8, TEXT);
+            drawUiText(g, selected ? "Now" : "›", x + w - (selected ? 24 : 10), y + 8, selected ? PINK : MUTED);
         }
+
+        roundedRect(g, x, controlsY - 30, w, 24, 10, 0xFF1D1D20);
+        drawUiText(g, "Repeat", x + 10, controlsY - 22, MUTED);
+        drawUiText(g, PhoneCoreAppsState.musicRepeat() ? "On" : "Off", x + w - 22, controlsY - 22, PINK);
 
         roundedRect(g, x, controlsY, w, 42, 12, CARD);
         drawUiCentered(g, "‹‹", x + 34, controlsY + 15, TEXT);
         drawUiCentered(g, PhoneCoreAppsState.musicPlaying() ? "Pause" : "Play", phoneX + PHONE_WIDTH / 2, controlsY + 15, PINK);
         drawUiCentered(g, "››", x + w - 34, controlsY + 15, TEXT);
-
-        roundedRect(g, x, controlsY - 30, w, 24, 10, 0xFF1D1D20);
-        drawUiText(g, "Repeat", x + 10, controlsY - 22, MUTED);
-        drawUiText(g, PhoneCoreAppsState.musicRepeat() ? "On" : "Off", x + w - 22, controlsY - 22, PINK);
 
         endPhoneClip(g);
         renderHomeIndicator(g);
@@ -114,6 +118,15 @@ public final class IPhoneMusicScreen extends IPhoneScreen {
         }
 
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    private void drawAlbumNote(GuiGraphics g, int cx, int cy) {
+        g.fill(cx + 12, cy - 26, cx + 18, cy + 18, TEXT);
+        g.fill(cx - 4, cy - 18, cx + 18, cy - 13, TEXT);
+        g.fill(cx - 12, cy - 15, cx + 18, cy - 10, TEXT);
+        roundedRect(g, cx - 20, cy + 10, 18, 18, 9, TEXT);
+        roundedRect(g, cx + 8, cy + 4, 18, 18, 9, TEXT);
+        g.fill(cx - 2, cy - 6, cx + 3, cy + 19, TEXT);
     }
 
     private static String formatTime(long millis) {

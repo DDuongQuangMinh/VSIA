@@ -291,10 +291,10 @@ public class IPhoneHomeScreen extends IPhoneScreen {
                 g.fill(x + 20, y + 17, x + 25, y + 21, 0xFFFFFFFF);
             }
             case MUSIC -> {
-                g.fill(cx + 2, y + 8, cx + 5, y + 23, 0xFFFFFFFF);
-                g.fill(cx + 4, y + 8, x + size - 8, y + 11, 0xFFFFFFFF);
-                roundedRect(g, cx - 8, y + 21, 8, 7, 4, 0xFFFFFFFF);
-                roundedRect(g, cx + 3, y + 19, 8, 7, 4, 0xFFFFFFFF);
+                g.fill(cx + 11, y + 8, cx + 15, y + 24, 0xFFFFFFFF);
+                g.fill(cx - 2, y + 11, x + size - 9, y + 15, 0xFFFFFFFF);
+                roundedRect(g, cx - 11, y + 21, 9, 8, 4, 0xFFFFFFFF);
+                roundedRect(g, cx + 4, y + 18, 10, 10, 5, 0xFFFFFFFF);
             }
         }
     }
