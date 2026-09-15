@@ -271,6 +271,15 @@ public class SignalityBlocks {
                     )
             );
 
+    public static final RegistryObject<Item> RADAR_BEACON_ITEM =
+            ITEMS.register(
+                    "radar_beacon",
+                    () -> new BlockItem(
+                            RADAR_BEACON.get(),
+                            new Item.Properties()
+                    )
+            );
+
     public static final RegistryObject<BlockEntityType<RadarBeaconBlockEntity>> RADAR_BEACON_BE =
             BLOCK_ENTITIES.register(
                     "radar_beacon",
@@ -328,6 +337,15 @@ public class SignalityBlocks {
                     )
             );
 
+    public static final RegistryObject<Item> PULSE_DOPPLER_RADAR_ITEM =
+            ITEMS.register(
+                    "pulse_doppler_radar",
+                    () -> new BlockItem(
+                            PULSE_DOPPLER_RADAR.get(),
+                            new Item.Properties()
+                    )
+            );
+
     public static final RegistryObject<BlockEntityType<PulseDopplerRadarBlockEntity>> PULSE_DOPPLER_RADAR_BE =
             BLOCK_ENTITIES.register(
                     "pulse_doppler_radar",
@@ -344,6 +362,15 @@ public class SignalityBlocks {
                             BlockBehaviour.Properties.of()
                                     .mapColor(MapColor.METAL)
                                     .strength(1.5F)
+                    )
+            );
+
+    public static final RegistryObject<Item> SCANNING_RADAR_ITEM =
+            ITEMS.register(
+                    "scanning_radar",
+                    () -> new BlockItem(
+                            SCANNING_RADAR.get(),
+                            new Item.Properties()
                     )
             );
 
@@ -366,6 +393,15 @@ public class SignalityBlocks {
                     )
             );
 
+    public static final RegistryObject<Item> SEARCH_RADAR_ITEM =
+            ITEMS.register(
+                    "search_radar",
+                    () -> new BlockItem(
+                            SEARCH_RADAR.get(),
+                            new Item.Properties()
+                    )
+            );
+
     public static final RegistryObject<BlockEntityType<SearchRadarBlockEntity>> SEARCH_RADAR_BE =
             BLOCK_ENTITIES.register(
                     "search_radar",
@@ -382,6 +418,15 @@ public class SignalityBlocks {
                             BlockBehaviour.Properties.of()
                                     .mapColor(MapColor.METAL)
                                     .strength(1.5F)
+                    )
+            );
+
+    public static final RegistryObject<Item> TRACKING_RADAR_ITEM =
+            ITEMS.register(
+                    "tracking_radar",
+                    () -> new BlockItem(
+                            TRACKING_RADAR.get(),
+                            new Item.Properties()
                     )
             );
 

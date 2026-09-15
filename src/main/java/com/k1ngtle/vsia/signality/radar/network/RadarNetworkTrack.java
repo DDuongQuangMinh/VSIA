@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.signality.radar.network;
 
+import com.k1ngtle.vsia.signality.radar.iff.IffResult;
 import java.util.Set;
 import java.util.UUID;
 import net.minecraft.world.phys.Vec3;
@@ -16,7 +17,8 @@ public record RadarNetworkTrack(
         Set<UUID> contributingSensors,
         double bestSnrLinear,
         double positionUncertaintyMeters,
-        double quality
+        double quality,
+        IffResult iff
 ) {
     public RadarNetworkTrack {
         contributingSensors =

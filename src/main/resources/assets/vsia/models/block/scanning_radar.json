@@ -1,0 +1,6 @@
+{
+  "parent": "vsia:block/search_radar",
+  "textures": {
+    "accent": "minecraft:block/lapis_block"
+  }
+}

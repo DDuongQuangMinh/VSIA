@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.signality.radar.network;
 
 import com.k1ngtle.vsia.Vsia;
 import com.k1ngtle.vsia.signality.api.events.ContactDetectedEvent;
+import com.k1ngtle.vsia.signality.radar.iff.IffCommand;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
@@ -54,6 +55,10 @@ public final class RadarNetworkForgeEvents {
             RegisterCommandsEvent event
     ) {
         RadarNetworkCommand.register(
+                event.getDispatcher()
+        );
+
+        IffCommand.register(
                 event.getDispatcher()
         );
     }

@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "vsia:block/radar_beacon"
+    }
+  }
+}

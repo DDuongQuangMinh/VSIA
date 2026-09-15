@@ -6,5 +6,15 @@
     "item.vsia.temporary_satellite_terminal": "Temporary Satellite Terminal",
     "key.vsia.radio_ptt": "Radio Push-to-Talk",
     "key.categories.vsia": "VS:IA",
-    "key.vsia.radio_audio_settings": "Radio Audio Settings"
+    "key.vsia.radio_audio_settings": "Radio Audio Settings",
+    "block.vsia.radar_beacon": "Radar Test Beacon",
+    "item.vsia.radar_beacon": "Radar Test Beacon",
+    "block.vsia.search_radar": "Temporary Search Radar",
+    "item.vsia.search_radar": "Temporary Search Radar",
+    "block.vsia.scanning_radar": "Temporary Scanning Radar",
+    "item.vsia.scanning_radar": "Temporary Scanning Radar",
+    "block.vsia.pulse_doppler_radar": "Temporary Pulse-Doppler Radar",
+    "item.vsia.pulse_doppler_radar": "Temporary Pulse-Doppler Radar",
+    "block.vsia.tracking_radar": "Temporary Tracking Radar",
+    "item.vsia.tracking_radar": "Temporary Tracking Radar"
 }

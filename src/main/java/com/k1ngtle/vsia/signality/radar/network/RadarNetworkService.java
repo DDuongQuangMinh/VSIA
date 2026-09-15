@@ -1,5 +1,7 @@
 package com.k1ngtle.vsia.signality.radar.network;
 
+import com.k1ngtle.vsia.signality.radar.iff.IffNetworkKeyRegistry;
+import com.k1ngtle.vsia.signality.radar.iff.IffRegistry;
 import com.k1ngtle.vsia.signality.api.radar.IRadarEmitter;
 import com.k1ngtle.vsia.signality.api.radar.RadarContact;
 import java.util.ArrayList;
@@ -365,6 +367,8 @@ public final class RadarNetworkService {
         NETWORKS.clear();
         EMITTER_BINDINGS.clear();
         RadarWaveformRegistry.clearAll();
+        IffRegistry.clear();
+        IffNetworkKeyRegistry.clear();
     }
 
     public static String normalizeNetworkId(

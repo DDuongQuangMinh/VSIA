@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "vsia:block/tracking_radar"
+    },
+    "facing=east": {
+      "model": "vsia:block/tracking_radar",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "vsia:block/tracking_radar",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "vsia:block/tracking_radar",
+      "y": 270
+    }
+  }
+}

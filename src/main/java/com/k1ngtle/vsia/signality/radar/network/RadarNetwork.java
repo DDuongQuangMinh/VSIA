@@ -1,5 +1,7 @@
 package com.k1ngtle.vsia.signality.radar.network;
 
+import com.k1ngtle.vsia.signality.radar.iff.IffReplyStatus;
+import com.k1ngtle.vsia.signality.radar.iff.IffResult;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -390,6 +392,10 @@ public final class RadarNetwork {
         private double bestSnrLinear;
         private double positionVarianceMeters2;
         private double quality;
+        private IffResult latestIff =
+                IffResult.noTransponder();
+        private long lastAuthenticatedIffTick =
+                Long.MIN_VALUE;
 
         private MutableTrack(
                 UUID trackId,
@@ -429,6 +435,11 @@ public final class RadarNetwork {
                     initialQuality(
                             first
                     );
+
+            applyIff(
+                    first.iff(),
+                    first.measurementTick()
+            );
         }
 
         private void update(
@@ -608,6 +619,31 @@ public final class RadarNetwork {
                             contributingSensors.size(),
                             positionVarianceMeters2
                     );
+
+            applyIff(
+                    measurement.iff(),
+                    measurement.measurementTick()
+            );
+        }
+
+        private void applyIff(
+                IffResult result,
+                long measurementTick
+        ) {
+            if (result == null) {
+                return;
+            }
+
+            if (result.authenticated()) {
+                latestIff = result;
+                lastAuthenticatedIffTick = measurementTick;
+            } else if (result.replyStatus() == IffReplyStatus.AUTH_FAILED) {
+                latestIff = result;
+                lastAuthenticatedIffTick = Long.MIN_VALUE;
+            } else if (latestIff == null
+                    || latestIff.replyStatus() == IffReplyStatus.NO_TRANSPONDER) {
+                latestIff = result;
+            }
         }
 
         private RadarNetworkTrack snapshot(
@@ -648,6 +684,17 @@ public final class RadarNetwork {
                                     * 0.20
                     );
 
+            IffResult snapshotIff = latestIff;
+
+            if (lastAuthenticatedIffTick != Long.MIN_VALUE
+                    && nowTick - lastAuthenticatedIffTick > 100L) {
+                snapshotIff = IffResult.unknown(IffReplyStatus.NO_REPLY);
+            }
+
+            if (snapshotIff == null) {
+                snapshotIff = IffResult.noTransponder();
+            }
+
             return new RadarNetworkTrack(
                     trackId,
                     state,
@@ -670,7 +717,8 @@ public final class RadarNetwork {
                                     * coastPenalty,
                             0.0,
                             1.0
-                    )
+                    ),
+                    snapshotIff
             );
         }
 

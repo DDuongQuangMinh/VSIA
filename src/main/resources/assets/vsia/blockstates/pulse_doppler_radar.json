@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "vsia:block/pulse_doppler_radar"
+    },
+    "facing=east": {
+      "model": "vsia:block/pulse_doppler_radar",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "vsia:block/pulse_doppler_radar",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "vsia:block/pulse_doppler_radar",
+      "y": 270
+    }
+  }
+}

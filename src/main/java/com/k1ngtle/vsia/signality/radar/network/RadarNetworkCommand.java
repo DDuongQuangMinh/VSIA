@@ -274,10 +274,24 @@ public final class RadarNetworkCommand {
 
         for (RadarNetworkTrack track :
                 tracks) {
+            String iffLabel =
+                    track.iff().authenticated()
+                            ? track.iff().affiliation().name()
+                            + "["
+                            + track.iff().callsign()
+                            + "/"
+                            + String.format(
+                                    Locale.ROOT,
+                                    "%04d",
+                                    track.iff().squawkCode()
+                            )
+                            + "]"
+                            : track.iff().replyStatus().name();
+
             String line =
                     String.format(
                             Locale.ROOT,
-                            "  %s  %-9s  pos=(%.1f, %.1f, %.1f)  v=%.1fm/s  sigma=%.1fm  q=%.0f%%  sensors=%d  hits=%d  SNRbest=%.1fdB  stale=%.2fs",
+                            "  %s  %-9s  pos=(%.1f, %.1f, %.1f)  v=%.1fm/s  sigma=%.1fm  q=%.0f%%  sensors=%d  hits=%d  SNRbest=%.1fdB  stale=%.2fs  IFF=%s",
                             shortId(
                                     track.trackId()
                             ),
@@ -301,7 +315,8 @@ public final class RadarNetworkCommand {
                             ),
                             track.staleSeconds(
                                     now
-                            )
+                            ),
+                            iffLabel
                     );
 
             source.sendSuccess(

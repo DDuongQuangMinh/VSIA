@@ -17,25 +17,53 @@ import net.minecraft.world.phys.BlockHitResult;
 import org.jetbrains.annotations.Nullable;
 
 public final class RadarBeaconBlock extends Block implements EntityBlock {
-   public RadarBeaconBlock(Properties properties) {
-      super(properties);
-   }
+    public RadarBeaconBlock(Properties properties) {
+        super(properties);
+    }
 
-   @Nullable
-   public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
-      return new RadarBeaconBlockEntity(pos, state);
-   }
+    @Nullable
+    @Override
+    public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
+        return new RadarBeaconBlockEntity(pos, state);
+    }
 
-   public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
-      if (!level.isClientSide && level.getBlockEntity(pos) instanceof RadarBeaconBlockEntity be) {
-         double next = be.cycleRcs();
-         player.displayClientMessage(Component.literal("Beacon RCS: " + next + " mÂ²"), true);
-      }
+    @Override
+    public InteractionResult use(
+            BlockState state,
+            Level level,
+            BlockPos pos,
+            Player player,
+            InteractionHand hand,
+            BlockHitResult hit
+    ) {
+        if (!level.isClientSide
+                && level.getBlockEntity(pos) instanceof RadarBeaconBlockEntity beacon) {
+            if (player.isShiftKeyDown()) {
+                String profile = beacon.cycleIffTestPreset();
+                player.displayClientMessage(
+                        Component.literal(
+                                "IFF test preset: "
+                                        + profile
+                                        + " | callsign="
+                                        + beacon.iffCallsign()
+                                        + " | squawk="
+                                        + String.format("%04d", beacon.iffSquawkCode())
+                        ),
+                        true
+                );
+            } else {
+                double next = beacon.cycleRcs();
+                player.displayClientMessage(
+                        Component.literal("Beacon RCS: " + next + " m²"),
+                        true
+                );
+            }
+        }
 
-      return InteractionResult.sidedSuccess(level.isClientSide);
-   }
+        return InteractionResult.sidedSuccess(level.isClientSide);
+    }
 
-   static BlockEntityType<?> beType() {
-      return (BlockEntityType<?>)SignalityBlocks.RADAR_BEACON_BE.get();
-   }
+    static BlockEntityType<?> beType() {
+        return SignalityBlocks.RADAR_BEACON_BE.get();
+    }
 }

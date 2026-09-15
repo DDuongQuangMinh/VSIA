@@ -3,6 +3,8 @@ package com.k1ngtle.vsia.signality.radar.network;
 import com.k1ngtle.vsia.signality.api.radar.IRadarEmitter;
 import com.k1ngtle.vsia.signality.api.radar.RadarContact;
 import com.k1ngtle.vsia.signality.api.radar.RadarProfile;
+import com.k1ngtle.vsia.signality.radar.iff.IffInterrogator;
+import com.k1ngtle.vsia.signality.radar.iff.IffResult;
 import java.util.SplittableRandom;
 import java.util.UUID;
 import net.minecraft.world.phys.Vec3;
@@ -245,6 +247,13 @@ public final class RadarMeasurementModel {
                                 * angularSigma
                 );
 
+        IffResult iff =
+                IffInterrogator.interrogate(
+                        emitter,
+                        contact,
+                        gameTime
+                );
+
         return new RadarMeasurement(
                 emitter.id(),
                 contact.targetId(),
@@ -263,7 +272,8 @@ public final class RadarMeasurementModel {
                 positionVariance,
                 dopplerSigma
                         * dopplerSigma,
-                contact.trackQuality()
+                contact.trackQuality(),
+                iff
         );
     }
 

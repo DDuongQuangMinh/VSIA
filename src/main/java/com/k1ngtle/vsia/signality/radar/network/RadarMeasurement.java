@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.signality.radar.network;
 
+import com.k1ngtle.vsia.signality.radar.iff.IffResult;
 import java.util.UUID;
 import net.minecraft.world.phys.Vec3;
 
@@ -18,6 +19,7 @@ public record RadarMeasurement(
         double scrLinear,
         double positionVarianceMeters2,
         double radialVelocityVarianceMps2,
-        boolean trackQuality
+        boolean trackQuality,
+        IffResult iff
 ) {
 }
