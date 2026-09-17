@@ -14,6 +14,7 @@ public record RadarNetworkConfig(
     public RadarNetworkConfig {
         baseLatencyTicks = Math.max(0, baseLatencyTicks);
         jitterTicks = Math.max(0, jitterTicks);
+
         packetLossProbability =
                 Math.max(
                         0.0,
@@ -23,8 +24,18 @@ public record RadarNetworkConfig(
                         )
                 );
 
-        confirmHits = Math.max(1, confirmHits);
-        coastAfterTicks = Math.max(1, coastAfterTicks);
+        confirmHits =
+                Math.max(
+                        1,
+                        confirmHits
+                );
+
+        coastAfterTicks =
+                Math.max(
+                        1,
+                        coastAfterTicks
+                );
+
         dropAfterTicks =
                 Math.max(
                         coastAfterTicks + 1,
@@ -56,11 +67,11 @@ public record RadarNetworkConfig(
                 2,
                 0.005,
                 3,
-                20,
-                160,
+                30,
+                200,
                 512,
                 4096,
-                18.0
+                6.0
         );
     }
 }
