@@ -16,5 +16,7 @@
     "block.vsia.pulse_doppler_radar": "Temporary Pulse-Doppler Radar",
     "item.vsia.pulse_doppler_radar": "Temporary Pulse-Doppler Radar",
     "block.vsia.tracking_radar": "Temporary Tracking Radar",
-    "item.vsia.tracking_radar": "Temporary Tracking Radar"
+    "item.vsia.tracking_radar": "Temporary Tracking Radar",
+    "block.vsia.f35_cockpit_seat": "F-35 Cockpit Seat",
+    "item.vsia.f35_cockpit_seat": "F-35 Cockpit Seat"
 }

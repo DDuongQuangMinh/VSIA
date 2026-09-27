@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia;
 
+import com.k1ngtle.vsia.cockpit.F35CockpitRegistry;
 import com.k1ngtle.vsia.client.screen.RtAc68uRouterScreen;
 import net.minecraft.client.gui.screens.MenuScreens;
 
@@ -30,6 +31,7 @@ public class Vsia {
         ModItems.register(modEventBus);
         ModCreativeTabs.register(modEventBus);
         ModMenuTypes.register(modEventBus);
+        F35CockpitRegistry.register(modEventBus);
 
         // Initialize sub-systems
         Signality.initialize(FMLJavaModLoadingContext.get());
