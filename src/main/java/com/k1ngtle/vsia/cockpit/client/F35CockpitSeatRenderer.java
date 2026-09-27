@@ -12,7 +12,6 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import software.bernie.geckolib.cache.object.GeoBone;
 import software.bernie.geckolib.renderer.GeoBlockRenderer;
-import software.bernie.geckolib.util.RenderUtils;
 
 public final class F35CockpitSeatRenderer
         extends GeoBlockRenderer<F35CockpitSeatBlockEntity> {
@@ -87,11 +86,12 @@ public final class F35CockpitSeatRenderer
 
             poseStack.pushPose();
 
-            RenderUtils.prepMatrixForBone(
-                    poseStack,
-                    bone
-            );
-
+            /*
+             * renderRecursively is already executing with poseStack positioned
+             * for this GeoBone. Applying prepMatrixForBone here a second time
+             * double-transforms the monitor anchor and is what pushed the text
+             * far below monitor_center in v1.0.1.
+             */
             renderTerminal(
                     poseStack,
                     bufferSource,
