@@ -23,17 +23,14 @@ public final class F35CockpitSeatRenderer
             1.0F / 16.0F;
 
     private static final float MONITOR_OFFSET_X =
-            -0.13634F
-                    * MODEL_UNIT;
+            0.13634000F * MODEL_UNIT;
 
     private static final float MONITOR_OFFSET_Y =
-            0.64848F
-                    * MODEL_UNIT;
+            0.64848000F * MODEL_UNIT;
 
     private static final float MONITOR_FRONT_Z =
-            -0.42219F
-                    * MODEL_UNIT
-                    - 0.0015F;
+            -0.42219000F * MODEL_UNIT
+                    - 0.0010F;
 
     private static final float MONITOR_WIDTH =
             9.74204F
@@ -135,13 +132,11 @@ public final class F35CockpitSeatRenderer
                 terminal.height()
                         * CELL_HEIGHT;
 
-        float scaleX =
-                MONITOR_WIDTH
-                        / textPixelWidth;
-
-        float scaleY =
-                MONITOR_HEIGHT
-                        / textPixelHeight;
+        float scale =
+                Math.min(
+                        MONITOR_WIDTH / textPixelWidth,
+                        MONITOR_HEIGHT / textPixelHeight
+                );
 
         poseStack.translate(
                 MONITOR_OFFSET_X,
@@ -156,17 +151,19 @@ public final class F35CockpitSeatRenderer
         );
 
         poseStack.translate(
-                -MONITOR_WIDTH
+                -textPixelWidth
+                        * scale
                         / 2.0F,
-                MONITOR_HEIGHT
+                textPixelHeight
+                        * scale
                         / 2.0F,
                 0.0F
         );
 
         poseStack.scale(
-                scaleX,
-                -scaleY,
-                scaleX
+                scale,
+                -scale,
+                scale
         );
 
         for (int row = 0;
@@ -188,13 +185,6 @@ public final class F35CockpitSeatRenderer
                         )
                                 .argb();
 
-                int background =
-                        terminal.backgroundAt(
-                                column,
-                                row
-                        )
-                                .argb();
-
                 font.drawInBatch(
                         String.valueOf(
                                 character
@@ -210,7 +200,7 @@ public final class F35CockpitSeatRenderer
                                 .pose(),
                         bufferSource,
                         Font.DisplayMode.POLYGON_OFFSET,
-                        background,
+                        0,
                         LightTexture.FULL_BRIGHT
                 );
             }

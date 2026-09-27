@@ -17,10 +17,10 @@ public final class F35CockpitSeatBlockEntity
         extends BlockEntity
         implements GeoBlockEntity {
     public static final int TERMINAL_WIDTH =
-            30;
+            27;
 
     public static final int TERMINAL_HEIGHT =
-            10;
+            6;
 
     private final AnimatableInstanceCache cache =
             GeckoLibUtil.createInstanceCache(

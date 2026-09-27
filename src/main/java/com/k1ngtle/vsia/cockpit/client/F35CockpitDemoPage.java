@@ -34,8 +34,7 @@ public final class F35CockpitDemoPage {
                 );
 
         if (previous != null
-                && gameTime - previous
-                < 4L) {
+                && gameTime - previous < 4L) {
             return;
         }
 
@@ -65,38 +64,6 @@ public final class F35CockpitDemoPage {
 
         terminal.clear();
 
-        terminal.setCursorPos(
-                1,
-                1
-        );
-
-        terminal.setTextColor(
-                CcTerminalColor.CYAN
-        );
-
-        terminal.write(
-                fit(
-                        "VSIA F-35 // DISPLAY",
-                        terminal.width()
-                )
-        );
-
-        terminal.setCursorPos(
-                1,
-                2
-        );
-
-        terminal.setTextColor(
-                CcTerminalColor.LIGHT_BLUE
-        );
-
-        terminal.write(
-                fit(
-                        "MONITOR_CENTER ONLINE",
-                        terminal.width()
-                )
-        );
-
         double speedMps =
                 player.getDeltaMovement()
                         .length()
@@ -110,93 +77,76 @@ public final class F35CockpitDemoPage {
                 )
                         % 360.0;
 
-        terminal.setTextColor(
-                CcTerminalColor.WHITE
+        writeLine(
+                terminal,
+                1,
+                CcTerminalColor.CYAN,
+                "VSIA F-35 / MONITOR"
         );
 
-        line(
+        writeLine(
                 terminal,
-                4,
-                String.format(
-                        Locale.ROOT,
-                        "SPD  %6.1f m/s",
-                        speedMps
-                )
+                2,
+                CcTerminalColor.LIME,
+                "MONITOR_CENTER ONLINE"
         );
 
-        line(
+        writeLine(
                 terminal,
-                5,
+                3,
+                CcTerminalColor.WHITE,
                 String.format(
                         Locale.ROOT,
-                        "ALT  %7.1f m",
+                        "SPD %5.1f  ALT %5.0f",
+                        speedMps,
                         player.getY()
                 )
         );
 
-        line(
+        writeLine(
                 terminal,
-                6,
+                4,
+                CcTerminalColor.WHITE,
                 String.format(
                         Locale.ROOT,
-                        "HDG  %03.0f deg",
+                        "HDG %03.0f",
                         heading
                 )
         );
 
-        line(
+        writeLine(
                 terminal,
-                7,
+                5,
+                CcTerminalColor.LIGHT_BLUE,
                 String.format(
                         Locale.ROOT,
-                        "POS  %.0f %.0f %.0f",
+                        "X %.0f  Z %.0f",
                         player.getX(),
-                        player.getY(),
                         player.getZ()
                 )
         );
 
-        terminal.setCursorPos(
-                1,
-                9
-        );
-
-        terminal.setTextColor(
-                CcTerminalColor.LIME
-        );
-
-        terminal.write(
-                fit(
-                        "CC TERMINAL API READY",
-                        terminal.width()
-                )
-        );
-
-        terminal.setCursorPos(
-                1,
-                10
-        );
-
-        terminal.setTextColor(
-                CcTerminalColor.GRAY
-        );
-
-        terminal.write(
-                fit(
-                        "RMB: DEMO / API MODE",
-                        terminal.width()
-                )
+        writeLine(
+                terminal,
+                6,
+                CcTerminalColor.GRAY,
+                "RMB DEMO / API MODE"
         );
     }
 
-    private static void line(
+    private static void writeLine(
             CcTerminalBuffer terminal,
-            int y,
+            int row,
+            CcTerminalColor color,
             String text
     ) {
         terminal.setCursorPos(
                 1,
-                y
+                row
+        );
+
+        terminal.setTextColor(
+                color
         );
 
         terminal.write(
@@ -211,8 +161,7 @@ public final class F35CockpitDemoPage {
             String text,
             int width
     ) {
-        if (text.length()
-                <= width) {
+        if (text.length() <= width) {
             return text;
         }
 
