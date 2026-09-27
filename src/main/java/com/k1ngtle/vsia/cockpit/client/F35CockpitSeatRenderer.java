@@ -12,6 +12,7 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import software.bernie.geckolib.cache.object.GeoBone;
 import software.bernie.geckolib.renderer.GeoBlockRenderer;
+import software.bernie.geckolib.util.RenderUtils;
 
 public final class F35CockpitSeatRenderer
         extends GeoBlockRenderer<F35CockpitSeatBlockEntity> {
@@ -30,6 +31,23 @@ public final class F35CockpitSeatRenderer
     private static final float MONITOR_FRONT_Z =
             -0.42219000F * MODEL_UNIT
                     - 0.0010F;
+
+    /*
+     * Fine alignment only.
+     *
+     * Keep the measured monitor_center coordinates above unchanged.
+     * These trims are intentionally in Minecraft/world render units,
+     * so any final screenshot correction can be done without touching
+     * the Blockbench geometry or GeckoLib anchor.
+     */
+    private static final float MONITOR_TRIM_X =
+            0.0F;
+
+    private static final float MONITOR_TRIM_Y =
+            0.0F;
+
+    private static final float MONITOR_TRIM_Z =
+            0.0F;
 
     private static final float MONITOR_WIDTH =
             9.74204F
@@ -87,11 +105,19 @@ public final class F35CockpitSeatRenderer
             poseStack.pushPose();
 
             /*
-             * renderRecursively is already executing with poseStack positioned
-             * for this GeoBone. Applying prepMatrixForBone here a second time
-             * double-transforms the monitor anchor and is what pushed the text
-             * far below monitor_center in v1.0.1.
+             * This override is entered BEFORE super.renderRecursively(...)
+             * applies the current GeoBone transform.
+             *
+             * The PoseStack here already contains the parent hierarchy, but
+             * not monitor_center_surface itself. Apply this anchor exactly
+             * once for the custom terminal pass. The push/pop keeps this
+             * transform isolated from GeckoLib's normal model rendering below.
              */
+            RenderUtils.prepMatrixForBone(
+                    poseStack,
+                    bone
+            );
+
             renderTerminal(
                     poseStack,
                     bufferSource,
@@ -139,9 +165,12 @@ public final class F35CockpitSeatRenderer
                 );
 
         poseStack.translate(
-                MONITOR_OFFSET_X,
-                MONITOR_OFFSET_Y,
+                MONITOR_OFFSET_X
+                        + MONITOR_TRIM_X,
+                MONITOR_OFFSET_Y
+                        + MONITOR_TRIM_Y,
                 MONITOR_FRONT_Z
+                        + MONITOR_TRIM_Z
         );
 
         poseStack.mulPose(
