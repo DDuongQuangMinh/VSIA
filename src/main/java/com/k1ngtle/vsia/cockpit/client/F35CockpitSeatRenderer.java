@@ -2,6 +2,9 @@ package com.k1ngtle.vsia.cockpit.client;
 
 import com.k1ngtle.vsia.cockpit.CcTerminalBuffer;
 import com.k1ngtle.vsia.cockpit.F35CockpitSeatBlockEntity;
+import com.k1ngtle.vsia.cockpit.display.F35DisplayState;
+import com.k1ngtle.vsia.cockpit.display.F35DisplayStateFactory;
+import com.k1ngtle.vsia.cockpit.display.F35PanoramicDisplayRenderer;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
@@ -40,10 +43,10 @@ public final class F35CockpitSeatRenderer
             1.0F / 16.0F;
 
     private static final float SCREEN_WIDTH_FILL =
-            0.92F;
+            0.94F;
 
     private static final float SCREEN_HEIGHT_FILL =
-            0.90F;
+            0.92F;
 
     private static final float SURFACE_EPSILON =
             0.0010F;
@@ -55,6 +58,9 @@ public final class F35CockpitSeatRenderer
             9.0F;
 
     private final Font font;
+
+    private final F35PanoramicDisplayRenderer panoramicRenderer =
+            new F35PanoramicDisplayRenderer();
 
     public F35CockpitSeatRenderer(
             BlockEntityRendererProvider.Context context
@@ -97,15 +103,6 @@ public final class F35CockpitSeatRenderer
                 )
                         : null;
 
-        /*
-         * Render GeckoLib geometry FIRST.
-         *
-         * v1.0.4 rendered Font.drawInBatch before GeckoLib rendered the
-         * physical monitor cube. Font rendering asks MultiBufferSource for a
-         * different RenderType and can switch the active BufferBuilder. The
-         * GeoBlockRenderer then continued with the old VertexConsumer, which
-         * is why the black monitor surface disappeared in the screenshot.
-         */
         super.renderRecursively(
                 poseStack,
                 animatable,
@@ -127,29 +124,25 @@ public final class F35CockpitSeatRenderer
             return;
         }
 
-        F35CockpitDemoPage.update(
-                animatable
-        );
+        if (animatable.demoMode()) {
+            renderPanoramicDisplayOnMonitorCube(
+                    poseStack,
+                    bufferSource,
+                    animatable,
+                    bone,
+                    monitorCube,
+                    partialTick
+            );
+        } else {
+            renderTerminalOnMonitorCube(
+                    poseStack,
+                    bufferSource,
+                    animatable.terminal(),
+                    bone,
+                    monitorCube
+            );
+        }
 
-        /*
-         * super.renderRecursively has popped the bone-local PoseStack, so the
-         * stack is back at the exact parent transform. Reapply only the real
-         * range_finder2 bone and real monitor GeoCube transforms, then draw
-         * the terminal after the physical monitor surface already exists.
-         */
-        renderTerminalOnMonitorCube(
-                poseStack,
-                bufferSource,
-                animatable.terminal(),
-                bone,
-                monitorCube
-        );
-
-        /*
-         * Font.drawInBatch switches MultiBufferSource to the font RenderType.
-         * Re-select the GeckoLib model RenderType before returning so later
-         * child/sibling cubes do not continue through a stale VertexConsumer.
-         */
         bufferSource.getBuffer(
                 renderType
         );
@@ -188,6 +181,55 @@ public final class F35CockpitSeatRenderer
         ) <= CUBE_SIZE_EPSILON;
     }
 
+    private void renderPanoramicDisplayOnMonitorCube(
+            PoseStack poseStack,
+            MultiBufferSource bufferSource,
+            F35CockpitSeatBlockEntity cockpit,
+            GeoBone monitorParentBone,
+            GeoCube monitorCube,
+            float partialTick
+    ) {
+        MonitorSurface surface =
+                surfaceFor(
+                        monitorCube
+                );
+
+        if (surface == null) {
+            return;
+        }
+
+        poseStack.pushPose();
+
+        applyMonitorTransform(
+                poseStack,
+                monitorParentBone,
+                monitorCube,
+                surface.center()
+        );
+
+        poseStack.mulPose(
+                Axis.YP.rotationDegrees(
+                        180.0F
+                )
+        );
+
+        F35DisplayState state =
+                F35DisplayStateFactory.capture(
+                        cockpit,
+                        partialTick
+                );
+
+        panoramicRenderer.render(
+                poseStack,
+                bufferSource,
+                state,
+                surface.width(),
+                surface.height()
+        );
+
+        poseStack.popPose();
+    }
+
     private void renderTerminalOnMonitorCube(
             PoseStack poseStack,
             MultiBufferSource bufferSource,
@@ -195,36 +237,41 @@ public final class F35CockpitSeatRenderer
             GeoBone monitorParentBone,
             GeoCube monitorCube
     ) {
-        GeoQuad frontFace =
-                findFrontFace(
+        MonitorSurface surface =
+                surfaceFor(
                         monitorCube
                 );
 
-        if (frontFace == null) {
+        if (surface == null) {
             return;
         }
 
-        Vector3f faceCenter =
-                calculateFaceCenter(
-                        frontFace
-                );
-
-        float monitorWidth =
-                (float) monitorCube
-                        .size()
-                        .x()
-                        * MODEL_UNIT
-                        * SCREEN_WIDTH_FILL;
-
-        float monitorHeight =
-                (float) monitorCube
-                        .size()
-                        .y()
-                        * MODEL_UNIT
-                        * SCREEN_HEIGHT_FILL;
-
         poseStack.pushPose();
 
+        applyMonitorTransform(
+                poseStack,
+                monitorParentBone,
+                monitorCube,
+                surface.center()
+        );
+
+        renderTerminal(
+                poseStack,
+                bufferSource,
+                terminal,
+                surface.width(),
+                surface.height()
+        );
+
+        poseStack.popPose();
+    }
+
+    private void applyMonitorTransform(
+            PoseStack poseStack,
+            GeoBone monitorParentBone,
+            GeoCube monitorCube,
+            Vector3f center
+    ) {
         RenderUtils.prepMatrixForBone(
                 poseStack,
                 monitorParentBone
@@ -246,21 +293,47 @@ public final class F35CockpitSeatRenderer
         );
 
         poseStack.translate(
-                faceCenter.x(),
-                faceCenter.y(),
-                faceCenter.z()
+                center.x(),
+                center.y(),
+                center.z()
                         - SURFACE_EPSILON
         );
+    }
 
-        renderTerminal(
-                poseStack,
-                bufferSource,
-                terminal,
-                monitorWidth,
-                monitorHeight
+    private MonitorSurface surfaceFor(
+            GeoCube cube
+    ) {
+        GeoQuad frontFace =
+                findFrontFace(
+                        cube
+                );
+
+        if (frontFace == null) {
+            return null;
+        }
+
+        Vector3f center =
+                calculateFaceCenter(
+                        frontFace
+                );
+
+        float width =
+                (float) cube.size()
+                        .x()
+                        * MODEL_UNIT
+                        * SCREEN_WIDTH_FILL;
+
+        float height =
+                (float) cube.size()
+                        .y()
+                        * MODEL_UNIT
+                        * SCREEN_HEIGHT_FILL;
+
+        return new MonitorSurface(
+                center,
+                width,
+                height
         );
-
-        poseStack.popPose();
     }
 
     private GeoQuad findFrontFace(
@@ -387,8 +460,7 @@ public final class F35CockpitSeatRenderer
                                 * CELL_HEIGHT,
                         foreground,
                         false,
-                        poseStack
-                                .last()
+                        poseStack.last()
                                 .pose(),
                         bufferSource,
                         Font.DisplayMode.POLYGON_OFFSET,
@@ -397,5 +469,12 @@ public final class F35CockpitSeatRenderer
                 );
             }
         }
+    }
+
+    private record MonitorSurface(
+            Vector3f center,
+            float width,
+            float height
+    ) {
     }
 }

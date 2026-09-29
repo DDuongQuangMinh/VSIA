@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.network;
 
+import com.k1ngtle.vsia.cockpit.network.S2CF35RadarSnapshotPacket;
 import com.k1ngtle.vsia.Vsia;
 import com.k1ngtle.vsia.network.web.W128IdeRequestPacket;
 import com.k1ngtle.vsia.network.web.W128IdeSnapshotPacket;
@@ -308,6 +309,16 @@ public class VsiaNetwork {
                 .encoder(S2CPhoneBrowserResponsePacket::toBytes)
                 .consumerMainThread(S2CPhoneBrowserResponsePacket::handle)
                 .add();
+        net.messageBuilder(
+                        S2CF35RadarSnapshotPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_CLIENT
+                )
+                .decoder(S2CF35RadarSnapshotPacket::new)
+                .encoder(S2CF35RadarSnapshotPacket::toBytes)
+                .consumerMainThread(S2CF35RadarSnapshotPacket::handle)
+                .add();
+
     }
 
     public static <MSG> void sendToServer(MSG message) {

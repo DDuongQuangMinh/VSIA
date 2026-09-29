@@ -144,8 +144,8 @@ public final class F35CockpitSeatBlock extends BaseEntityBlock {
             player.displayClientMessage(
                     net.minecraft.network.chat.Component.literal(
                             cockpit.demoMode()
-                                    ? "F-35 monitor demo enabled"
-                                    : "F-35 monitor demo disabled; terminal API now owns the screen"
+                                    ? "F-35 panoramic avionics display enabled"
+                                    : "F-35 terminal API mode enabled"
                     ),
                     true
             );
