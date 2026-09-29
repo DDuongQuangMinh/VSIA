@@ -84,30 +84,28 @@ public final class F35CockpitSeatRenderer
             float blue,
             float alpha
     ) {
-        if (!isReRender
-                && MONITOR_PARENT_BONE.equals(
-                bone.getName()
-        )) {
-            GeoCube monitorCube =
-                    findMonitorCube(
-                            bone
-                    );
-
-            if (monitorCube != null) {
-                F35CockpitDemoPage.update(
-                        animatable
+        boolean monitorBone =
+                !isReRender
+                        && MONITOR_PARENT_BONE.equals(
+                        bone.getName()
                 );
 
-                renderTerminalOnMonitorCube(
-                        poseStack,
-                        bufferSource,
-                        animatable.terminal(),
-                        bone,
-                        monitorCube
-                );
-            }
-        }
+        GeoCube monitorCube =
+                monitorBone
+                        ? findMonitorCube(
+                        bone
+                )
+                        : null;
 
+        /*
+         * Render GeckoLib geometry FIRST.
+         *
+         * v1.0.4 rendered Font.drawInBatch before GeckoLib rendered the
+         * physical monitor cube. Font rendering asks MultiBufferSource for a
+         * different RenderType and can switch the active BufferBuilder. The
+         * GeoBlockRenderer then continued with the old VertexConsumer, which
+         * is why the black monitor surface disappeared in the screenshot.
+         */
         super.renderRecursively(
                 poseStack,
                 animatable,
@@ -123,6 +121,37 @@ public final class F35CockpitSeatRenderer
                 green,
                 blue,
                 alpha
+        );
+
+        if (monitorCube == null) {
+            return;
+        }
+
+        F35CockpitDemoPage.update(
+                animatable
+        );
+
+        /*
+         * super.renderRecursively has popped the bone-local PoseStack, so the
+         * stack is back at the exact parent transform. Reapply only the real
+         * range_finder2 bone and real monitor GeoCube transforms, then draw
+         * the terminal after the physical monitor surface already exists.
+         */
+        renderTerminalOnMonitorCube(
+                poseStack,
+                bufferSource,
+                animatable.terminal(),
+                bone,
+                monitorCube
+        );
+
+        /*
+         * Font.drawInBatch switches MultiBufferSource to the font RenderType.
+         * Re-select the GeckoLib model RenderType before returning so later
+         * child/sibling cubes do not continue through a stale VertexConsumer.
+         */
+        bufferSource.getBuffer(
+                renderType
         );
     }
 
@@ -196,15 +225,6 @@ public final class F35CockpitSeatRenderer
 
         poseStack.pushPose();
 
-        /*
-         * Match GeckoLib's normal recursive rendering path exactly:
-         *
-         * 1. apply range_finder2's GeoBone transform,
-         * 2. apply the real monitor_center GeoCube pivot/rotation,
-         * 3. translate to the actual NORTH face center from its baked vertices.
-         *
-         * The old synthetic helper bone is no longer involved.
-         */
         RenderUtils.prepMatrixForBone(
                 poseStack,
                 monitorParentBone
