@@ -14,6 +14,9 @@ import org.joml.Vector3d;
 import org.joml.Vector3dc;
 
 public final class F35VsShipHelper {
+    private static final double SEAT_OFFSET_Y =
+            -2.72;
+
     private F35VsShipHelper() {
     }
 
@@ -109,7 +112,7 @@ public final class F35VsShipHelper {
                 center
                         .add(
                                 0.0,
-                                0.28,
+                                SEAT_OFFSET_Y,
                                 0.0
                         )
                         .add(
