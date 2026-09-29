@@ -2,7 +2,7 @@ package com.k1ngtle.vsia.cockpit.display.telemetry;
 
 public final class F35TelemetryRegistry {
     private static volatile AircraftTelemetryProvider provider =
-            new DebugPlayerTelemetryProvider();
+            new VsShipTelemetryProvider();
 
     private F35TelemetryRegistry() {
     }
@@ -16,12 +16,12 @@ public final class F35TelemetryRegistry {
     ) {
         provider =
                 newProvider == null
-                        ? new DebugPlayerTelemetryProvider()
+                        ? new VsShipTelemetryProvider()
                         : newProvider;
     }
 
     public static void reset() {
         provider =
-                new DebugPlayerTelemetryProvider();
+                new VsShipTelemetryProvider();
     }
 }

@@ -137,18 +137,25 @@ public final class F35CockpitSeatBlock extends BaseEntityBlock {
                 && level.getBlockEntity(
                 pos
         ) instanceof F35CockpitSeatBlockEntity cockpit) {
-            cockpit.setDemoMode(
-                    !cockpit.demoMode()
-            );
+            if (player.isShiftKeyDown()) {
+                cockpit.setDemoMode(
+                        !cockpit.demoMode()
+                );
 
-            player.displayClientMessage(
-                    net.minecraft.network.chat.Component.literal(
-                            cockpit.demoMode()
-                                    ? "F-35 panoramic avionics display enabled"
-                                    : "F-35 terminal API mode enabled"
-                    ),
-                    true
-            );
+                player.displayClientMessage(
+                        net.minecraft.network.chat.Component.literal(
+                                cockpit.demoMode()
+                                        ? "F-35 panoramic avionics display enabled"
+                                        : "F-35 terminal API mode enabled"
+                        ),
+                        true
+                );
+            } else {
+                F35SeatController.trySeat(
+                        player,
+                        cockpit
+                );
+            }
         }
 
         return InteractionResult.sidedSuccess(

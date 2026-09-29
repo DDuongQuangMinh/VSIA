@@ -17,20 +17,10 @@ public final class DebugPlayerTelemetryProvider
                         .player;
 
         if (player == null) {
-            Vec3 center =
+            return AircraftTelemetry.noShip(
                     Vec3.atCenterOf(
                             cockpit.getBlockPos()
-                    );
-
-            return new AircraftTelemetry(
-                    center,
-                    Vec3.ZERO,
-                    0.0,
-                    0.0,
-                    0.0,
-                    center.y,
-                    0.0,
-                    0.0
+                    )
             );
         }
 
@@ -46,6 +36,8 @@ public final class DebugPlayerTelemetryProvider
                 );
 
         return new AircraftTelemetry(
+                true,
+                "DEBUG-PLAYER",
                 player.position(),
                 velocity,
                 heading,

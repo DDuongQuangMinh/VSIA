@@ -131,6 +131,16 @@ public final class F35PanoramicDisplayRenderer {
                 state
         );
 
+        if (!state.ownship()
+                .shipDetected()) {
+            renderNoShipDetected(
+                    canvas,
+                    state
+            );
+            canvas.clearClip();
+            return;
+        }
+
         renderStores(
                 canvas,
                 state
@@ -296,7 +306,9 @@ public final class F35PanoramicDisplayRenderer {
         );
 
         canvas.text(
-                state.radarNetwork(),
+                shipLine(
+                        state
+                ),
                 567.0F,
                 16.0F,
                 0.8F,
@@ -340,10 +352,13 @@ public final class F35PanoramicDisplayRenderer {
         );
 
         canvas.text(
-                "RNG "
+                state.ownship()
+                        .shipDetected()
+                        ? "RNG "
                         + rangeLabel(
                         state.radarRangeMeters()
-                ),
+                )
+                        : "RNG N/A",
                 772.0F,
                 15.0F,
                 0.9F,
@@ -358,6 +373,63 @@ public final class F35PanoramicDisplayRenderer {
                 26.0F,
                 0.9F,
                 F35DisplayPalette.GREEN
+        );
+
+        canvas.clearClip();
+    }
+
+    private void renderNoShipDetected(
+            F35DisplayCanvas canvas,
+            F35DisplayState state
+    ) {
+        canvas.setClip(
+                0.0F,
+                TOP_BAR_HEIGHT,
+                VIRTUAL_WIDTH,
+                VIRTUAL_HEIGHT
+        );
+
+        float cx =
+                VIRTUAL_WIDTH / 2.0F;
+
+        float cy =
+                (TOP_BAR_HEIGHT + VIRTUAL_HEIGHT) / 2.0F;
+
+        canvas.rect(
+                cx - 160.0F,
+                cy - 32.0F,
+                320.0F,
+                68.0F,
+                F35DisplayPalette.GRID
+        );
+
+        canvas.text(
+                "---NO SHIP DETECTED---",
+                cx - 117.0F,
+                cy - 10.0F,
+                1.45F,
+                F35DisplayPalette.GREEN
+        );
+
+        canvas.text(
+                "PLACE COCKPIT ON A VS SHIP",
+                cx - 118.0F,
+                cy + 10.0F,
+                0.90F,
+                F35DisplayPalette.CYAN
+        );
+
+        canvas.text(
+                "CURRENT: "
+                        + shortLabel(
+                        state.ownship()
+                                .shipLabel(),
+                        24
+                ),
+                cx - 110.0F,
+                cy + 24.0F,
+                0.75F,
+                F35DisplayPalette.DIM
         );
 
         canvas.clearClip();
@@ -1466,6 +1538,41 @@ public final class F35PanoramicDisplayRenderer {
                 meters
         )
                 + "M";
+    }
+
+    private static String shipLine(
+            F35DisplayState state
+    ) {
+        return shortLabel(
+                state.ownship()
+                        .shipDetected()
+                        ? state.ownship()
+                        .shipLabel()
+                        : "---No Ship Detected---",
+                18
+        );
+    }
+
+    private static String shortLabel(
+            String value,
+            int maxLength
+    ) {
+        if (value == null) {
+            return "";
+        }
+
+        if (value.length()
+                <= maxLength) {
+            return value;
+        }
+
+        return value.substring(
+                0,
+                Math.max(
+                        0,
+                        maxLength - 3
+                )
+        ) + "...";
     }
 
     private static String threeDigits(

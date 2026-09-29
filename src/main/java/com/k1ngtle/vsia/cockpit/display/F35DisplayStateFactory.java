@@ -34,6 +34,25 @@ public final class F35DisplayStateFactory {
                                 partialTick
                         );
 
+        F35StoresSnapshot stores =
+                F35StoresRegistry
+                        .provider()
+                        .capture(
+                                cockpit
+                        );
+
+        if (!telemetry.shipDetected()) {
+            return new F35DisplayState(
+                    telemetry,
+                    "NO-SHIP",
+                    List.of(),
+                    null,
+                    0.0,
+                    stores,
+                    System.currentTimeMillis()
+            );
+        }
+
         F35ClientRadarCache.Snapshot radar =
                 F35ClientRadarCache.snapshot();
 
@@ -73,13 +92,6 @@ public final class F35DisplayStateFactory {
                 selectRange(
                         farthest
                 );
-
-        F35StoresSnapshot stores =
-                F35StoresRegistry
-                        .provider()
-                        .capture(
-                                cockpit
-                        );
 
         return new F35DisplayState(
                 telemetry,
