@@ -78,16 +78,13 @@ public final class F35SeatController {
             );
         }
 
-        player.setYRot(
-                seat.getYRot()
-        );
-        player.setYHeadRot(
-                seat.getYRot()
-        );
-        player.setYBodyRot(
-                seat.getYRot()
-        );
-
+        /*
+         * Minecart-style free look:
+         *
+         * Do not force the rider's yaw, head yaw, body yaw, or pitch here.
+         * The invisible seat only owns the rider position. The player keeps
+         * full mouse-look control while mounted.
+         */
         return true;
     }
 
@@ -257,6 +254,9 @@ public final class F35SeatController {
                 seatPosition.x,
                 seatPosition.y,
                 seatPosition.z
+        );
+        seat.setDeltaMovement(
+                Vec3.ZERO
         );
         seat.setYRot(
                 yaw

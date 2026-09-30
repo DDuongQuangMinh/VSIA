@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.cockpit.display;
 
+import com.k1ngtle.vsia.cockpit.client.F35DisplayClientConfig;
 import com.k1ngtle.vsia.cockpit.F35CockpitSeatBlockEntity;
 import com.k1ngtle.vsia.cockpit.display.stores.F35StoresRegistry;
 import com.k1ngtle.vsia.cockpit.display.stores.F35StoresSnapshot;
@@ -88,8 +89,13 @@ public final class F35DisplayStateFactory {
                                 0.0
                         );
 
+        double forcedRange =
+                F35DisplayClientConfig.forcedRadarRangeMeters();
+
         double radarRange =
-                selectRange(
+                forcedRange > 0.0
+                        ? forcedRange
+                        : selectRange(
                         farthest
                 );
 

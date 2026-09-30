@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.cockpit.display;
 
+import com.k1ngtle.vsia.cockpit.client.F35DisplayClientConfig;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import java.util.ArrayList;
@@ -103,20 +104,25 @@ public final class F35DisplayCanvas {
                         RenderType.lines()
                 );
 
+        int adjustedColor =
+                F35DisplayClientConfig.applyBrightness(
+                        color
+                );
+
         int alpha =
-                color >>> 24
+                adjustedColor >>> 24
                         & 0xFF;
 
         int red =
-                color >>> 16
+                adjustedColor >>> 16
                         & 0xFF;
 
         int green =
-                color >>> 8
+                adjustedColor >>> 8
                         & 0xFF;
 
         int blue =
-                color
+                adjustedColor
                         & 0xFF;
 
         PoseStack.Pose pose =

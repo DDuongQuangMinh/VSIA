@@ -1,5 +1,6 @@
 package com.k1ngtle.vsia.cockpit.display;
 
+import com.k1ngtle.vsia.cockpit.client.F35DisplayClientConfig;
 import com.k1ngtle.vsia.cockpit.display.stores.F35StoresSnapshot;
 import com.k1ngtle.vsia.cockpit.display.telemetry.AircraftTelemetry;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -50,13 +51,21 @@ public final class F35PanoramicDisplayRenderer {
                                 / VIRTUAL_HEIGHT
                 );
 
+        float configuredScale =
+                F35DisplayClientConfig.displayScale();
+
         float drawWidth =
                 VIRTUAL_WIDTH
-                        * scale;
+                        * scale
+                        * configuredScale;
 
         float drawHeight =
                 VIRTUAL_HEIGHT
-                        * scale;
+                        * scale
+                        * configuredScale;
+
+        scale *=
+                configuredScale;
 
         poseStack.pushPose();
 
@@ -1268,13 +1277,15 @@ public final class F35PanoramicDisplayRenderer {
             );
         }
 
-        canvas.text(
-                track.shortId(),
-                x + 7.0F,
-                y - 4.0F,
-                0.6F,
-                color
-        );
+        if (F35DisplayClientConfig.trackLabels()) {
+            canvas.text(
+                    track.shortId(),
+                    x + 7.0F,
+                    y - 4.0F,
+                    0.6F,
+                    color
+            );
+        }
     }
 
     private void renderSelectedTrackBox(

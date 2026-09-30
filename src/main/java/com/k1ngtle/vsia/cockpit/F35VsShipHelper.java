@@ -15,7 +15,7 @@ import org.joml.Vector3dc;
 
 public final class F35VsShipHelper {
     private static final double SEAT_OFFSET_Y =
-            -2.22;
+            -2.72;
 
     private F35VsShipHelper() {
     }
