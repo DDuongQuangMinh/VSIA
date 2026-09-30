@@ -1,7 +1,9 @@
 package com.k1ngtle.vsia.cockpit.display;
 
-import com.k1ngtle.vsia.cockpit.client.F35DisplayClientConfig;
 import com.k1ngtle.vsia.cockpit.F35CockpitSeatBlockEntity;
+import com.k1ngtle.vsia.cockpit.client.F35DisplayClientConfig;
+import com.k1ngtle.vsia.cockpit.detection.F35DetectionContact;
+import com.k1ngtle.vsia.cockpit.detection.F35ShipSilhouette;
 import com.k1ngtle.vsia.cockpit.display.stores.F35StoresRegistry;
 import com.k1ngtle.vsia.cockpit.display.stores.F35StoresSnapshot;
 import com.k1ngtle.vsia.cockpit.display.telemetry.AircraftTelemetry;
@@ -17,7 +19,8 @@ public final class F35DisplayStateFactory {
                     5000.0,
                     10_000.0,
                     20_000.0,
-                    40_000.0
+                    40_000.0,
+                    80_000.0
             };
 
     private F35DisplayStateFactory() {
@@ -42,11 +45,22 @@ public final class F35DisplayStateFactory {
                                 cockpit
                         );
 
+        F35ClientDetectionCache.Snapshot detection =
+                F35ClientDetectionCache.snapshot();
+
+        List<F35DetectionContact> detections =
+                detection.contacts();
+
+        F35ShipSilhouette silhouette =
+                detection.silhouette();
+
         if (!telemetry.shipDetected()) {
             return new F35DisplayState(
                     telemetry,
                     "NO-SHIP",
                     List.of(),
+                    List.of(),
+                    F35ShipSilhouette.empty(),
                     null,
                     0.0,
                     stores,
@@ -75,7 +89,7 @@ public final class F35DisplayStateFactory {
                                 null
                         );
 
-        double farthest =
+        double farthestRadar =
                 tracks.stream()
                         .mapToDouble(
                                 track ->
@@ -88,6 +102,26 @@ public final class F35DisplayStateFactory {
                         .orElse(
                                 0.0
                         );
+
+        double farthestDetection =
+                detections.stream()
+                        .mapToDouble(
+                                contact ->
+                                        contact.position()
+                                                .distanceTo(
+                                                        telemetry.position()
+                                                )
+                        )
+                        .max()
+                        .orElse(
+                                0.0
+                        );
+
+        double farthest =
+                Math.max(
+                        farthestRadar,
+                        farthestDetection
+                );
 
         double forcedRange =
                 F35DisplayClientConfig.forcedRadarRangeMeters();
@@ -103,6 +137,8 @@ public final class F35DisplayStateFactory {
                 telemetry,
                 radar.networkId(),
                 tracks,
+                detections,
+                silhouette,
                 selected,
                 radarRange,
                 stores,

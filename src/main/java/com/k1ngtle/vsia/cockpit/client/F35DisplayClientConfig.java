@@ -34,6 +34,15 @@ public final class F35DisplayClientConfig {
     private static boolean trackLabels =
             true;
 
+    private static boolean detectMobs =
+            true;
+
+    private static boolean detectPlayers =
+            true;
+
+    private static boolean detectShips =
+            true;
+
     private F35DisplayClientConfig() {
     }
 
@@ -106,6 +115,30 @@ public final class F35DisplayClientConfig {
                                     "true"
                             )
                     );
+
+            detectMobs =
+                    Boolean.parseBoolean(
+                            properties.getProperty(
+                                    "detectMobs",
+                                    "true"
+                            )
+                    );
+
+            detectPlayers =
+                    Boolean.parseBoolean(
+                            properties.getProperty(
+                                    "detectPlayers",
+                                    "true"
+                            )
+                    );
+
+            detectShips =
+                    Boolean.parseBoolean(
+                            properties.getProperty(
+                                    "detectShips",
+                                    "true"
+                            )
+                    );
         } catch (IOException ignored) {
         }
     }
@@ -141,6 +174,27 @@ public final class F35DisplayClientConfig {
                 "trackLabels",
                 String.valueOf(
                         trackLabels
+                )
+        );
+
+        properties.setProperty(
+                "detectMobs",
+                String.valueOf(
+                        detectMobs
+                )
+        );
+
+        properties.setProperty(
+                "detectPlayers",
+                String.valueOf(
+                        detectPlayers
+                )
+        );
+
+        properties.setProperty(
+                "detectShips",
+                String.valueOf(
+                        detectShips
                 )
         );
 
@@ -208,11 +262,97 @@ public final class F35DisplayClientConfig {
 
     public static void toggleTrackLabels() {
         ensureLoaded();
-
         trackLabels =
                 !trackLabels;
-
         save();
+    }
+
+    public static boolean detectMobs() {
+        ensureLoaded();
+        return detectMobs;
+    }
+
+    public static void toggleDetectMobs() {
+        ensureLoaded();
+        detectMobs =
+                !detectMobs;
+        save();
+    }
+
+    public static boolean detectPlayers() {
+        ensureLoaded();
+        return detectPlayers;
+    }
+
+    public static void toggleDetectPlayers() {
+        ensureLoaded();
+        detectPlayers =
+                !detectPlayers;
+        save();
+    }
+
+    public static boolean detectShips() {
+        ensureLoaded();
+        return detectShips;
+    }
+
+    public static void toggleDetectShips() {
+        ensureLoaded();
+        detectShips =
+                !detectShips;
+        save();
+    }
+
+    public static void setAllDetection(
+            boolean enabled
+    ) {
+        ensureLoaded();
+        detectMobs =
+                enabled;
+        detectPlayers =
+                enabled;
+        detectShips =
+                enabled;
+        save();
+    }
+
+    public static String detectionSummary() {
+        ensureLoaded();
+
+        StringBuilder builder =
+                new StringBuilder();
+
+        if (detectMobs) {
+            builder.append(
+                    "MOB"
+            );
+        }
+
+        if (detectPlayers) {
+            if (!builder.isEmpty()) {
+                builder.append(
+                        '+'
+                );
+            }
+            builder.append(
+                    "PLY"
+            );
+        }
+
+        if (detectShips) {
+            if (!builder.isEmpty()) {
+                builder.append(
+                        '+'
+                );
+            }
+            builder.append(
+                    "SHIP"
+            );
+        }
+
+        return builder.isEmpty()
+                ? "NONE"
+                : builder.toString();
     }
 
     public static int radarRangeIndex() {
@@ -334,6 +474,15 @@ public final class F35DisplayClientConfig {
                 -1;
 
         trackLabels =
+                true;
+
+        detectMobs =
+                true;
+
+        detectPlayers =
+                true;
+
+        detectShips =
                 true;
 
         loaded =

@@ -1,6 +1,9 @@
 package com.k1ngtle.vsia.cockpit.client;
 
 import com.k1ngtle.vsia.Vsia;
+import com.k1ngtle.vsia.cockpit.network.C2SF35DetectionFilterPacket;
+import com.k1ngtle.vsia.network.VsiaNetwork;
+import java.util.UUID;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.event.TickEvent;
@@ -13,6 +16,8 @@ import net.minecraftforge.fml.common.Mod;
         value = Dist.CLIENT
 )
 public final class F35DisplayClientInputEvents {
+    private static UUID syncedPlayerId;
+
     private F35DisplayClientInputEvents() {
     }
 
@@ -28,8 +33,33 @@ public final class F35DisplayClientInputEvents {
         Minecraft minecraft =
                 Minecraft.getInstance();
 
-        if (minecraft.player == null) {
+        if (minecraft.player == null
+                || minecraft.getConnection()
+                == null) {
+            syncedPlayerId =
+                    null;
             return;
+        }
+
+        UUID playerId =
+                minecraft.player
+                        .getUUID();
+
+        if (!playerId.equals(
+                syncedPlayerId
+        )) {
+            F35DisplayClientConfig.ensureLoaded();
+
+            VsiaNetwork.sendToServer(
+                    new C2SF35DetectionFilterPacket(
+                            F35DisplayClientConfig.detectMobs(),
+                            F35DisplayClientConfig.detectPlayers(),
+                            F35DisplayClientConfig.detectShips()
+                    )
+            );
+
+            syncedPlayerId =
+                    playerId;
         }
 
         while (F35DisplayKeyMappings

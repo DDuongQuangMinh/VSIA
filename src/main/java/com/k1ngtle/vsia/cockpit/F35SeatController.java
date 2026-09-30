@@ -104,6 +104,65 @@ public final class F35SeatController {
         return true;
     }
 
+    public static F35CockpitSeatBlockEntity cockpitFor(
+            ServerPlayer player
+    ) {
+        Entity vehicle =
+                player.getVehicle();
+
+        if (!(vehicle
+                instanceof Minecart seat)
+                || !isSeatEntity(
+                seat
+        )) {
+            return null;
+        }
+
+        CompoundTag tag =
+                seat.getPersistentData();
+
+        if (!tag.contains(
+                COCKPIT_POS
+        )
+                || !tag.contains(
+                COCKPIT_DIM
+        )) {
+            return null;
+        }
+
+        String dimensionKey =
+                tag.getString(
+                        COCKPIT_DIM
+                );
+
+        ServerLevel level =
+                player.server.getLevel(
+                        net.minecraft.resources.ResourceKey.create(
+                                net.minecraft.core.registries.Registries.DIMENSION,
+                                new ResourceLocation(
+                                        dimensionKey
+                                )
+                        )
+                );
+
+        if (level == null) {
+            return null;
+        }
+
+        BlockPos pos =
+                NbtUtils.readBlockPos(
+                        tag.getCompound(
+                                COCKPIT_POS
+                        )
+                );
+
+        return level.getBlockEntity(
+                pos
+        ) instanceof F35CockpitSeatBlockEntity cockpit
+                ? cockpit
+                : null;
+    }
+
     public static void tickPassenger(
             ServerPlayer player
     ) {

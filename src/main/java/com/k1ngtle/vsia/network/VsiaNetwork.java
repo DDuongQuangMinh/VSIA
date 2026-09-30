@@ -1,5 +1,7 @@
 package com.k1ngtle.vsia.network;
 
+import com.k1ngtle.vsia.cockpit.network.C2SF35DetectionFilterPacket;
+import com.k1ngtle.vsia.cockpit.network.S2CF35DetectionSnapshotPacket;
 import com.k1ngtle.vsia.cockpit.network.S2CF35RadarSnapshotPacket;
 import com.k1ngtle.vsia.Vsia;
 import com.k1ngtle.vsia.network.web.W128IdeRequestPacket;
@@ -317,6 +319,26 @@ public class VsiaNetwork {
                 .decoder(S2CF35RadarSnapshotPacket::new)
                 .encoder(S2CF35RadarSnapshotPacket::toBytes)
                 .consumerMainThread(S2CF35RadarSnapshotPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        C2SF35DetectionFilterPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_SERVER
+                )
+                .decoder(C2SF35DetectionFilterPacket::new)
+                .encoder(C2SF35DetectionFilterPacket::toBytes)
+                .consumerMainThread(C2SF35DetectionFilterPacket::handle)
+                .add();
+
+        net.messageBuilder(
+                        S2CF35DetectionSnapshotPacket.class,
+                        id(),
+                        NetworkDirection.PLAY_TO_CLIENT
+                )
+                .decoder(S2CF35DetectionSnapshotPacket::new)
+                .encoder(S2CF35DetectionSnapshotPacket::toBytes)
+                .consumerMainThread(S2CF35DetectionSnapshotPacket::handle)
                 .add();
 
     }

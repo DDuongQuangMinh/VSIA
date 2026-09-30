@@ -1,6 +1,9 @@
 package com.k1ngtle.vsia.cockpit.display;
 
 import com.k1ngtle.vsia.cockpit.client.F35DisplayClientConfig;
+import com.k1ngtle.vsia.cockpit.detection.F35DetectionContact;
+import com.k1ngtle.vsia.cockpit.detection.F35DetectionType;
+import com.k1ngtle.vsia.cockpit.detection.F35ShipSilhouette;
 import com.k1ngtle.vsia.cockpit.display.stores.F35StoresSnapshot;
 import com.k1ngtle.vsia.cockpit.display.telemetry.AircraftTelemetry;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -376,8 +379,7 @@ public final class F35PanoramicDisplayRenderer {
 
         canvas.text(
                 "TRK "
-                        + state.tracks()
-                        .size(),
+                        + state.totalContactCount(),
                 772.0F,
                 26.0F,
                 0.9F,
@@ -523,8 +525,9 @@ public final class F35PanoramicDisplayRenderer {
                 F35DisplayPalette.WHITE
         );
 
-        renderStoresAircraft(
+        renderStoresShipPlan(
                 canvas,
+                state,
                 stores
         );
 
@@ -539,9 +542,213 @@ public final class F35PanoramicDisplayRenderer {
         canvas.clearClip();
     }
 
-    private void renderStoresAircraft(
+    private void renderStoresShipPlan(
             F35DisplayCanvas canvas,
+            F35DisplayState state,
             F35StoresSnapshot stores
+    ) {
+        F35ShipSilhouette silhouette =
+                state.shipSilhouette();
+
+        if (silhouette.available()) {
+            renderScannedShipSilhouette(
+                    canvas,
+                    silhouette
+            );
+        } else {
+            renderReferenceAircraft(
+                    canvas
+            );
+        }
+
+        renderStoreStations(
+                canvas,
+                stores
+        );
+
+        canvas.text(
+                silhouette.available()
+                        ? "SHIP SCAN "
+                        + silhouette.sourceWidthBlocks()
+                        + "X"
+                        + silhouette.sourceLengthBlocks()
+                        : "SHIP SCAN WAIT",
+                54.0F,
+                306.0F,
+                0.72F,
+                silhouette.available()
+                        ? F35DisplayPalette.GREEN
+                        : F35DisplayPalette.DIM
+        );
+    }
+
+    private void renderScannedShipSilhouette(
+            F35DisplayCanvas canvas,
+            F35ShipSilhouette silhouette
+    ) {
+        float areaX =
+                64.0F;
+
+        float areaY =
+                132.0F;
+
+        float areaWidth =
+                88.0F;
+
+        float areaHeight =
+                152.0F;
+
+        float cellScale =
+                Math.min(
+                        areaWidth
+                                / Math.max(
+                                1,
+                                silhouette.width()
+                        ),
+                        areaHeight
+                                / Math.max(
+                                1,
+                                silhouette.height()
+                        )
+                );
+
+        float drawWidth =
+                silhouette.width()
+                        * cellScale;
+
+        float drawHeight =
+                silhouette.height()
+                        * cellScale;
+
+        float originX =
+                areaX
+                        + (
+                        areaWidth
+                                - drawWidth
+                ) / 2.0F;
+
+        float originY =
+                areaY
+                        + (
+                        areaHeight
+                                - drawHeight
+                ) / 2.0F;
+
+        int outline =
+                F35DisplayPalette.MAGENTA;
+
+        for (int y = 0;
+             y < silhouette.height();
+             y++) {
+            for (int x = 0;
+                 x < silhouette.width();
+                 x++) {
+                if (!silhouette.occupied(
+                        x,
+                        y
+                )) {
+                    continue;
+                }
+
+                float left =
+                        originX
+                                + x
+                                * cellScale;
+
+                float top =
+                        originY
+                                + y
+                                * cellScale;
+
+                float right =
+                        left
+                                + cellScale;
+
+                float bottom =
+                        top
+                                + cellScale;
+
+                if (!silhouette.occupied(
+                        x,
+                        y - 1
+                )) {
+                    canvas.line(
+                            left,
+                            top,
+                            right,
+                            top,
+                            outline
+                    );
+                }
+
+                if (!silhouette.occupied(
+                        x + 1,
+                        y
+                )) {
+                    canvas.line(
+                            right,
+                            top,
+                            right,
+                            bottom,
+                            outline
+                    );
+                }
+
+                if (!silhouette.occupied(
+                        x,
+                        y + 1
+                )) {
+                    canvas.line(
+                            right,
+                            bottom,
+                            left,
+                            bottom,
+                            outline
+                    );
+                }
+
+                if (!silhouette.occupied(
+                        x - 1,
+                        y
+                )) {
+                    canvas.line(
+                            left,
+                            bottom,
+                            left,
+                            top,
+                            outline
+                    );
+                }
+            }
+        }
+
+        if (silhouette.anchorX() >= 0
+                && silhouette.anchorY() >= 0) {
+            float anchorX =
+                    originX
+                            + (
+                            silhouette.anchorX()
+                                    + 0.5F
+                    ) * cellScale;
+
+            float anchorY =
+                    originY
+                            + (
+                            silhouette.anchorY()
+                                    + 0.5F
+                    ) * cellScale;
+
+            canvas.cross(
+                    anchorX,
+                    anchorY,
+                    4.0F,
+                    F35DisplayPalette.GREEN
+            );
+        }
+    }
+
+    private void renderReferenceAircraft(
+            F35DisplayCanvas canvas
     ) {
         float cx =
                 108.0F;
@@ -607,15 +814,29 @@ public final class F35PanoramicDisplayRenderer {
                 cy + 52.0F,
                 magenta
         );
+    }
+
+    private void renderStoreStations(
+            F35DisplayCanvas canvas,
+            F35StoresSnapshot stores
+    ) {
+        float cx =
+                108.0F;
+
+        float cy =
+                205.0F;
+
+        int magenta =
+                F35DisplayPalette.MAGENTA;
 
         float[][] stations =
                 new float[][]{
-                        {cx - 55.0F, cy - 55.0F},
-                        {cx + 27.0F, cy - 55.0F},
-                        {cx - 66.0F, cy - 13.0F},
-                        {cx + 38.0F, cy - 13.0F},
-                        {cx - 58.0F, cy + 35.0F},
-                        {cx + 30.0F, cy + 35.0F}
+                        {cx - 76.0F, cy - 55.0F},
+                        {cx + 48.0F, cy - 55.0F},
+                        {cx - 82.0F, cy - 13.0F},
+                        {cx + 54.0F, cy - 13.0F},
+                        {cx - 76.0F, cy + 35.0F},
+                        {cx + 48.0F, cy + 35.0F}
                 };
 
         List<F35StoresSnapshot.Station> stationData =
@@ -646,17 +867,17 @@ public final class F35PanoramicDisplayRenderer {
             canvas.rect(
                     x,
                     y,
-                    28.0F,
-                    28.0F,
+                    24.0F,
+                    24.0F,
                     color
             );
 
             if (station != null) {
                 canvas.text(
                         station.label(),
-                        x + 4.0F,
-                        y + 5.0F,
-                        0.7F,
+                        x + 3.0F,
+                        y + 4.0F,
+                        0.62F,
                         color
                 );
 
@@ -664,9 +885,9 @@ public final class F35PanoramicDisplayRenderer {
                         String.valueOf(
                                 station.count()
                         ),
-                        x + 11.0F,
-                        y + 16.0F,
-                        0.8F,
+                        x + 9.0F,
+                        y + 14.0F,
+                        0.72F,
                         F35DisplayPalette.WHITE
                 );
             }
@@ -851,9 +1072,8 @@ public final class F35PanoramicDisplayRenderer {
         );
 
         canvas.text(
-                state.tracks()
-                        .size()
-                        + " TRACKS",
+                state.totalContactCount()
+                        + " CONTACTS",
                 230.0F,
                 311.0F,
                 0.8F,
@@ -979,6 +1199,15 @@ public final class F35PanoramicDisplayRenderer {
         );
 
         renderTracks(
+                canvas,
+                state,
+                cx,
+                cy,
+                160.0F,
+                false
+        );
+
+        renderDetectionContacts(
                 canvas,
                 state,
                 cx,
@@ -1125,6 +1354,15 @@ public final class F35PanoramicDisplayRenderer {
                 true
         );
 
+        renderDetectionContacts(
+                canvas,
+                state,
+                cx,
+                cy,
+                108.0F,
+                true
+        );
+
         canvas.text(
                 "HSI",
                 732.0F,
@@ -1211,6 +1449,129 @@ public final class F35PanoramicDisplayRenderer {
                             .equals(
                                     track.trackId()
                             )
+            );
+        }
+    }
+
+    private void renderDetectionContacts(
+            F35DisplayCanvas canvas,
+            F35DisplayState state,
+            float centerX,
+            float centerY,
+            float radius,
+            boolean fullCircle
+    ) {
+        AircraftTelemetry ownship =
+                state.ownship();
+
+        for (F35DetectionContact contact :
+                state.detections()) {
+            Relative relative =
+                    relativeToOwnship(
+                            ownship,
+                            contact.position()
+                    );
+
+            double normalizedRight =
+                    relative.right()
+                            / state.radarRangeMeters();
+
+            double normalizedForward =
+                    relative.forward()
+                            / state.radarRangeMeters();
+
+            if (!fullCircle
+                    && normalizedForward < -0.05) {
+                continue;
+            }
+
+            double radial =
+                    Math.sqrt(
+                            normalizedRight
+                                    * normalizedRight
+                                    + normalizedForward
+                                    * normalizedForward
+                    );
+
+            if (radial > 1.0) {
+                continue;
+            }
+
+            float x =
+                    centerX
+                            + (float) normalizedRight
+                            * radius;
+
+            float y =
+                    centerY
+                            - (float) normalizedForward
+                            * radius;
+
+            drawDetectionSymbol(
+                    canvas,
+                    contact,
+                    x,
+                    y
+            );
+        }
+    }
+
+    private void drawDetectionSymbol(
+            F35DisplayCanvas canvas,
+            F35DetectionContact contact,
+            float x,
+            float y
+    ) {
+        int color;
+
+        if (contact.type()
+                == F35DetectionType.SHIP) {
+            color =
+                    F35DisplayPalette.CYAN;
+
+            canvas.aircraft(
+                    x,
+                    y,
+                    6.0F,
+                    color
+            );
+        } else if (contact.type()
+                == F35DetectionType.PLAYER) {
+            color =
+                    F35DisplayPalette.GREEN;
+
+            canvas.rect(
+                    x - 4.0F,
+                    y - 4.0F,
+                    8.0F,
+                    8.0F,
+                    color
+            );
+        } else {
+            color =
+                    F35DisplayPalette.AMBER;
+
+            canvas.diamond(
+                    x,
+                    y,
+                    4.0F,
+                    color
+            );
+        }
+
+        if (F35DisplayClientConfig.trackLabels()) {
+            canvas.text(
+                    contact.type()
+                            .name()
+                            .substring(
+                                    0,
+                                    1
+                            )
+                            + contact.shortId(),
+                    x + 7.0F,
+                    y - 4.0F,
+                    0.55F,
+                    color
             );
         }
     }
@@ -1524,8 +1885,8 @@ public final class F35PanoramicDisplayRenderer {
                     + friendlies;
         }
 
-        if (state.tracks()
-                .isEmpty()) {
+        if (state.totalContactCount()
+                == 0) {
             return "STBY";
         }
 
