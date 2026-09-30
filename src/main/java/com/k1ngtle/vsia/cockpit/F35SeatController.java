@@ -5,6 +5,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -15,6 +16,9 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 public final class F35SeatController {
+    public static final String SEAT_RENDER_MARKER =
+            "vsia:f35_seat_carrier";
+
     private static final double MINECART_SEAT_LIFT_Y =
             1.50;
 
@@ -218,6 +222,20 @@ public final class F35SeatController {
 
         seat.setSilent(
                 true
+        );
+
+        /*
+         * Synced client-side marker used only to suppress the vanilla
+         * MinecartRenderer for this invisible cockpit carrier.
+         */
+        seat.setCustomName(
+                Component.literal(
+                        SEAT_RENDER_MARKER
+                )
+        );
+
+        seat.setCustomNameVisible(
+                false
         );
 
         seat.setDeltaMovement(
