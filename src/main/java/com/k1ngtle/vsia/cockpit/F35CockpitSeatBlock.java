@@ -173,6 +173,17 @@ public final class F35CockpitSeatBlock extends BaseEntityBlock {
         return Shapes.block();
     }
 
+
+    @Override
+    public VoxelShape getVisualShape(
+            BlockState state,
+            BlockGetter level,
+            BlockPos pos,
+            CollisionContext context
+    ) {
+        return Shapes.empty();
+    }
+
     @Override
     public VoxelShape getCollisionShape(
             BlockState state,

@@ -16,7 +16,7 @@ import net.minecraft.world.phys.Vec3;
 
 public final class F35SeatController {
     private static final double MINECART_SEAT_LIFT_Y =
-            1.00;
+            1.50;
 
     private static final String SEAT_FLAG =
             "VsiaF35Seat";
