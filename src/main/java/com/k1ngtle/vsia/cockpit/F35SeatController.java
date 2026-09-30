@@ -9,13 +9,15 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.level.Level;
+import net.minecraft.world.entity.vehicle.Minecart;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 public final class F35SeatController {
+    private static final double MINECART_SEAT_LIFT_Y =
+            1.00;
+
     private static final String SEAT_FLAG =
             "VsiaF35Seat";
 
@@ -37,7 +39,7 @@ public final class F35SeatController {
             return false;
         }
 
-        ArmorStand seat =
+        Minecart seat =
                 findSeat(
                         serverLevel,
                         cockpit
@@ -59,10 +61,15 @@ public final class F35SeatController {
         }
 
         if (seat == null) {
-            seat = createSeat(
-                    serverLevel,
-                    cockpit
-            );
+            seat =
+                    createSeat(
+                            serverLevel,
+                            cockpit
+                    );
+        }
+
+        if (seat == null) {
+            return false;
         }
 
         alignSeat(
@@ -71,7 +78,8 @@ public final class F35SeatController {
         );
 
         if (!(player.isPassenger()
-                && player.getVehicle() == seat)) {
+                && player.getVehicle()
+                == seat)) {
             player.startRiding(
                     seat,
                     true
@@ -79,11 +87,15 @@ public final class F35SeatController {
         }
 
         /*
-         * Minecart-style free look:
+         * The carrier is an invisible vanilla Minecart on purpose.
          *
-         * Do not force the rider's yaw, head yaw, body yaw, or pitch here.
-         * The invisible seat only owns the rider position. The player keeps
-         * full mouse-look control while mounted.
+         * That gives the cockpit the same camera/perspective behavior as
+         * sitting in a normal minecart:
+         *
+         * - first person remains normal
+         * - F5 third-person shows the local player model
+         * - the camera may orbit/look around normally
+         * - no rider yaw/head/pitch is forced by VSIA
          */
         return true;
     }
@@ -95,7 +107,7 @@ public final class F35SeatController {
                 player.getVehicle();
 
         if (!(vehicle
-                instanceof ArmorStand seat)
+                instanceof Minecart seat)
                 || !isSeatEntity(
                 seat
         )) {
@@ -163,43 +175,54 @@ public final class F35SeatController {
         }
     }
 
-    private static ArmorStand createSeat(
+    private static Minecart createSeat(
             ServerLevel level,
             F35CockpitSeatBlockEntity cockpit
     ) {
         Vec3 seatPosition =
-                F35VsShipHelper.seatWorldPosition(
-                        cockpit,
-                        cockpit.getBlockState()
-                                .getValue(
-                                        F35CockpitSeatBlock.FACING
-                                )
+                adjustedSeatPosition(
+                        F35VsShipHelper.seatWorldPosition(
+                                cockpit,
+                                cockpit.getBlockState()
+                                        .getValue(
+                                                F35CockpitSeatBlock.FACING
+                                        )
+                        )
                 );
 
-        ArmorStand seat =
-                new ArmorStand(
+        Minecart seat =
+                new Minecart(
                         level,
                         seatPosition.x,
                         seatPosition.y,
                         seatPosition.z
                 );
 
+        seat.setPos(
+                seatPosition.x,
+                seatPosition.y,
+                seatPosition.z
+        );
+
         seat.setInvisible(
                 true
         );
+
         seat.setNoGravity(
                 true
         );
+
         seat.setInvulnerable(
                 true
         );
+
         seat.setSilent(
                 true
         );
-        // Minecraft 1.20.1 Mojmap does not expose public setters for
-        // ArmorStand small/base-plate flags. The seat entity is invisible, so
-        // these flags are unnecessary for rendering and are intentionally not
-        // changed here.
+
+        seat.setDeltaMovement(
+                Vec3.ZERO
+        );
 
         CompoundTag tag =
                 seat.getPersistentData();
@@ -208,12 +231,14 @@ public final class F35SeatController {
                 SEAT_FLAG,
                 true
         );
+
         tag.put(
                 COCKPIT_POS,
                 NbtUtils.writeBlockPos(
                         cockpit.getBlockPos()
                 )
         );
+
         tag.putString(
                 COCKPIT_DIM,
                 cockpit.getLevel()
@@ -230,7 +255,7 @@ public final class F35SeatController {
     }
 
     private static void alignSeat(
-            ArmorStand seat,
+            Minecart seat,
             F35CockpitSeatBlockEntity cockpit
     ) {
         Direction facing =
@@ -240,9 +265,11 @@ public final class F35SeatController {
                         );
 
         Vec3 seatPosition =
-                F35VsShipHelper.seatWorldPosition(
-                        cockpit,
-                        facing
+                adjustedSeatPosition(
+                        F35VsShipHelper.seatWorldPosition(
+                                cockpit,
+                                facing
+                        )
                 );
 
         float yaw =
@@ -255,24 +282,31 @@ public final class F35SeatController {
                 seatPosition.y,
                 seatPosition.z
         );
+
         seat.setDeltaMovement(
                 Vec3.ZERO
         );
+
         seat.setYRot(
                 yaw
         );
-        seat.setYHeadRot(
-                yaw
-        );
-        seat.setYBodyRot(
-                yaw
-        );
+
         seat.setXRot(
                 0.0F
         );
     }
 
-    private static ArmorStand findSeat(
+    private static Vec3 adjustedSeatPosition(
+            Vec3 baseSeatPosition
+    ) {
+        return baseSeatPosition.add(
+                0.0,
+                MINECART_SEAT_LIFT_Y,
+                0.0
+        );
+    }
+
+    private static Minecart findSeat(
             ServerLevel level,
             F35CockpitSeatBlockEntity cockpit
     ) {
@@ -281,19 +315,20 @@ public final class F35SeatController {
                         cockpit.getBlockPos()
                 );
 
-        List<ArmorStand> seats =
+        List<Minecart> seats =
                 level.getEntitiesOfClass(
-                        ArmorStand.class,
+                        Minecart.class,
                         AABB.ofSize(
                                 center,
-                                3.0,
-                                3.0,
-                                3.0
+                                4.0,
+                                4.0,
+                                4.0
                         ),
-                        seat -> isSeatForCockpit(
-                                seat,
-                                cockpit
-                        )
+                        seat ->
+                                isSeatForCockpit(
+                                        seat,
+                                        cockpit
+                                )
                 );
 
         return seats.isEmpty()
@@ -302,7 +337,7 @@ public final class F35SeatController {
     }
 
     private static boolean isSeatForCockpit(
-            ArmorStand seat,
+            Minecart seat,
             F35CockpitSeatBlockEntity cockpit
     ) {
         if (!isSeatEntity(
@@ -344,7 +379,7 @@ public final class F35SeatController {
     }
 
     private static boolean isSeatEntity(
-            ArmorStand seat
+            Minecart seat
     ) {
         return seat.getPersistentData()
                 .getBoolean(
