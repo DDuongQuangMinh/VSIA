@@ -34,7 +34,7 @@ public abstract class F35SeatMinecartRendererMixin {
             return;
         }
 
-        if (F35SeatController.SEAT_RENDER_MARKER.equals(
+        if (F35SeatController.isSeatRenderMarker(
                 customName.getString()
         )) {
             callbackInfo.cancel();

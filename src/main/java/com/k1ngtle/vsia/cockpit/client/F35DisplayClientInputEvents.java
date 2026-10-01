@@ -42,6 +42,7 @@ public final class F35DisplayClientInputEvents {
                 || minecraft.getConnection() == null) {
             syncedPlayerId = null;
             wasInCockpit = false;
+            F35TargetLockClient.clear();
             return;
         }
 
@@ -67,10 +68,14 @@ public final class F35DisplayClientInputEvents {
         if (inCockpit && !wasInCockpit) {
             minecraft.player.displayClientMessage(
                     Component.literal(
-                            "F-35: [1] Detection  [2] Target/IFF  [3] Display  [4] System  [\\] Full"
+                            "F-35: [1] SMS  [2] SENSOR  [3] TSD  [4] HSI  [\\] CONFIG"
                     ),
                     true
             );
+        }
+
+        if (!inCockpit && wasInCockpit) {
+            F35TargetLockClient.clear();
         }
 
         wasInCockpit = inCockpit;
@@ -126,11 +131,8 @@ public final class F35DisplayClientInputEvents {
             return false;
         }
 
-        Component customName = vehicle.getCustomName();
-
-        return customName != null
-                && F35SeatController.SEAT_RENDER_MARKER.equals(
-                customName.getString()
+        return F35SeatController.isSeatRenderMarker(
+                vehicle
         );
     }
 }

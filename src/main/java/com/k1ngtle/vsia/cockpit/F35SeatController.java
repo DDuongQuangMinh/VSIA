@@ -289,7 +289,9 @@ public final class F35SeatController {
          */
         seat.setCustomName(
                 Component.literal(
-                        SEAT_RENDER_MARKER
+                        seatRenderName(
+                                cockpit
+                        )
                 )
         );
 
@@ -364,6 +366,18 @@ public final class F35SeatController {
                 Vec3.ZERO
         );
 
+        seat.setCustomName(
+                Component.literal(
+                        seatRenderName(
+                                cockpit
+                        )
+                )
+        );
+
+        seat.setCustomNameVisible(
+                false
+        );
+
         seat.setYRot(
                 yaw
         );
@@ -381,6 +395,105 @@ public final class F35SeatController {
                 MINECART_SEAT_LIFT_Y,
                 0.0
         );
+    }
+
+    public static boolean isSeatRenderMarker(
+            Entity entity
+    ) {
+        if (entity == null) {
+            return false;
+        }
+
+        Component customName =
+                entity.getCustomName();
+
+        return customName != null
+                && isSeatRenderMarker(
+                customName.getString()
+        );
+    }
+
+    public static boolean isSeatRenderMarker(
+            String value
+    ) {
+        if (value == null) {
+            return false;
+        }
+
+        return value.equals(
+                SEAT_RENDER_MARKER
+        ) || value.startsWith(
+                SEAT_RENDER_MARKER + "|"
+        );
+    }
+
+    public static BlockPos clientCockpitPos(
+            Entity vehicle
+    ) {
+        if (vehicle == null) {
+            return null;
+        }
+
+        Component customName =
+                vehicle.getCustomName();
+
+        if (customName == null) {
+            return null;
+        }
+
+        String raw =
+                customName.getString();
+
+        String prefix =
+                SEAT_RENDER_MARKER + "|";
+
+        if (!raw.startsWith(
+                prefix
+        )) {
+            return null;
+        }
+
+        String[] values =
+                raw.substring(
+                        prefix.length()
+                ).split(
+                        ","
+                );
+
+        if (values.length != 3) {
+            return null;
+        }
+
+        try {
+            return new BlockPos(
+                    Integer.parseInt(
+                            values[0]
+                    ),
+                    Integer.parseInt(
+                            values[1]
+                    ),
+                    Integer.parseInt(
+                            values[2]
+                    )
+            );
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static String seatRenderName(
+            F35CockpitSeatBlockEntity cockpit
+    ) {
+        BlockPos pos =
+                cockpit.getBlockPos();
+
+        return SEAT_RENDER_MARKER
+                + "|"
+                + pos.getX()
+                + ","
+                + pos.getY()
+                + ","
+                + pos.getZ();
     }
 
     private static Minecart findSeat(

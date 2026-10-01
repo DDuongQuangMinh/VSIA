@@ -2,13 +2,13 @@ package com.k1ngtle.vsia.cockpit.display;
 
 import com.k1ngtle.vsia.cockpit.F35CockpitSeatBlockEntity;
 import com.k1ngtle.vsia.cockpit.client.F35DisplayClientConfig;
+import com.k1ngtle.vsia.cockpit.client.F35TargetLockClient;
 import com.k1ngtle.vsia.cockpit.detection.F35DetectionContact;
 import com.k1ngtle.vsia.cockpit.detection.F35ShipSilhouette;
 import com.k1ngtle.vsia.cockpit.display.stores.F35StoresRegistry;
 import com.k1ngtle.vsia.cockpit.display.stores.F35StoresSnapshot;
 import com.k1ngtle.vsia.cockpit.display.telemetry.AircraftTelemetry;
 import com.k1ngtle.vsia.cockpit.display.telemetry.F35TelemetryRegistry;
-import java.util.Comparator;
 import java.util.List;
 
 public final class F35DisplayStateFactory {
@@ -74,20 +74,15 @@ public final class F35DisplayStateFactory {
         List<F35RadarTrackView> tracks =
                 radar.tracks();
 
+        F35TargetLockClient.validate(
+                tracks,
+                detections
+        );
+
         F35RadarTrackView selected =
-                tracks.stream()
-                        .min(
-                                Comparator.comparingDouble(
-                                        track ->
-                                                track.position()
-                                                        .distanceTo(
-                                                                telemetry.position()
-                                                        )
-                                )
-                        )
-                        .orElse(
-                                null
-                        );
+                F35TargetLockClient.lockedRadarTrack(
+                        tracks
+                );
 
         double farthestRadar =
                 tracks.stream()

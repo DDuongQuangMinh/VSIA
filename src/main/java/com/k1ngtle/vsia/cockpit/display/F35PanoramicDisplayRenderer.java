@@ -1,6 +1,7 @@
 package com.k1ngtle.vsia.cockpit.display;
 
 import com.k1ngtle.vsia.cockpit.client.F35DisplayClientConfig;
+import com.k1ngtle.vsia.cockpit.client.F35TargetLockClient;
 import com.k1ngtle.vsia.cockpit.detection.F35DetectionContact;
 import com.k1ngtle.vsia.cockpit.detection.F35DetectionType;
 import com.k1ngtle.vsia.cockpit.detection.F35ShipSilhouette;
@@ -1816,20 +1817,41 @@ public final class F35PanoramicDisplayRenderer {
             float radius,
             boolean fullCircle
     ) {
+        Vec3 targetPosition =
+                null;
+
         F35RadarTrackView selected =
                 state.selectedTrack();
 
-        if (selected == null
-                || !radarTrackVisible(
+        if (selected != null
+                && radarTrackVisible(
                 selected
         )) {
+            targetPosition =
+                    selected.position();
+        } else {
+            F35DetectionContact detection =
+                    F35TargetLockClient.lockedDetection(
+                            state.detections()
+                    );
+
+            if (detection != null
+                    && detectionContactVisible(
+                    detection
+            )) {
+                targetPosition =
+                        detection.position();
+            }
+        }
+
+        if (targetPosition == null) {
             return;
         }
 
         float[] target =
                 scopePoint(
                         state.ownship(),
-                        selected.position(),
+                        targetPosition,
                         state.radarRangeMeters(),
                         centerX,
                         centerY,
@@ -2553,6 +2575,18 @@ public final class F35PanoramicDisplayRenderer {
             );
         }
 
+        if (F35TargetLockClient.isDetectionLocked(
+                contact.contactId()
+        )) {
+            canvas.rect(
+                    x - 8.0F,
+                    y - 8.0F,
+                    16.0F,
+                    16.0F,
+                    F35DisplayPalette.WHITE
+            );
+        }
+
         if (F35DisplayClientConfig.trackLabels()) {
             canvas.text(
                     contact.type()
@@ -2674,6 +2708,21 @@ public final class F35PanoramicDisplayRenderer {
                     null;
         }
 
+        F35DetectionContact detection =
+                selected == null
+                        ? F35TargetLockClient.lockedDetection(
+                        state.detections()
+                )
+                        : null;
+
+        if (detection != null
+                && !detectionContactVisible(
+                detection
+        )) {
+            detection =
+                    null;
+        }
+
         canvas.rect(
                 x,
                 y,
@@ -2682,9 +2731,10 @@ public final class F35PanoramicDisplayRenderer {
                 F35DisplayPalette.CYAN
         );
 
-        if (selected == null) {
+        if (selected == null
+                && detection == null) {
             canvas.text(
-                    "NO TRACK",
+                    "NO LOCK",
                     x + 5.0F,
                     y + 8.0F,
                     0.8F,
@@ -2694,20 +2744,62 @@ public final class F35PanoramicDisplayRenderer {
             return;
         }
 
+        if (selected != null) {
+            double range =
+                    selected.position()
+                            .distanceTo(
+                                    state.ownship()
+                                            .position()
+                            );
+
+            canvas.text(
+                    selected.shortId(),
+                    x + 5.0F,
+                    y + 5.0F,
+                    0.8F,
+                    trackColor(
+                            selected
+                    )
+            );
+
+            canvas.text(
+                    "R "
+                            + format0(
+                            range
+                    ),
+                    x + 5.0F,
+                    y + 16.0F,
+                    0.7F,
+                    F35DisplayPalette.WHITE
+            );
+
+            canvas.text(
+                    "V "
+                            + format0(
+                            selected.speedMps()
+                    ),
+                    x + 5.0F,
+                    y + 27.0F,
+                    0.7F,
+                    F35DisplayPalette.WHITE
+            );
+            return;
+        }
+
         double range =
-                selected.position()
+                detection.position()
                         .distanceTo(
                                 state.ownship()
                                         .position()
                         );
 
         canvas.text(
-                selected.shortId(),
+                detection.shortId(),
                 x + 5.0F,
                 y + 5.0F,
                 0.8F,
-                trackColor(
-                        selected
+                detectionColor(
+                        detection
                 )
         );
 
@@ -2725,7 +2817,7 @@ public final class F35PanoramicDisplayRenderer {
         canvas.text(
                 "V "
                         + format0(
-                        selected.speedMps()
+                        detection.speedMps()
                 ),
                 x + 5.0F,
                 y + 27.0F,
