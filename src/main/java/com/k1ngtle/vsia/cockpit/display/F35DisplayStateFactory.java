@@ -30,6 +30,8 @@ public final class F35DisplayStateFactory {
             F35CockpitSeatBlockEntity cockpit,
             float partialTick
     ) {
+        F35DisplayClientConfig.bind(cockpit);
+        F35TargetLockClient.bind(cockpit.cockpitId());
         AircraftTelemetry telemetry =
                 F35TelemetryRegistry
                         .provider()
@@ -46,7 +48,7 @@ public final class F35DisplayStateFactory {
                         );
 
         F35ClientDetectionCache.Snapshot detection =
-                F35ClientDetectionCache.snapshot();
+                F35ClientDetectionCache.snapshot(cockpit.cockpitId());
 
         List<F35DetectionContact> detections =
                 detection.contacts();

@@ -1,7 +1,7 @@
 package com.k1ngtle.vsia.cockpit.client;
 
-import com.k1ngtle.vsia.cockpit.network.C2SF35DetectionFilterPacket;
-import com.k1ngtle.vsia.network.VsiaNetwork;
+import com.k1ngtle.vsia.cockpit.F35CockpitSeatBlockEntity;
+import java.util.UUID;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -41,6 +41,7 @@ public final class F35DisplayConfigScreen
 
     private float uiScale =
             1.0F;
+    private UUID cockpitId;
 
     private float uiLeft =
             0.0F;
@@ -58,6 +59,7 @@ public final class F35DisplayConfigScreen
 
     @Override
     protected void init() {
+        if (!bindCockpit()) return;
         F35DisplayClientConfig.ensureLoaded();
         syncDetectionFilter();
         updateGeometry();
@@ -70,6 +72,11 @@ public final class F35DisplayConfigScreen
             int mouseY,
             float partialTick
     ) {
+        if (!bindCockpit()) {
+            graphics.fill(0, 0, width, height, 0xB0000000);
+            graphics.drawString(font, "Waiting for this cockpit. Reopen if you changed seats.", 20, 20, RED);
+            return;
+        }
         updateGeometry();
 
         graphics.fill(
@@ -143,6 +150,7 @@ public final class F35DisplayConfigScreen
             double mouseY,
             int button
     ) {
+        if (!bindCockpit()) return false;
         if (button != 0) {
             return super.mouseClicked(
                     mouseX,
@@ -282,6 +290,7 @@ public final class F35DisplayConfigScreen
             int scanCode,
             int modifiers
     ) {
+        if (!bindCockpit()) return false;
         int section =
                 F35DisplaySectionScreen.sectionForKey(
                         keyCode
@@ -361,7 +370,7 @@ public final class F35DisplayConfigScreen
     ) {
         text(
                 graphics,
-                "F-35 SENSOR / TARGET CONTROL",
+                "F-35 CONFIG / " + F35CockpitClientContext.label(cockpitId),
                 18,
                 9,
                 GREEN
@@ -693,20 +702,18 @@ public final class F35DisplayConfigScreen
     }
 
     private void syncDetectionFilter() {
-        if (minecraft == null
-                || minecraft.getConnection()
-                == null) {
-            return;
-        }
+        // Settings actions now update the cockpit's server-side detection filter directly.
+    }
 
-        VsiaNetwork.sendToServer(
-                new C2SF35DetectionFilterPacket(
-                        F35DisplayClientConfig.detectMobs(),
-                        F35DisplayClientConfig.detectPlayers(),
-                        F35DisplayClientConfig.detectShips(),
-                        F35DisplayClientConfig.showMissiles()
-                )
-        );
+    private boolean bindCockpit() {
+        F35CockpitSeatBlockEntity seated = F35CockpitClientContext.seated();
+        if (cockpitId == null && seated != null) cockpitId = seated.cockpitId();
+        return F35CockpitClientContext.bindSeat(cockpitId);
+    }
+
+    @Override
+    public void tick() {
+        if (!bindCockpit()) onClose();
     }
 
     private void updateGeometry() {

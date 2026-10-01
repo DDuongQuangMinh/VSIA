@@ -1,8 +1,12 @@
 package com.k1ngtle.vsia.network;
+import com.k1ngtle.vsia.cockpit.network.C2SF35DisplayActionPacket;
 
 import com.k1ngtle.vsia.cockpit.network.C2SF35DetectionFilterPacket;
 import com.k1ngtle.vsia.cockpit.network.S2CF35DetectionSnapshotPacket;
 import com.k1ngtle.vsia.cockpit.network.S2CF35RadarSnapshotPacket;
+import com.k1ngtle.vsia.cockpit.network.C2SF35IffActionPacket;
+import com.k1ngtle.vsia.cockpit.network.C2SF35IffRequestPacket;
+import com.k1ngtle.vsia.cockpit.network.S2CF35IffSnapshotPacket;
 import com.k1ngtle.vsia.Vsia;
 import com.k1ngtle.vsia.network.web.W128IdeRequestPacket;
 import com.k1ngtle.vsia.network.web.W128IdeSnapshotPacket;
@@ -45,9 +49,9 @@ public class VsiaNetwork {
     public static void register() {
         SimpleChannel net = NetworkRegistry.ChannelBuilder
                 .named(new ResourceLocation(Vsia.MOD_ID, "messages"))
-                .networkProtocolVersion(() -> "1.0")
-                .clientAcceptedVersions(s -> true)
-                .serverAcceptedVersions(s -> true)
+                .networkProtocolVersion(() -> "f35-2.6.6")
+                .clientAcceptedVersions("f35-2.6.6"::equals)
+                .serverAcceptedVersions("f35-2.6.6"::equals)
                 .simpleChannel();
 
         INSTANCE = net;
@@ -340,6 +344,21 @@ public class VsiaNetwork {
                 .encoder(S2CF35DetectionSnapshotPacket::toBytes)
                 .consumerMainThread(S2CF35DetectionSnapshotPacket::handle)
                 .add();
+        // BEGIN F35 COCKPIT v2.6.6
+        net.messageBuilder(C2SF35IffRequestPacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
+                .decoder(C2SF35IffRequestPacket::new).encoder(C2SF35IffRequestPacket::toBytes)
+                .consumerMainThread(C2SF35IffRequestPacket::handle).add();
+        net.messageBuilder(C2SF35IffActionPacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
+                .decoder(C2SF35IffActionPacket::new).encoder(C2SF35IffActionPacket::toBytes)
+                .consumerMainThread(C2SF35IffActionPacket::handle).add();
+        net.messageBuilder(S2CF35IffSnapshotPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(S2CF35IffSnapshotPacket::new).encoder(S2CF35IffSnapshotPacket::toBytes)
+                .consumerMainThread(S2CF35IffSnapshotPacket::handle).add();
+        net.messageBuilder(C2SF35DisplayActionPacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
+                .decoder(C2SF35DisplayActionPacket::new).encoder(C2SF35DisplayActionPacket::toBytes)
+                .consumerMainThread(C2SF35DisplayActionPacket::handle).add();
+        // END F35 COCKPIT v2.6.6
+
 
     }
 

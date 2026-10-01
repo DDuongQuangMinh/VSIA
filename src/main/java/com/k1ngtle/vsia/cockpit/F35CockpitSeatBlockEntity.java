@@ -13,6 +13,9 @@ import software.bernie.geckolib.animatable.GeoBlockEntity;
 import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.core.animation.AnimatableManager;
 import software.bernie.geckolib.util.GeckoLibUtil;
+import com.k1ngtle.vsia.cockpit.iff.F35IffConfig;
+import com.k1ngtle.vsia.cockpit.display.F35DisplaySettings;
+import java.util.UUID;
 
 public final class F35CockpitSeatBlockEntity
         extends BlockEntity
@@ -39,6 +42,23 @@ public final class F35CockpitSeatBlockEntity
 
     private ItemStack displayDrive =
             ItemStack.EMPTY;
+
+    private final F35IffConfig iff = new F35IffConfig();
+    private UUID cockpitId;
+    private final F35DisplaySettings displaySettings = new F35DisplaySettings();
+
+    public F35IffConfig iff() { return iff; }
+    public UUID cockpitId() { return cockpitId; }
+    public F35DisplaySettings displaySettings() { return displaySettings; }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (level != null && !level.isClientSide && cockpitId == null) {
+            cockpitId = UUID.randomUUID();
+            sync();
+        }
+    }
 
     public F35CockpitSeatBlockEntity(
             BlockPos pos,
@@ -162,6 +182,11 @@ public final class F35CockpitSeatBlockEntity
         terminal.save(
                 tag
         );
+
+        // Full save is server-side storage. getUpdateTag removes this field so secrets never reach clients.
+        tag.put("F35Iff", iff.save());
+        if (cockpitId != null) tag.putUUID("F35CockpitId", cockpitId);
+        tag.put("F35DisplaySettings", displaySettings.save());
     }
 
     @Override
@@ -198,11 +223,17 @@ public final class F35CockpitSeatBlockEntity
         terminal.load(
                 tag
         );
+
+        if (tag.contains("F35Iff")) iff.load(tag.getCompound("F35Iff"));
+        if (tag.hasUUID("F35CockpitId")) cockpitId = tag.getUUID("F35CockpitId");
+        if (tag.contains("F35DisplaySettings")) displaySettings.load(tag.getCompound("F35DisplaySettings"));
     }
 
     @Override
     public CompoundTag getUpdateTag() {
-        return saveWithoutMetadata();
+        CompoundTag tag = saveWithoutMetadata();
+        tag.remove("F35Iff");
+        return tag;
     }
 
     @Nullable

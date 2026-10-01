@@ -81,10 +81,11 @@ public final class F35RadarSyncEvents {
             return;
         }
 
-        F35DetectionFilter filter =
-                F35DetectionPreferences.get(
-                        player.getUUID()
-                );
+        // The scanning options belong to this aircraft, regardless of its current pilot.
+        F35DetectionFilter filter = cockpit.displaySettings().detectionFilter();
+        if (player.tickCount % 20 == 0) {
+            F35IffPackets.sendSnapshot(player, cockpit, java.time.Instant.now().getEpochSecond());
+        }
 
         F35DetectionScanner.ScanResult scan =
                 F35DetectionScanner.scan(
@@ -96,6 +97,7 @@ public final class F35RadarSyncEvents {
         VsiaNetwork.sendToPlayer(
                 player,
                 new S2CF35DetectionSnapshotPacket(
+                        cockpit.cockpitId(),
                         player.serverLevel()
                                 .getGameTime(),
                         scan.contacts(),

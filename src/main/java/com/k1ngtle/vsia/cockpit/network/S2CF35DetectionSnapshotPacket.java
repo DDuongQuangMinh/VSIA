@@ -22,6 +22,7 @@ public final class S2CF35DetectionSnapshotPacket {
             64 * 64;
 
     private final long serverTick;
+    private final UUID cockpitId;
     private final List<F35DetectionContact> contacts;
     private final F35ShipSilhouette silhouette;
 
@@ -30,6 +31,14 @@ public final class S2CF35DetectionSnapshotPacket {
             List<F35DetectionContact> contacts,
             F35ShipSilhouette silhouette
     ) {
+        this(new UUID(0L, 0L), serverTick, contacts, silhouette);
+    }
+
+    public S2CF35DetectionSnapshotPacket(
+            UUID cockpitId, long serverTick,
+            List<F35DetectionContact> contacts, F35ShipSilhouette silhouette
+    ) {
+        this.cockpitId = cockpitId == null ? new UUID(0L, 0L) : cockpitId;
         this.serverTick =
                 serverTick;
 
@@ -53,6 +62,7 @@ public final class S2CF35DetectionSnapshotPacket {
     public S2CF35DetectionSnapshotPacket(
             FriendlyByteBuf buffer
     ) {
+        cockpitId = buffer.readUUID();
         serverTick =
                 buffer.readLong();
 
@@ -91,6 +101,7 @@ public final class S2CF35DetectionSnapshotPacket {
     public void toBytes(
             FriendlyByteBuf buffer
     ) {
+        buffer.writeUUID(cockpitId);
         buffer.writeLong(
                 serverTick
         );
@@ -126,6 +137,7 @@ public final class S2CF35DetectionSnapshotPacket {
                                 () ->
                                         () ->
                                                 F35ClientDetectionCache.accept(
+                                                        cockpitId,
                                                         serverTick,
                                                         contacts,
                                                         silhouette

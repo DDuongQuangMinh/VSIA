@@ -2731,6 +2731,16 @@ public final class F35PanoramicDisplayRenderer {
                 F35DisplayPalette.CYAN
         );
 
+        if (F35TargetLockClient.targetCoasting()) {
+            canvas.text(
+                    "COAST",
+                    x + 43.0F,
+                    y + 5.0F,
+                    0.55F,
+                    F35DisplayPalette.AMBER
+            );
+        }
+
         if (selected == null
                 && detection == null) {
             canvas.text(
@@ -2938,7 +2948,7 @@ public final class F35PanoramicDisplayRenderer {
     private static int trackColor(
             F35RadarTrackView track
     ) {
-        if (track.iffAffiliation()
+        if (track.iffAuthenticated() && track.iffAffiliation()
                 .contains(
                         "FRIENDLY"
                 )) {
@@ -2993,6 +3003,7 @@ public final class F35PanoramicDisplayRenderer {
                                         radarTrackVisible(
                                                 track
                                         )
+                                                && track.iffAuthenticated()
                                                 && track.iffAffiliation()
                                                 .contains(
                                                         "FRIENDLY"

@@ -22,6 +22,11 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
 import org.lwjgl.glfw.GLFW;
+import com.k1ngtle.vsia.cockpit.iff.F35IffClientState;
+import com.k1ngtle.vsia.cockpit.network.C2SF35IffActionPacket;
+import com.k1ngtle.vsia.cockpit.network.C2SF35IffRequestPacket;
+import com.k1ngtle.vsia.network.VsiaNetwork;
+import java.time.Instant;
 
 public final class F35DisplaySectionScreen extends Screen {
     private static final float VIRTUAL_WIDTH = 860.0F;
@@ -39,6 +44,7 @@ public final class F35DisplaySectionScreen extends Screen {
     private static final int AMBER = 0xFFE8C860;
 
     private int section;
+    private UUID cockpitId;
     private float uiScale = 1.0F;
     private float uiLeft;
     private float uiTop;
@@ -52,8 +58,31 @@ public final class F35DisplaySectionScreen extends Screen {
 
     @Override
     protected void init() {
+        if (!bindCockpit()) return;
         F35DisplayClientConfig.ensureLoaded();
         updateGeometry();
+        if (section == 1) requestIff();
+    }
+
+    private boolean bindCockpit() {
+        F35CockpitSeatBlockEntity seated = F35CockpitClientContext.seated();
+        if (cockpitId == null && seated != null) cockpitId = seated.cockpitId();
+        return F35CockpitClientContext.bindSeat(cockpitId);
+    }
+
+    private void requestIff() {
+        if (bindCockpit()) VsiaNetwork.sendToServer(new C2SF35IffRequestPacket(cockpitId));
+    }
+
+    private void setSection(int value) {
+        section = value;
+        if (section == 1) requestIff();
+    }
+
+    @Override
+    public void tick() {
+        if (!bindCockpit()) { onClose(); return; }
+        if (section == 1 && minecraft.player.tickCount % 20 == 0) requestIff();
     }
 
     @Override
@@ -63,6 +92,11 @@ public final class F35DisplaySectionScreen extends Screen {
             int mouseY,
             float partialTick
     ) {
+        if (!bindCockpit()) {
+            graphics.fill(0, 0, width, height, 0xB0000000);
+            graphics.drawString(font, "Waiting for this cockpit. Reopen if you changed seats.", 20, 20, AMBER);
+            return;
+        }
         updateGeometry();
         state = captureState(partialTick);
         hitTargets.clear();
@@ -84,11 +118,13 @@ public final class F35DisplaySectionScreen extends Screen {
 
         if (state == null) {
             drawNoCockpit(graphics);
+        } else if (section == 1) {
+            drawIffPage(graphics);
         } else if (!state.ownship().shipDetected()) {
             drawNoShip(graphics);
         } else {
             switch (section) {
-                case 1 -> drawStoresPage(graphics, state);
+                case 1 -> drawIffPage(graphics);
                 case 2 -> drawSensorPage(graphics, state);
                 case 3 -> drawTsdPage(graphics, state);
                 default -> drawHsiPage(graphics, state);
@@ -105,6 +141,7 @@ public final class F35DisplaySectionScreen extends Screen {
             double mouseY,
             int button
     ) {
+        if (!bindCockpit()) return false;
         double x = (mouseX - uiLeft) / uiScale;
         double y = (mouseY - uiTop) / uiScale;
 
@@ -123,19 +160,19 @@ public final class F35DisplaySectionScreen extends Screen {
 
         if (y >= 34.0 && y <= 64.0) {
             if (x >= 20.0 && x <= 215.0) {
-                section = 1;
+                setSection(1);
                 return true;
             }
             if (x >= 225.0 && x <= 420.0) {
-                section = 2;
+                setSection(2);
                 return true;
             }
             if (x >= 430.0 && x <= 625.0) {
-                section = 3;
+                setSection(3);
                 return true;
             }
             if (x >= 635.0 && x <= 830.0) {
-                section = 4;
+                setSection(4);
                 return true;
             }
         }
@@ -152,6 +189,13 @@ public final class F35DisplaySectionScreen extends Screen {
             }
         }
 
+        if (section == 1) {
+            int action = iffActionAt(x, y);
+            if (action >= 0 && !F35IffClientState.get(cockpitId).status().equals("WAIT")) {
+                VsiaNetwork.sendToServer(new C2SF35IffActionPacket(cockpitId, action, "MISSION-" + Long.toString(System.currentTimeMillis(), 36).toUpperCase())); return true;
+            }
+        }
+
         return true;
     }
 
@@ -161,10 +205,11 @@ public final class F35DisplaySectionScreen extends Screen {
             int scanCode,
             int modifiers
     ) {
+        if (!bindCockpit()) return false;
         int requestedSection = sectionForKey(keyCode);
 
         if (requestedSection > 0) {
-            section = requestedSection;
+            setSection(requestedSection);
             return true;
         }
 
@@ -236,12 +281,12 @@ public final class F35DisplaySectionScreen extends Screen {
     private void drawFrame(GuiGraphics graphics) {
         rect(graphics, 8, 8, 844, 384, GRID);
         lineH(graphics, 8, 852, 72, GRID);
-        text(graphics, "F-35 COCKPIT DISPLAY / QUICK ACCESS", 20, 14, GREEN);
+        text(graphics, "F-35 COCKPIT " + F35CockpitClientContext.label(cockpitId), 20, 14, GREEN);
         text(graphics, "CLICK CONTACT = LOCK   RIGHT CLICK / DEL = UNLOCK   \\ = CONFIG", 430, 14, CYAN);
     }
 
     private void drawTabs(GuiGraphics graphics) {
-        tab(graphics, 20, 34, 195, "1  SMS / STORES", section == 1);
+        tab(graphics, 20, 34, 195, "1  IFF / XPDR", section == 1);
         tab(graphics, 225, 34, 195, "2  SENSOR / RADAR", section == 2);
         tab(graphics, 430, 34, 195, "3  TSD1", section == 3);
         tab(graphics, 635, 34, 195, "4  TSD2 / HSI", section == 4);
@@ -255,6 +300,34 @@ public final class F35DisplaySectionScreen extends Screen {
     private void drawNoShip(GuiGraphics graphics) {
         text(graphics, "NO VALKYRIEN SKIES AIRFRAME DETECTED", 285, 190, RED);
         text(graphics, "Display state is waiting for the cockpit ship transform.", 284, 210, DIM);
+    }
+
+    private void drawIffPage(GuiGraphics g) {
+        F35IffClientState.Snapshot s = F35IffClientState.get(cockpitId);
+        if (s.status().equals("WAIT")) {
+            text(g, "WAITING FOR THIS COCKPIT'S IFF DATA", 34, 116, AMBER);
+            return;
+        }
+        text(g, "IFF / TRANSPONDER CONTROL", 34, 88, CYAN);
+        text(g, "MASTER  " + s.master(), 34, 116, GREEN); rect(g, 28, 104, 190, 30, GRID);
+        String[] labels={"MODE 1  "+s.mode1(),"MODE 2  "+s.mode2(),"MODE 3/A  "+s.mode3a(),"MODE 4  SECURE","MODE 5  SECURE+DATA"};
+        for(int i=0;i<5;i++){ int y=154+i*34; rect(g,28,y-8,280,28,GRID); text(g,labels[i],40,y,s.enabled(i+1)?GREEN:DIM); text(g,s.enabled(i+1)?"ON":"OFF",260,y,s.enabled(i+1)?GREEN:AMBER); if(i<3)text(g,"+",292,y,WHITE); }
+        text(g,"MISSION KEY",350,88,CYAN); rect(g,340,104,220,96,GRID);
+        text(g,"SLOT  [A] [B]  ACTIVE "+(s.activeSlot()==0?"A":"B"),354,118,WHITE); text(g,"KEY ID  "+s.keyId(),354,140,GREEN);
+        long remain=Math.max(0,s.expiresAt()-Instant.now().getEpochSecond()); text(g,"VALID  "+remain/60+" MIN",354,162,remain>0?GREEN:AMBER); text(g,s.status(),354,184,remain>0?GREEN:AMBER);
+        rect(g,580,104,245,96,GRID); text(g,"KEY OPERATIONS",594,118,CYAN); text(g,"[GENERATE / ROTATE]",594,144,WHITE); text(g,"[ZEROIZE]",594,176,RED);
+        text(g,"MODE 5 AUTHENTICATED DATA",350,226,CYAN); String[] fields={"POSITION","VELOCITY","HEADING","MISSION"};
+        for(int i=0;i<4;i++){int x=350+(i%2)*230,y=254+(i/2)*38;rect(g,x,y-8,210,28,GRID);text(g,fields[i]+"  "+(s.telemetry(i)?"SEND":"HOLD"),x+12,y,s.telemetry(i)?GREEN:DIM);}
+        text(g,"Server owns keys and authentication. Secret material is never sent to clients.",350,340,DIM);
+        text(g,"Public HKDF/HMAC-SHA-256 + AES-256-GCM analogue; not classified military crypto.",350,358,AMBER);
+    }
+
+    private static int iffActionAt(double x,double y){
+        if(x>=28&&x<=218&&y>=104&&y<=134)return 0;
+        for(int i=0;i<5;i++)if(x>=28&&x<=308&&y>=146+i*34&&y<=174+i*34)return (i<3&&x>=282)?41+i:i+1;
+        if(x>=390&&x<=420&&y>=104&&y<=134)return 20; if(x>=421&&x<=451&&y>=104&&y<=134)return 21;
+        if(x>=580&&x<=825&&y>=124&&y<=160)return 30; if(x>=580&&x<=825&&y>=160&&y<=198)return 31;
+        for(int i=0;i<4;i++){int xx=350+(i%2)*230,yy=246+(i/2)*38;if(x>=xx&&x<=xx+210&&y>=yy&&y<=yy+28)return 10+i;} return -1;
     }
 
     private void drawStoresPage(
@@ -589,6 +662,10 @@ public final class F35DisplaySectionScreen extends Screen {
         rect(graphics, x, y, width, height, CYAN);
         text(graphics, "TARGET LOCK", x + 10, y + 10, CYAN);
 
+        if (F35TargetLockClient.targetCoasting()) {
+            text(graphics, "COAST", x + width - 48, y + 10, AMBER);
+        }
+
         F35RadarTrackView radar =
                 F35TargetLockClient.lockedRadarTrack(state.tracks());
 
@@ -812,7 +889,7 @@ public final class F35DisplaySectionScreen extends Screen {
 
     private static int trackColor(F35RadarTrackView track) {
         String affiliation = track.iffAffiliation() == null ? "" : track.iffAffiliation();
-        if (affiliation.contains("FRIENDLY")) {
+        if (track.iffAuthenticated() && affiliation.contains("FRIENDLY")) {
             return GREEN;
         }
         if (affiliation.contains("HOSTILE")) {
