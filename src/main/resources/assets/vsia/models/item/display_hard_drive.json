@@ -2,50 +2,562 @@
   "parent": "minecraft:item/handheld",
   "textures": {
     "body": "minecraft:block/black_concrete",
+    "shell": "minecraft:block/polished_deepslate",
     "metal": "minecraft:block/iron_block",
-    "accent": "minecraft:block/cyan_concrete"
+    "label": "minecraft:block/light_gray_concrete",
+    "accent": "minecraft:block/cyan_concrete",
+    "connector": "minecraft:block/gold_block"
   },
   "elements": [
     {
-      "from": [3, 5, 6],
-      "to": [13, 11, 10],
+      "from": [
+        2.5,
+        5.0,
+        5.5
+      ],
+      "to": [
+        13.5,
+        11.0,
+        10.5
+      ],
       "faces": {
-        "north": {"texture": "#body"},
-        "south": {"texture": "#body"},
-        "east": {"texture": "#body"},
-        "west": {"texture": "#body"},
-        "up": {"texture": "#metal"},
-        "down": {"texture": "#body"}
-      }
+        "north": {
+          "texture": "#body"
+        },
+        "south": {
+          "texture": "#body"
+        },
+        "east": {
+          "texture": "#body"
+        },
+        "west": {
+          "texture": "#body"
+        },
+        "up": {
+          "texture": "#body"
+        },
+        "down": {
+          "texture": "#body"
+        }
+      },
+      "name": "drive_body"
     },
     {
-      "from": [4, 6, 5.75],
-      "to": [12, 8, 6],
+      "from": [
+        3.0,
+        10.85,
+        5.9
+      ],
+      "to": [
+        13.0,
+        11.15,
+        10.1
+      ],
       "faces": {
-        "north": {"texture": "#accent"},
-        "south": {"texture": "#accent"},
-        "east": {"texture": "#accent"},
-        "west": {"texture": "#accent"},
-        "up": {"texture": "#accent"},
-        "down": {"texture": "#accent"}
-      }
+        "north": {
+          "texture": "#shell"
+        },
+        "south": {
+          "texture": "#shell"
+        },
+        "east": {
+          "texture": "#shell"
+        },
+        "west": {
+          "texture": "#shell"
+        },
+        "up": {
+          "texture": "#shell"
+        },
+        "down": {
+          "texture": "#shell"
+        }
+      },
+      "name": "top_plate"
     },
     {
-      "from": [5, 4.5, 7],
-      "to": [11, 5, 9],
+      "from": [
+        4.0,
+        11.15,
+        6.6
+      ],
+      "to": [
+        12.0,
+        11.25,
+        9.4
+      ],
       "faces": {
-        "north": {"texture": "#metal"},
-        "south": {"texture": "#metal"},
-        "east": {"texture": "#metal"},
-        "west": {"texture": "#metal"},
-        "up": {"texture": "#metal"},
-        "down": {"texture": "#metal"}
-      }
+        "north": {
+          "texture": "#label"
+        },
+        "south": {
+          "texture": "#label"
+        },
+        "east": {
+          "texture": "#label"
+        },
+        "west": {
+          "texture": "#label"
+        },
+        "up": {
+          "texture": "#label"
+        },
+        "down": {
+          "texture": "#label"
+        }
+      },
+      "name": "label_plate"
+    },
+    {
+      "from": [
+        3.2,
+        5.8,
+        5.35
+      ],
+      "to": [
+        12.8,
+        6.55,
+        5.55
+      ],
+      "faces": {
+        "north": {
+          "texture": "#accent"
+        },
+        "south": {
+          "texture": "#accent"
+        },
+        "east": {
+          "texture": "#accent"
+        },
+        "west": {
+          "texture": "#accent"
+        },
+        "up": {
+          "texture": "#accent"
+        },
+        "down": {
+          "texture": "#accent"
+        }
+      },
+      "name": "status_stripe"
+    },
+    {
+      "from": [
+        4.0,
+        4.55,
+        6.1
+      ],
+      "to": [
+        12.0,
+        5.0,
+        9.9
+      ],
+      "faces": {
+        "north": {
+          "texture": "#connector"
+        },
+        "south": {
+          "texture": "#connector"
+        },
+        "east": {
+          "texture": "#connector"
+        },
+        "west": {
+          "texture": "#connector"
+        },
+        "up": {
+          "texture": "#connector"
+        },
+        "down": {
+          "texture": "#connector"
+        }
+      },
+      "name": "sata_contacts"
+    },
+    {
+      "from": [
+        4.0,
+        4.35,
+        6.1
+      ],
+      "to": [
+        7.4,
+        4.55,
+        9.9
+      ],
+      "faces": {
+        "north": {
+          "texture": "#shell"
+        },
+        "south": {
+          "texture": "#shell"
+        },
+        "east": {
+          "texture": "#shell"
+        },
+        "west": {
+          "texture": "#shell"
+        },
+        "up": {
+          "texture": "#shell"
+        },
+        "down": {
+          "texture": "#shell"
+        }
+      },
+      "name": "connector_left"
+    },
+    {
+      "from": [
+        8.0,
+        4.35,
+        6.1
+      ],
+      "to": [
+        12.0,
+        4.55,
+        9.9
+      ],
+      "faces": {
+        "north": {
+          "texture": "#shell"
+        },
+        "south": {
+          "texture": "#shell"
+        },
+        "east": {
+          "texture": "#shell"
+        },
+        "west": {
+          "texture": "#shell"
+        },
+        "up": {
+          "texture": "#shell"
+        },
+        "down": {
+          "texture": "#shell"
+        }
+      },
+      "name": "connector_right"
+    },
+    {
+      "from": [
+        2.25,
+        6.3,
+        6.0
+      ],
+      "to": [
+        2.5,
+        9.7,
+        10.0
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      },
+      "name": "left_rail"
+    },
+    {
+      "from": [
+        13.5,
+        6.3,
+        6.0
+      ],
+      "to": [
+        13.75,
+        9.7,
+        10.0
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      },
+      "name": "right_rail"
+    },
+    {
+      "from": [
+        3.1,
+        10.95,
+        5.65
+      ],
+      "to": [
+        3.55,
+        11.3,
+        6.1
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      },
+      "name": "screw_fl"
+    },
+    {
+      "from": [
+        12.45,
+        10.95,
+        5.65
+      ],
+      "to": [
+        12.9,
+        11.3,
+        6.1
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      },
+      "name": "screw_fr"
+    },
+    {
+      "from": [
+        3.1,
+        10.95,
+        9.9
+      ],
+      "to": [
+        3.55,
+        11.3,
+        10.35
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      },
+      "name": "screw_bl"
+    },
+    {
+      "from": [
+        12.45,
+        10.95,
+        9.9
+      ],
+      "to": [
+        12.9,
+        11.3,
+        10.35
+      ],
+      "faces": {
+        "north": {
+          "texture": "#metal"
+        },
+        "south": {
+          "texture": "#metal"
+        },
+        "east": {
+          "texture": "#metal"
+        },
+        "west": {
+          "texture": "#metal"
+        },
+        "up": {
+          "texture": "#metal"
+        },
+        "down": {
+          "texture": "#metal"
+        }
+      },
+      "name": "screw_br"
     }
   ],
   "display": {
-    "thirdperson_righthand": {"rotation": [70, 0, 0], "translation": [0, 1, 0], "scale": [0.8, 0.8, 0.8]},
-    "firstperson_righthand": {"rotation": [0, -90, 25], "translation": [1.13, 3.2, 1.13], "scale": [0.68, 0.68, 0.68]},
-    "gui": {"rotation": [30, 225, 0], "translation": [0, 0, 0], "scale": [1.05, 1.05, 1.05]}
+    "thirdperson_righthand": {
+      "rotation": [
+        72,
+        0,
+        0
+      ],
+      "translation": [
+        0,
+        1.2,
+        0
+      ],
+      "scale": [
+        0.78,
+        0.78,
+        0.78
+      ]
+    },
+    "thirdperson_lefthand": {
+      "rotation": [
+        72,
+        0,
+        0
+      ],
+      "translation": [
+        0,
+        1.2,
+        0
+      ],
+      "scale": [
+        0.78,
+        0.78,
+        0.78
+      ]
+    },
+    "firstperson_righthand": {
+      "rotation": [
+        18,
+        -90,
+        24
+      ],
+      "translation": [
+        1.1,
+        3.0,
+        1.2
+      ],
+      "scale": [
+        0.72,
+        0.72,
+        0.72
+      ]
+    },
+    "firstperson_lefthand": {
+      "rotation": [
+        18,
+        90,
+        -24
+      ],
+      "translation": [
+        1.1,
+        3.0,
+        1.2
+      ],
+      "scale": [
+        0.72,
+        0.72,
+        0.72
+      ]
+    },
+    "gui": {
+      "rotation": [
+        28,
+        225,
+        0
+      ],
+      "translation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1.15,
+        1.15,
+        1.15
+      ]
+    },
+    "ground": {
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "translation": [
+        0,
+        2,
+        0
+      ],
+      "scale": [
+        0.75,
+        0.75,
+        0.75
+      ]
+    },
+    "fixed": {
+      "rotation": [
+        0,
+        180,
+        0
+      ],
+      "translation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.9,
+        0.9,
+        0.9
+      ]
+    }
   }
 }

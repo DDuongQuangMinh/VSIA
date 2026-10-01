@@ -212,6 +212,79 @@ public final class F35VsShipHelper {
                 .toYRot();
     }
 
+
+    public static double cockpitHeadingDeg(
+            F35CockpitSeatBlockEntity cockpit
+    ) {
+        Direction forwardFacing =
+                cockpit.getBlockState()
+                        .getValue(
+                                F35CockpitSeatBlock.FACING
+                        )
+                        .getOpposite();
+
+        Vec3 localCenter =
+                Vec3.atCenterOf(
+                        cockpit.getBlockPos()
+                );
+
+        Vec3 localForward =
+                localCenter.add(
+                        forwardFacing.getStepX(),
+                        0.0,
+                        forwardFacing.getStepZ()
+                );
+
+        Object ship =
+                findManagingShip(
+                        cockpit.getLevel(),
+                        cockpit.getBlockPos()
+                );
+
+        Vec3 worldCenter =
+                localCenter;
+
+        Vec3 worldForward =
+                localForward;
+
+        if (ship != null) {
+            worldCenter =
+                    transformShipToWorld(
+                            ship,
+                            localCenter
+                    );
+
+            worldForward =
+                    transformShipToWorld(
+                            ship,
+                            localForward
+                    );
+        }
+
+        double dx =
+                worldForward.x
+                        - worldCenter.x;
+
+        double dz =
+                worldForward.z
+                        - worldCenter.z;
+
+        if (dx * dx + dz * dz < 1.0E-12) {
+            return normalizeDegrees(
+                    forwardFacing.toYRot()
+            );
+        }
+
+        return normalizeDegrees(
+                Math.toDegrees(
+                        Math.atan2(
+                                -dx,
+                                dz
+                        )
+                )
+        );
+    }
+
     private static ShipSnapshot snapshotFromShip(
             Object ship,
             @Nullable Vec3 knownLocalPoint

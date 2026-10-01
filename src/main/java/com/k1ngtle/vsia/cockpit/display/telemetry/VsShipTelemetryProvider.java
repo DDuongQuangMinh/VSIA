@@ -30,7 +30,9 @@ public final class VsShipTelemetryProvider
                 ship.shipSlug(),
                 ship.worldCenter(),
                 velocity,
-                ship.headingDeg(),
+                F35VsShipHelper.cockpitHeadingDeg(
+                        cockpit
+                ),
                 ship.pitchDeg(),
                 ship.rollDeg(),
                 ship.worldCenter().y,
