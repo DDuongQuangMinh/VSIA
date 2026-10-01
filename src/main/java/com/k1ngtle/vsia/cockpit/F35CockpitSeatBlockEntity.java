@@ -5,6 +5,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
@@ -36,6 +37,9 @@ public final class F35CockpitSeatBlockEntity
     private boolean demoMode =
             true;
 
+    private ItemStack displayDrive =
+            ItemStack.EMPTY;
+
     public F35CockpitSeatBlockEntity(
             BlockPos pos,
             BlockState state
@@ -51,6 +55,48 @@ public final class F35CockpitSeatBlockEntity
 
     public CcTerminalBuffer terminal() {
         return terminal;
+    }
+
+
+    public ItemStack displayDrive() {
+        return displayDrive;
+    }
+
+    public boolean hasDisplayDrive() {
+        return !displayDrive.isEmpty();
+    }
+
+    public boolean installDisplayDrive(
+            ItemStack stack
+    ) {
+        if (!(stack.getItem()
+                instanceof com.k1ngtle.vsia.item.DisplayHardDriveItem)) {
+            return false;
+        }
+
+        ItemStack installed =
+                stack.copy();
+
+        installed.setCount(
+                1
+        );
+
+        displayDrive =
+                installed;
+
+        sync();
+        return true;
+    }
+
+    public ItemStack takeDisplayDrive() {
+        ItemStack removed =
+                displayDrive;
+
+        displayDrive =
+                ItemStack.EMPTY;
+
+        sync();
+        return removed;
     }
 
     public boolean demoMode() {
@@ -104,6 +150,15 @@ public final class F35CockpitSeatBlockEntity
                 demoMode
         );
 
+        if (!displayDrive.isEmpty()) {
+            tag.put(
+                    "DisplayDrive",
+                    displayDrive.save(
+                            new CompoundTag()
+                    )
+            );
+        }
+
         terminal.save(
                 tag
         );
@@ -124,6 +179,20 @@ public final class F35CockpitSeatBlockEntity
                     tag.getBoolean(
                             "MonitorDemoMode"
                     );
+        }
+
+        if (tag.contains(
+                "DisplayDrive"
+        )) {
+            displayDrive =
+                    ItemStack.of(
+                            tag.getCompound(
+                                    "DisplayDrive"
+                            )
+                    );
+        } else {
+            displayDrive =
+                    ItemStack.EMPTY;
         }
 
         terminal.load(

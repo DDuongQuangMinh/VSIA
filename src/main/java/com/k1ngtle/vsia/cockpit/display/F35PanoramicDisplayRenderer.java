@@ -100,6 +100,98 @@ public final class F35PanoramicDisplayRenderer {
         poseStack.popPose();
     }
 
+    public void renderStatus(
+            PoseStack poseStack,
+            MultiBufferSource buffers,
+            String headline,
+            String detail,
+            float monitorWidth,
+            float monitorHeight
+    ) {
+        float scale =
+                Math.min(
+                        monitorWidth
+                                / VIRTUAL_WIDTH,
+                        monitorHeight
+                                / VIRTUAL_HEIGHT
+                );
+
+        float drawWidth =
+                VIRTUAL_WIDTH
+                        * scale;
+
+        float drawHeight =
+                VIRTUAL_HEIGHT
+                        * scale;
+
+        poseStack.pushPose();
+
+        poseStack.translate(
+                -drawWidth
+                        / 2.0F,
+                drawHeight
+                        / 2.0F,
+                -0.0008F
+        );
+
+        poseStack.scale(
+                scale,
+                -scale,
+                scale
+        );
+
+        F35DisplayCanvas canvas =
+                new F35DisplayCanvas(
+                        poseStack,
+                        buffers
+                );
+
+        canvas.clearClip();
+
+        canvas.rect(
+                20.0F,
+                20.0F,
+                VIRTUAL_WIDTH - 40.0F,
+                VIRTUAL_HEIGHT - 40.0F,
+                F35DisplayPalette.GRID
+        );
+
+        canvas.text(
+                "DISPLAY BUS",
+                36.0F,
+                42.0F,
+                1.0F,
+                F35DisplayPalette.CYAN
+        );
+
+        canvas.text(
+                headline,
+                245.0F,
+                153.0F,
+                1.35F,
+                F35DisplayPalette.GREEN
+        );
+
+        canvas.text(
+                detail,
+                286.0F,
+                180.0F,
+                0.85F,
+                F35DisplayPalette.DIM
+        );
+
+        canvas.text(
+                "VSIA COCKPIT DISPLAY",
+                36.0F,
+                292.0F,
+                0.85F,
+                F35DisplayPalette.WHITE
+        );
+
+        canvas.clearClip();
+        poseStack.popPose();
+    }
+
     private void renderFrame(
             F35DisplayCanvas canvas,
             F35DisplayState state
@@ -952,6 +1044,21 @@ public final class F35PanoramicDisplayRenderer {
                 F35DisplayPalette.WHITE
         );
 
+
+        double sensorRangeMeters =
+                sensorDetectionRangeMeters(
+                        state
+                );
+
+        renderSensorDetectionContacts(
+                canvas,
+                state,
+                centerX,
+                centerY,
+                radius - 6.0F,
+                sensorRangeMeters
+        );
+
         canvas.line(
                 centerX - 34.0F,
                 centerY,
@@ -1078,6 +1185,18 @@ public final class F35PanoramicDisplayRenderer {
                 311.0F,
                 0.8F,
                 F35DisplayPalette.GREEN
+        );
+
+
+        canvas.text(
+                "DET "
+                        + rangeLabel(
+                        sensorRangeMeters
+                ),
+                337.0F,
+                311.0F,
+                0.72F,
+                F35DisplayPalette.CYAN
         );
 
         canvas.text(
@@ -1451,6 +1570,119 @@ public final class F35PanoramicDisplayRenderer {
                             )
             );
         }
+    }
+
+    private void renderSensorDetectionContacts(
+            F35DisplayCanvas canvas,
+            F35DisplayState state,
+            float centerX,
+            float centerY,
+            float radius,
+            double rangeMeters
+    ) {
+        if (rangeMeters <= 0.0) {
+            return;
+        }
+
+        AircraftTelemetry ownship =
+                state.ownship();
+
+        for (F35DetectionContact contact :
+                state.detections()) {
+            Relative relative =
+                    relativeToOwnship(
+                            ownship,
+                            contact.position()
+                    );
+
+            double normalizedRight =
+                    relative.right()
+                            / rangeMeters;
+
+            double normalizedForward =
+                    relative.forward()
+                            / rangeMeters;
+
+            double radial =
+                    Math.sqrt(
+                            normalizedRight
+                                    * normalizedRight
+                                    + normalizedForward
+                                    * normalizedForward
+                    );
+
+            if (radial > 1.0) {
+                continue;
+            }
+
+            float x =
+                    centerX
+                            + (float) normalizedRight
+                            * radius;
+
+            float y =
+                    centerY
+                            - (float) normalizedForward
+                            * radius;
+
+            drawDetectionSymbol(
+                    canvas,
+                    contact,
+                    x,
+                    y
+            );
+        }
+    }
+
+    private static double sensorDetectionRangeMeters(
+            F35DisplayState state
+    ) {
+        double farthest =
+                0.0;
+
+        for (F35DetectionContact contact :
+                state.detections()) {
+            farthest =
+                    Math.max(
+                            farthest,
+                            contact.position()
+                                    .distanceTo(
+                                            state.ownship()
+                                                    .position()
+                                    )
+                    );
+        }
+
+        if (farthest <= 0.0) {
+            return 50.0;
+        }
+
+        double requested =
+                farthest
+                        * 1.15;
+
+        double[] steps =
+                new double[]{
+                        50.0,
+                        100.0,
+                        250.0,
+                        500.0,
+                        1000.0,
+                        5000.0,
+                        10_000.0,
+                        20_000.0,
+                        40_000.0,
+                        80_000.0
+                };
+
+        for (double step :
+                steps) {
+            if (requested <= step) {
+                return step;
+            }
+        }
+
+        return 80_000.0;
     }
 
     private void renderDetectionContacts(

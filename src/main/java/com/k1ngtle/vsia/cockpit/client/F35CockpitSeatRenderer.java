@@ -5,6 +5,7 @@ import com.k1ngtle.vsia.cockpit.F35CockpitSeatBlockEntity;
 import com.k1ngtle.vsia.cockpit.display.F35DisplayState;
 import com.k1ngtle.vsia.cockpit.display.F35DisplayStateFactory;
 import com.k1ngtle.vsia.cockpit.display.F35PanoramicDisplayRenderer;
+import com.k1ngtle.vsia.item.DisplayHardDriveItem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
@@ -124,23 +125,72 @@ public final class F35CockpitSeatRenderer
             return;
         }
 
-        if (animatable.demoMode()) {
-            renderPanoramicDisplayOnMonitorCube(
+        if (!animatable.hasDisplayDrive()) {
+            renderDisplayStatusOnMonitorCube(
                     poseStack,
                     bufferSource,
-                    animatable,
                     bone,
                     monitorCube,
-                    partialTick
+                    "---NO HARD DRIVE INSTALLED---",
+                    "INSERT DISPLAY HARD DRIVE"
             );
         } else {
-            renderTerminalOnMonitorCube(
-                    poseStack,
-                    bufferSource,
-                    animatable.terminal(),
-                    bone,
-                    monitorCube
-            );
+            String programId =
+                    DisplayHardDriveItem.programId(
+                            animatable.displayDrive()
+                    );
+
+            if (DisplayHardDriveItem.PROGRAM_F35_CREATE.equals(
+                    programId
+            )) {
+                if (animatable.demoMode()) {
+                    renderPanoramicDisplayOnMonitorCube(
+                            poseStack,
+                            bufferSource,
+                            animatable,
+                            bone,
+                            monitorCube,
+                            partialTick
+                    );
+                } else {
+                    renderTerminalOnMonitorCube(
+                            poseStack,
+                            bufferSource,
+                            animatable.terminal(),
+                            bone,
+                            monitorCube
+                    );
+                }
+            } else if (programId.isBlank()) {
+                renderDisplayStatusOnMonitorCube(
+                        poseStack,
+                        bufferSource,
+                        bone,
+                        monitorCube,
+                        "---NO DISPLAY PROGRAM---",
+                        "PROGRAM DRIVE WITH LAPTOP"
+                );
+            } else if (DisplayHardDriveItem.PROGRAM_CUSTOM.equals(
+                    programId
+            )) {
+                renderDisplayStatusOnMonitorCube(
+                        poseStack,
+                        bufferSource,
+                        bone,
+                        monitorCube,
+                        "CUSTOM DISPLAY DRIVE",
+                        "SOURCE STORED - RUNTIME NEXT PHASE"
+                );
+            } else {
+                renderDisplayStatusOnMonitorCube(
+                        poseStack,
+                        bufferSource,
+                        bone,
+                        monitorCube,
+                        "UNSUPPORTED DISPLAY PROGRAM",
+                        programId
+                );
+            }
         }
 
         bufferSource.getBuffer(
@@ -179,6 +229,50 @@ public final class F35CockpitSeatRenderer
         return Math.abs(
                 actual - expected
         ) <= CUBE_SIZE_EPSILON;
+    }
+
+    private void renderDisplayStatusOnMonitorCube(
+            PoseStack poseStack,
+            MultiBufferSource bufferSource,
+            GeoBone monitorParentBone,
+            GeoCube monitorCube,
+            String headline,
+            String detail
+    ) {
+        MonitorSurface surface =
+                surfaceFor(
+                        monitorCube
+                );
+
+        if (surface == null) {
+            return;
+        }
+
+        poseStack.pushPose();
+
+        applyMonitorTransform(
+                poseStack,
+                monitorParentBone,
+                monitorCube,
+                surface.center()
+        );
+
+        poseStack.mulPose(
+                Axis.YP.rotationDegrees(
+                        180.0F
+                )
+        );
+
+        panoramicRenderer.renderStatus(
+                poseStack,
+                bufferSource,
+                headline,
+                detail,
+                surface.width(),
+                surface.height()
+        );
+
+        poseStack.popPose();
     }
 
     private void renderPanoramicDisplayOnMonitorCube(

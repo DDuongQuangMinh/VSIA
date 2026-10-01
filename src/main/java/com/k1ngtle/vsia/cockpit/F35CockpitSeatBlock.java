@@ -1,9 +1,11 @@
 package com.k1ngtle.vsia.cockpit;
 
+import com.k1ngtle.vsia.item.DisplayHardDriveItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.Containers;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -137,7 +139,70 @@ public final class F35CockpitSeatBlock extends BaseEntityBlock {
                 && level.getBlockEntity(
                 pos
         ) instanceof F35CockpitSeatBlockEntity cockpit) {
-            if (player.isShiftKeyDown()) {
+            ItemStack held =
+                    player.getItemInHand(
+                            hand
+                    );
+
+            if (held.getItem()
+                    instanceof DisplayHardDriveItem) {
+                ItemStack oldDrive =
+                        cockpit.takeDisplayDrive();
+
+                if (!oldDrive.isEmpty()
+                        && !player.getInventory()
+                        .add(
+                                oldDrive
+                        )) {
+                    player.drop(
+                            oldDrive,
+                            false
+                    );
+                }
+
+                if (cockpit.installDisplayDrive(
+                        held
+                )) {
+                    if (!player.getAbilities()
+                            .instabuild) {
+                        held.shrink(
+                                1
+                        );
+                    }
+
+                    player.displayClientMessage(
+                            net.minecraft.network.chat.Component.literal(
+                                    "Display drive installed: "
+                                            + DisplayHardDriveItem.programName(
+                                            cockpit.displayDrive()
+                                    )
+                            ),
+                            true
+                    );
+                }
+            } else if (player.isShiftKeyDown()
+                    && held.isEmpty()
+                    && cockpit.hasDisplayDrive()) {
+                ItemStack removed =
+                        cockpit.takeDisplayDrive();
+
+                if (!player.getInventory()
+                        .add(
+                                removed
+                        )) {
+                    player.drop(
+                            removed,
+                            false
+                    );
+                }
+
+                player.displayClientMessage(
+                        net.minecraft.network.chat.Component.literal(
+                                "Display drive ejected"
+                        ),
+                        true
+                );
+            } else if (player.isShiftKeyDown()) {
                 cockpit.setDemoMode(
                         !cockpit.demoMode()
                 );
@@ -160,6 +225,43 @@ public final class F35CockpitSeatBlock extends BaseEntityBlock {
 
         return InteractionResult.sidedSuccess(
                 level.isClientSide
+        );
+    }
+
+    @Override
+    public void onRemove(
+            BlockState state,
+            Level level,
+            BlockPos pos,
+            BlockState newState,
+            boolean isMoving
+    ) {
+        if (!state.is(
+                newState.getBlock()
+        )
+                && level.getBlockEntity(
+                pos
+        ) instanceof F35CockpitSeatBlockEntity cockpit) {
+            ItemStack drive =
+                    cockpit.takeDisplayDrive();
+
+            if (!drive.isEmpty()) {
+                Containers.dropItemStack(
+                        level,
+                        pos.getX() + 0.5,
+                        pos.getY() + 0.5,
+                        pos.getZ() + 0.5,
+                        drive
+                );
+            }
+        }
+
+        super.onRemove(
+                state,
+                level,
+                pos,
+                newState,
+                isMoving
         );
     }
 

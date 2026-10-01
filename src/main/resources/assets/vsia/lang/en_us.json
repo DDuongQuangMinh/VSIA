@@ -19,5 +19,8 @@
   "item.vsia.tracking_radar": "Temporary Tracking Radar",
   "block.vsia.f35_cockpit_seat": "F-35 Cockpit Seat",
   "item.vsia.f35_cockpit_seat": "F-35 Cockpit Seat",
-  "key.vsia.f35_display_config": "Configure F-35 Display"
+  "key.vsia.f35_display_config": "Configure F-35 Display",
+  "item.vsia.display_hard_drive": "Display Hard Drive",
+  "item.vsia.create_hard_drive": "Create Hard Drive",
+  "item.vsia.display_laptop": "Display Programming Laptop"
 }

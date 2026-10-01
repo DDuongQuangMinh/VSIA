@@ -14,6 +14,8 @@ import com.k1ngtle.vsia.item.GhillieHelmetGPNVG18Item;
 import com.k1ngtle.vsia.item.HelmetGPNVG18SandItem;
 import com.k1ngtle.vsia.item.HelmetGPNVG18SnowItem;
 import com.k1ngtle.vsia.phone.subscriber.PhysicalSimCardItem;
+import com.k1ngtle.vsia.item.DisplayHardDriveItem;
+import com.k1ngtle.vsia.item.DisplayLaptopItem;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.ArmorMaterials;
 import net.minecraft.world.item.Item;
@@ -64,6 +66,29 @@ public class ModItems {
     public static final RegistryObject<Item> PHYSICAL_SIM_CARD = ITEMS.register(
             "physical_sim_card",
             () -> new PhysicalSimCardItem(new Item.Properties())
+    );
+
+    public static final RegistryObject<Item> DISPLAY_HARD_DRIVE = ITEMS.register(
+            "display_hard_drive",
+            () -> new DisplayHardDriveItem(
+                    new Item.Properties().stacksTo(1),
+                    ""
+            )
+    );
+
+    public static final RegistryObject<Item> CREATE_HARD_DRIVE = ITEMS.register(
+            "create_hard_drive",
+            () -> new DisplayHardDriveItem(
+                    new Item.Properties().stacksTo(1),
+                    DisplayHardDriveItem.PROGRAM_F35_CREATE
+            )
+    );
+
+    public static final RegistryObject<Item> DISPLAY_LAPTOP = ITEMS.register(
+            "display_laptop",
+            () -> new DisplayLaptopItem(
+                    new Item.Properties().stacksTo(1)
+            )
     );
 
     public static void register(IEventBus eventBus) {
