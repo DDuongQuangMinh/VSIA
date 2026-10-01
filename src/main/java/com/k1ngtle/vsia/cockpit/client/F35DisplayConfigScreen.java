@@ -282,6 +282,22 @@ public final class F35DisplayConfigScreen
             int scanCode,
             int modifiers
     ) {
+        int section =
+                F35DisplaySectionScreen.sectionForKey(
+                        keyCode
+                );
+
+        if (section > 0) {
+            if (minecraft != null) {
+                minecraft.setScreen(
+                        new F35DisplaySectionScreen(
+                                section
+                        )
+                );
+            }
+            return true;
+        }
+
         if (F35DisplayKeyMappings
                 .CONFIGURE_DISPLAY
                 .matches(

@@ -1,14 +1,20 @@
 package com.k1ngtle.vsia.cockpit.client;
 
 import com.k1ngtle.vsia.Vsia;
+import com.k1ngtle.vsia.cockpit.F35SeatController;
 import com.k1ngtle.vsia.cockpit.network.C2SF35DetectionFilterPacket;
 import com.k1ngtle.vsia.network.VsiaNetwork;
 import java.util.UUID;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.vehicle.Minecart;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import org.lwjgl.glfw.GLFW;
 
 @Mod.EventBusSubscriber(
         modid = Vsia.MOD_ID,
@@ -17,6 +23,7 @@ import net.minecraftforge.fml.common.Mod;
 )
 public final class F35DisplayClientInputEvents {
     private static UUID syncedPlayerId;
+    private static boolean wasInCockpit;
 
     private F35DisplayClientInputEvents() {
     }
@@ -25,29 +32,22 @@ public final class F35DisplayClientInputEvents {
     public static void onClientTick(
             TickEvent.ClientTickEvent event
     ) {
-        if (event.phase
-                != TickEvent.Phase.END) {
+        if (event.phase != TickEvent.Phase.END) {
             return;
         }
 
-        Minecraft minecraft =
-                Minecraft.getInstance();
+        Minecraft minecraft = Minecraft.getInstance();
 
         if (minecraft.player == null
-                || minecraft.getConnection()
-                == null) {
-            syncedPlayerId =
-                    null;
+                || minecraft.getConnection() == null) {
+            syncedPlayerId = null;
+            wasInCockpit = false;
             return;
         }
 
-        UUID playerId =
-                minecraft.player
-                        .getUUID();
+        UUID playerId = minecraft.player.getUUID();
 
-        if (!playerId.equals(
-                syncedPlayerId
-        )) {
+        if (!playerId.equals(syncedPlayerId)) {
             F35DisplayClientConfig.ensureLoaded();
 
             VsiaNetwork.sendToServer(
@@ -59,24 +59,78 @@ public final class F35DisplayClientInputEvents {
                     )
             );
 
-            syncedPlayerId =
-                    playerId;
+            syncedPlayerId = playerId;
         }
 
-        while (F35DisplayKeyMappings
-                .CONFIGURE_DISPLAY
-                .consumeClick()) {
-            if (minecraft.screen
-                    instanceof F35DisplayConfigScreen) {
-                minecraft.setScreen(
-                        null
-                );
-            } else if (minecraft.screen
-                    == null) {
-                minecraft.setScreen(
-                        new F35DisplayConfigScreen()
-                );
+        boolean inCockpit = isInF35Cockpit(minecraft);
+
+        if (inCockpit && !wasInCockpit) {
+            minecraft.player.displayClientMessage(
+                    Component.literal(
+                            "F-35: [1] Detection  [2] Target/IFF  [3] Display  [4] System  [\\] Full"
+                    ),
+                    true
+            );
+        }
+
+        wasInCockpit = inCockpit;
+
+        while (F35DisplayKeyMappings.CONFIGURE_DISPLAY.consumeClick()) {
+            if (minecraft.screen instanceof F35DisplayConfigScreen) {
+                minecraft.setScreen(null);
+            } else if (minecraft.screen instanceof F35DisplaySectionScreen) {
+                minecraft.setScreen(new F35DisplayConfigScreen());
+            } else if (minecraft.screen == null) {
+                minecraft.setScreen(new F35DisplayConfigScreen());
             }
         }
+    }
+
+    @SubscribeEvent
+    public static void onKeyInput(
+            InputEvent.Key event
+    ) {
+        if (event.getAction() != GLFW.GLFW_PRESS) {
+            return;
+        }
+
+        int section = F35DisplaySectionScreen.sectionForKey(event.getKey());
+
+        if (section == 0) {
+            return;
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+
+        if (minecraft.screen != null
+                || !isInF35Cockpit(minecraft)) {
+            return;
+        }
+
+        minecraft.setScreen(
+                new F35DisplaySectionScreen(section)
+        );
+    }
+
+    private static boolean isInF35Cockpit(
+            Minecraft minecraft
+    ) {
+        if (minecraft.player == null
+                || !minecraft.player.isPassenger()) {
+            return false;
+        }
+
+        Entity vehicle = minecraft.player.getVehicle();
+
+        if (!(vehicle instanceof Minecart)) {
+            return false;
+        }
+
+        Component customName = vehicle.getCustomName();
+
+        return customName != null
+                && F35SeatController.SEAT_RENDER_MARKER.equals(
+                customName.getString()
+        );
     }
 }

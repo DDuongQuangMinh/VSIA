@@ -24,6 +24,9 @@ public final class F35VsShipHelper {
     private static final double SEAT_OFFSET_Y =
             -2.22;
 
+    private static final double SEAT_OFFSET_FORWARD =
+            0.43;
+
     private F35VsShipHelper() {
     }
 
@@ -180,7 +183,7 @@ public final class F35VsShipHelper {
                         )
                         .add(
                                 forward.scale(
-                                        0.18
+                                        SEAT_OFFSET_FORWARD
                                 )
                         )
                         .add(
@@ -211,7 +214,6 @@ public final class F35VsShipHelper {
         return facing.getOpposite()
                 .toYRot();
     }
-
 
     public static double cockpitHeadingDeg(
             F35CockpitSeatBlockEntity cockpit
