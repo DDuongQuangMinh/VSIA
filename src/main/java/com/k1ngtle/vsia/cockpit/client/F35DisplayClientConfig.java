@@ -43,6 +43,27 @@ public final class F35DisplayClientConfig {
     private static boolean detectShips =
             true;
 
+    private static boolean showFriendlyTracks =
+            true;
+
+    private static boolean showHostileTracks =
+            true;
+
+    private static boolean showUnknownTracks =
+            true;
+
+    private static boolean showMissiles =
+            true;
+
+    private static boolean trackTrails =
+            true;
+
+    private static boolean missileTrails =
+            true;
+
+    private static boolean velocityVectors =
+            true;
+
     private F35DisplayClientConfig() {
     }
 
@@ -139,6 +160,63 @@ public final class F35DisplayClientConfig {
                                     "true"
                             )
                     );
+
+
+            showFriendlyTracks =
+                    Boolean.parseBoolean(
+                            properties.getProperty(
+                                    "showFriendlyTracks",
+                                    "true"
+                            )
+                    );
+
+            showHostileTracks =
+                    Boolean.parseBoolean(
+                            properties.getProperty(
+                                    "showHostileTracks",
+                                    "true"
+                            )
+                    );
+
+            showUnknownTracks =
+                    Boolean.parseBoolean(
+                            properties.getProperty(
+                                    "showUnknownTracks",
+                                    "true"
+                            )
+                    );
+
+            showMissiles =
+                    Boolean.parseBoolean(
+                            properties.getProperty(
+                                    "showMissiles",
+                                    "true"
+                            )
+                    );
+
+            trackTrails =
+                    Boolean.parseBoolean(
+                            properties.getProperty(
+                                    "trackTrails",
+                                    "true"
+                            )
+                    );
+
+            missileTrails =
+                    Boolean.parseBoolean(
+                            properties.getProperty(
+                                    "missileTrails",
+                                    "true"
+                            )
+                    );
+
+            velocityVectors =
+                    Boolean.parseBoolean(
+                            properties.getProperty(
+                                    "velocityVectors",
+                                    "true"
+                            )
+                    );
         } catch (IOException ignored) {
         }
     }
@@ -195,6 +273,56 @@ public final class F35DisplayClientConfig {
                 "detectShips",
                 String.valueOf(
                         detectShips
+                )
+        );
+
+
+        properties.setProperty(
+                "showFriendlyTracks",
+                String.valueOf(
+                        showFriendlyTracks
+                )
+        );
+
+        properties.setProperty(
+                "showHostileTracks",
+                String.valueOf(
+                        showHostileTracks
+                )
+        );
+
+        properties.setProperty(
+                "showUnknownTracks",
+                String.valueOf(
+                        showUnknownTracks
+                )
+        );
+
+        properties.setProperty(
+                "showMissiles",
+                String.valueOf(
+                        showMissiles
+                )
+        );
+
+        properties.setProperty(
+                "trackTrails",
+                String.valueOf(
+                        trackTrails
+                )
+        );
+
+        properties.setProperty(
+                "missileTrails",
+                String.valueOf(
+                        missileTrails
+                )
+        );
+
+        properties.setProperty(
+                "velocityVectors",
+                String.valueOf(
+                        velocityVectors
                 )
         );
 
@@ -301,6 +429,161 @@ public final class F35DisplayClientConfig {
         detectShips =
                 !detectShips;
         save();
+    }
+
+    public static boolean showFriendlyTracks() {
+        ensureLoaded();
+        return showFriendlyTracks;
+    }
+
+    public static void toggleShowFriendlyTracks() {
+        ensureLoaded();
+        showFriendlyTracks =
+                !showFriendlyTracks;
+        save();
+    }
+
+    public static boolean showHostileTracks() {
+        ensureLoaded();
+        return showHostileTracks;
+    }
+
+    public static void toggleShowHostileTracks() {
+        ensureLoaded();
+        showHostileTracks =
+                !showHostileTracks;
+        save();
+    }
+
+    public static boolean showUnknownTracks() {
+        ensureLoaded();
+        return showUnknownTracks;
+    }
+
+    public static void toggleShowUnknownTracks() {
+        ensureLoaded();
+        showUnknownTracks =
+                !showUnknownTracks;
+        save();
+    }
+
+    public static boolean showMissiles() {
+        ensureLoaded();
+        return showMissiles;
+    }
+
+    public static void toggleShowMissiles() {
+        ensureLoaded();
+        showMissiles =
+                !showMissiles;
+        save();
+    }
+
+    public static boolean trackTrails() {
+        ensureLoaded();
+        return trackTrails;
+    }
+
+    public static void toggleTrackTrails() {
+        ensureLoaded();
+        trackTrails =
+                !trackTrails;
+        save();
+    }
+
+    public static boolean missileTrails() {
+        ensureLoaded();
+        return missileTrails;
+    }
+
+    public static void toggleMissileTrails() {
+        ensureLoaded();
+        missileTrails =
+                !missileTrails;
+        save();
+    }
+
+    public static boolean velocityVectors() {
+        ensureLoaded();
+        return velocityVectors;
+    }
+
+    public static void toggleVelocityVectors() {
+        ensureLoaded();
+        velocityVectors =
+                !velocityVectors;
+        save();
+    }
+
+    public static void setAllRadarTargets(
+            boolean enabled
+    ) {
+        ensureLoaded();
+        showFriendlyTracks = enabled;
+        showHostileTracks = enabled;
+        showUnknownTracks = enabled;
+        showMissiles = enabled;
+        save();
+    }
+
+    public static boolean radarTrackVisible(
+            String affiliation
+    ) {
+        ensureLoaded();
+
+        String value =
+                affiliation == null
+                        ? ""
+                        : affiliation.toUpperCase();
+
+        if (value.contains(
+                "FRIENDLY"
+        )) {
+            return showFriendlyTracks;
+        }
+
+        if (value.contains(
+                "HOSTILE"
+        )) {
+            return showHostileTracks;
+        }
+
+        return showUnknownTracks;
+    }
+
+    public static String targetSelectionSummary() {
+        ensureLoaded();
+
+        StringBuilder builder =
+                new StringBuilder();
+
+        if (showFriendlyTracks) {
+            builder.append(
+                    "F"
+            );
+        }
+
+        if (showHostileTracks) {
+            builder.append(
+                    "H"
+            );
+        }
+
+        if (showUnknownTracks) {
+            builder.append(
+                    "U"
+            );
+        }
+
+        if (showMissiles) {
+            builder.append(
+                    "M"
+            );
+        }
+
+        return builder.isEmpty()
+                ? "NONE"
+                : builder.toString();
     }
 
     public static void setAllDetection(
@@ -483,6 +766,27 @@ public final class F35DisplayClientConfig {
                 true;
 
         detectShips =
+                true;
+
+        showFriendlyTracks =
+                true;
+
+        showHostileTracks =
+                true;
+
+        showUnknownTracks =
+                true;
+
+        showMissiles =
+                true;
+
+        trackTrails =
+                true;
+
+        missileTrails =
+                true;
+
+        velocityVectors =
                 true;
 
         loaded =

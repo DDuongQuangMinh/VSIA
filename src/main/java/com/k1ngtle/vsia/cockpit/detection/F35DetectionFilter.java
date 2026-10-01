@@ -3,10 +3,25 @@ package com.k1ngtle.vsia.cockpit.detection;
 public record F35DetectionFilter(
         boolean mobs,
         boolean players,
-        boolean ships
+        boolean ships,
+        boolean missiles
 ) {
+    public F35DetectionFilter(
+            boolean mobs,
+            boolean players,
+            boolean ships
+    ) {
+        this(
+                mobs,
+                players,
+                ships,
+                true
+        );
+    }
+
     public static final F35DetectionFilter ALL =
             new F35DetectionFilter(
+                    true,
                     true,
                     true,
                     true
@@ -14,6 +29,7 @@ public record F35DetectionFilter(
 
     public static final F35DetectionFilter NONE =
             new F35DetectionFilter(
+                    false,
                     false,
                     false,
                     false
@@ -26,6 +42,7 @@ public record F35DetectionFilter(
             case MOB -> mobs;
             case PLAYER -> players;
             case SHIP -> ships;
+            case MISSILE -> missiles;
         };
     }
 
@@ -49,6 +66,13 @@ public record F35DetectionFilter(
                 builder.append('+');
             }
             builder.append("SHIP");
+        }
+
+        if (missiles) {
+            if (!builder.isEmpty()) {
+                builder.append('+');
+            }
+            builder.append("MSL");
         }
 
         return builder.isEmpty()

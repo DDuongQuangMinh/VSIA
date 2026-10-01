@@ -198,6 +198,15 @@ public final class F35PanoramicDisplayRenderer {
     ) {
         canvas.clearClip();
 
+        if (state.ownship()
+                .shipDetected()) {
+            F35TrackTrailCache.update(
+                    state
+            );
+        } else {
+            F35TrackTrailCache.clear();
+        }
+
         canvas.line(
                 0.0F,
                 TOP_BAR_HEIGHT,
@@ -437,6 +446,16 @@ public final class F35PanoramicDisplayRenderer {
                 F35DisplayPalette.WHITE
         );
 
+
+        canvas.text(
+                "TGT "
+                        + F35DisplayClientConfig.targetSelectionSummary(),
+                690.0F,
+                26.0F,
+                0.72F,
+                F35DisplayPalette.GREEN
+        );
+
         LocalTime localTime =
                 LocalTime.ofInstant(
                         Instant.ofEpochMilli(
@@ -471,7 +490,9 @@ public final class F35PanoramicDisplayRenderer {
 
         canvas.text(
                 "TRK "
-                        + state.totalContactCount(),
+                        + visibleContactCount(
+                        state
+                ),
                 772.0F,
                 26.0F,
                 0.9F,
@@ -1118,7 +1139,10 @@ public final class F35PanoramicDisplayRenderer {
         F35RadarTrackView selected =
                 state.selectedTrack();
 
-        if (selected != null) {
+        if (selected != null
+                && radarTrackVisible(
+                selected
+        )) {
             float[] projected =
                     projectRelative(
                             state.ownship(),
@@ -1129,13 +1153,12 @@ public final class F35PanoramicDisplayRenderer {
                             centerY
                     );
 
-            canvas.diamond(
+            drawTrackSymbol(
+                    canvas,
+                    selected,
                     projected[0],
                     projected[1],
-                    4.0F,
-                    trackColor(
-                            selected
-                    )
+                    true
             );
 
             canvas.text(
@@ -1179,7 +1202,9 @@ public final class F35PanoramicDisplayRenderer {
         );
 
         canvas.text(
-                state.totalContactCount()
+                visibleContactCount(
+                        state
+                )
                         + " CONTACTS",
                 230.0F,
                 311.0F,
@@ -1300,6 +1325,15 @@ public final class F35PanoramicDisplayRenderer {
                 F35DisplayPalette.GRID
         );
 
+
+        renderTsdReferenceDecorations(
+                canvas,
+                state,
+                cx,
+                cy,
+                168.0F
+        );
+
         canvas.text(
                 rangeLabel(
                         state.radarRangeMeters()
@@ -1315,6 +1349,43 @@ public final class F35PanoramicDisplayRenderer {
                 167.0F,
                 8.0F,
                 F35DisplayPalette.GREEN
+        );
+
+        double localDetectionRangeMeters =
+                sensorDetectionRangeMeters(
+                        state
+                );
+
+        canvas.text(
+                "DET "
+                        + rangeLabel(
+                        localDetectionRangeMeters
+                ),
+                442.0F,
+                76.0F,
+                0.72F,
+                F35DisplayPalette.CYAN
+        );
+
+        canvas.text(
+                detectionSummary(
+                        state
+                ),
+                553.0F,
+                76.0F,
+                0.72F,
+                F35DisplayPalette.GREEN
+        );
+
+        renderSelectedBearingLine(
+                canvas,
+                state,
+                cx,
+                cy - 15.0F,
+                cx,
+                cy,
+                160.0F,
+                false
         );
 
         renderTracks(
@@ -1438,6 +1509,15 @@ public final class F35PanoramicDisplayRenderer {
                 F35DisplayPalette.WHITE
         );
 
+
+        renderHsiReferenceDecorations(
+                canvas,
+                state,
+                cx,
+                cy,
+                112.0F
+        );
+
         canvas.aircraft(
                 cx,
                 cy,
@@ -1462,6 +1542,43 @@ public final class F35PanoramicDisplayRenderer {
                 86.0F,
                 0.9F,
                 F35DisplayPalette.WHITE
+        );
+
+        double localDetectionRangeMeters =
+                sensorDetectionRangeMeters(
+                        state
+                );
+
+        canvas.text(
+                "DET "
+                        + rangeLabel(
+                        localDetectionRangeMeters
+                ),
+                656.0F,
+                76.0F,
+                0.72F,
+                F35DisplayPalette.CYAN
+        );
+
+        canvas.text(
+                detectionSummary(
+                        state
+                ),
+                782.0F,
+                76.0F,
+                0.72F,
+                F35DisplayPalette.GREEN
+        );
+
+        renderSelectedBearingLine(
+                canvas,
+                state,
+                cx,
+                cy,
+                cx,
+                cy,
+                108.0F,
+                true
         );
 
         renderTracks(
@@ -1501,6 +1618,295 @@ public final class F35PanoramicDisplayRenderer {
         canvas.clearClip();
     }
 
+    private void renderTsdReferenceDecorations(
+            F35DisplayCanvas canvas,
+            F35DisplayState state,
+            float cx,
+            float cy,
+            float outerRadius
+    ) {
+        float[] left =
+                polarPoint(
+                        cx,
+                        cy,
+                        outerRadius,
+                        205.0
+                );
+
+        float[] right =
+                polarPoint(
+                        cx,
+                        cy,
+                        outerRadius,
+                        335.0
+                );
+
+        canvas.line(
+                cx,
+                cy - 15.0F,
+                left[0],
+                left[1],
+                F35DisplayPalette.GRID
+        );
+
+        canvas.line(
+                cx,
+                cy - 15.0F,
+                right[0],
+                right[1],
+                F35DisplayPalette.GRID
+        );
+
+        canvas.text(
+                rangeLabel(
+                        state.radarRangeMeters()
+                                / 3.0
+                ),
+                470.0F,
+                148.0F,
+                0.58F,
+                F35DisplayPalette.WHITE
+        );
+
+        canvas.text(
+                rangeLabel(
+                        state.radarRangeMeters()
+                                * 2.0
+                                / 3.0
+                ),
+                594.0F,
+                148.0F,
+                0.58F,
+                F35DisplayPalette.WHITE
+        );
+
+        canvas.text(
+                "TGT "
+                        + F35DisplayClientConfig.targetSelectionSummary(),
+                570.0F,
+                91.0F,
+                0.62F,
+                F35DisplayPalette.GREEN
+        );
+
+        canvas.text(
+                F35DisplayClientConfig.trackTrails()
+                        ? "TRAIL ON"
+                        : "TRAIL OFF",
+                442.0F,
+                91.0F,
+                0.58F,
+                F35DisplayPalette.CYAN
+        );
+    }
+
+    private void renderHsiReferenceDecorations(
+            F35DisplayCanvas canvas,
+            F35DisplayState state,
+            float cx,
+            float cy,
+            float outerRadius
+    ) {
+        double ownHeading =
+                state.ownship()
+                        .headingDeg();
+
+        for (int heading = 0;
+             heading < 360;
+             heading += 30) {
+            double relative =
+                    Math.toRadians(
+                            heading
+                                    - ownHeading
+                    );
+
+            float sin =
+                    (float) Math.sin(
+                            relative
+                    );
+
+            float cos =
+                    (float) Math.cos(
+                            relative
+                    );
+
+            float x1 =
+                    cx
+                            + sin
+                            * (outerRadius - 8.0F);
+
+            float y1 =
+                    cy
+                            - cos
+                            * (outerRadius - 8.0F);
+
+            float x2 =
+                    cx
+                            + sin
+                            * outerRadius;
+
+            float y2 =
+                    cy
+                            - cos
+                            * outerRadius;
+
+            canvas.line(
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    F35DisplayPalette.WHITE
+            );
+
+            float tx =
+                    cx
+                            + sin
+                            * (outerRadius - 18.0F)
+                            - 5.0F;
+
+            float ty =
+                    cy
+                            - cos
+                            * (outerRadius - 18.0F)
+                            - 3.0F;
+
+            canvas.text(
+                    String.format(
+                            "%02d",
+                            heading / 10
+                    ),
+                    tx,
+                    ty,
+                    0.48F,
+                    F35DisplayPalette.DIM
+            );
+        }
+
+        canvas.text(
+                rangeLabel(
+                        state.radarRangeMeters()
+                                / 3.0
+                ),
+                cx + 7.0F,
+                cy - 39.0F,
+                0.48F,
+                F35DisplayPalette.DIM
+        );
+
+        canvas.text(
+                rangeLabel(
+                        state.radarRangeMeters()
+                                * 2.0
+                                / 3.0
+                ),
+                cx + 7.0F,
+                cy - 75.0F,
+                0.48F,
+                F35DisplayPalette.DIM
+        );
+    }
+
+    private void renderSelectedBearingLine(
+            F35DisplayCanvas canvas,
+            F35DisplayState state,
+            float startX,
+            float startY,
+            float centerX,
+            float centerY,
+            float radius,
+            boolean fullCircle
+    ) {
+        F35RadarTrackView selected =
+                state.selectedTrack();
+
+        if (selected == null
+                || !radarTrackVisible(
+                selected
+        )) {
+            return;
+        }
+
+        float[] target =
+                scopePoint(
+                        state.ownship(),
+                        selected.position(),
+                        state.radarRangeMeters(),
+                        centerX,
+                        centerY,
+                        radius,
+                        fullCircle
+                );
+
+        if (target == null) {
+            return;
+        }
+
+        renderDashedLine(
+                canvas,
+                startX,
+                startY,
+                target[0],
+                target[1],
+                F35DisplayPalette.WHITE
+        );
+    }
+
+    private void renderDashedLine(
+            F35DisplayCanvas canvas,
+            float x1,
+            float y1,
+            float x2,
+            float y2,
+            int color
+    ) {
+        int segments =
+                12;
+
+        for (int i = 0;
+             i < segments;
+             i += 2) {
+            float a =
+                    (float) i
+                            / segments;
+
+            float b =
+                    (float) (i + 1)
+                            / segments;
+
+            canvas.line(
+                    x1 + (x2 - x1) * a,
+                    y1 + (y2 - y1) * a,
+                    x1 + (x2 - x1) * b,
+                    y1 + (y2 - y1) * b,
+                    dim(
+                            color,
+                            0.72F
+                    )
+            );
+        }
+    }
+
+    private static float[] polarPoint(
+            float cx,
+            float cy,
+            float radius,
+            double degrees
+    ) {
+        double radians =
+                Math.toRadians(
+                        degrees
+                );
+
+        return new float[]{
+                cx + (float) Math.cos(
+                        radians
+                ) * radius,
+                cy + (float) Math.sin(
+                        radians
+                ) * radius
+        };
+    }
+
     private void renderTracks(
             F35DisplayCanvas canvas,
             F35DisplayState state,
@@ -1514,54 +1920,68 @@ public final class F35PanoramicDisplayRenderer {
 
         for (F35RadarTrackView track :
                 state.tracks()) {
-            Relative relative =
-                    relativeToOwnship(
+            if (!radarTrackVisible(
+                    track
+            )) {
+                continue;
+            }
+
+            float[] point =
+                    scopePoint(
                             ownship,
-                            track.position()
+                            track.position(),
+                            state.radarRangeMeters(),
+                            centerX,
+                            centerY,
+                            radius,
+                            fullCircle
                     );
 
-            double normalizedRight =
-                    relative.right()
-                            / state.radarRangeMeters();
-
-            double normalizedForward =
-                    relative.forward()
-                            / state.radarRangeMeters();
-
-            if (!fullCircle
-                    && normalizedForward
-                    < -0.05) {
+            if (point == null) {
                 continue;
             }
 
-            double radial =
-                    Math.sqrt(
-                            normalizedRight
-                                    * normalizedRight
-                                    + normalizedForward
-                                    * normalizedForward
+            int color =
+                    trackColor(
+                            track
                     );
 
-            if (radial
-                    > 1.0) {
-                continue;
+            if (F35DisplayClientConfig.trackTrails()) {
+                renderRadarTrail(
+                        canvas,
+                        state,
+                        track,
+                        centerX,
+                        centerY,
+                        radius,
+                        fullCircle,
+                        color
+                );
             }
 
-            float x =
-                    centerX
-                            + (float) normalizedRight
-                            * radius;
-
-            float y =
-                    centerY
-                            - (float) normalizedForward
-                            * radius;
+            if (F35DisplayClientConfig.velocityVectors()) {
+                renderVelocityVector(
+                        canvas,
+                        ownship,
+                        track.position(),
+                        track.velocity(),
+                        6.0,
+                        state.radarRangeMeters(),
+                        centerX,
+                        centerY,
+                        radius,
+                        fullCircle,
+                        point[0],
+                        point[1],
+                        color
+                );
+            }
 
             drawTrackSymbol(
                     canvas,
                     track,
-                    x,
-                    y,
+                    point[0],
+                    point[1],
                     state.selectedTrack() != null
                             && state.selectedTrack()
                             .trackId()
@@ -1570,6 +1990,238 @@ public final class F35PanoramicDisplayRenderer {
                             )
             );
         }
+    }
+
+    private void renderRadarTrail(
+            F35DisplayCanvas canvas,
+            F35DisplayState state,
+            F35RadarTrackView track,
+            float centerX,
+            float centerY,
+            float radius,
+            boolean fullCircle,
+            int color
+    ) {
+        renderTrail(
+                canvas,
+                state.ownship(),
+                F35TrackTrailCache.radarTrail(
+                        track.trackId()
+                ),
+                state.radarRangeMeters(),
+                centerX,
+                centerY,
+                radius,
+                fullCircle,
+                color
+        );
+    }
+
+    private void renderDetectionTrail(
+            F35DisplayCanvas canvas,
+            F35DisplayState state,
+            F35DetectionContact contact,
+            double rangeMeters,
+            float centerX,
+            float centerY,
+            float radius,
+            boolean fullCircle,
+            int color
+    ) {
+        renderTrail(
+                canvas,
+                state.ownship(),
+                F35TrackTrailCache.detectionTrail(
+                        contact.contactId()
+                ),
+                rangeMeters,
+                centerX,
+                centerY,
+                radius,
+                fullCircle,
+                color
+        );
+    }
+
+    private void renderTrail(
+            F35DisplayCanvas canvas,
+            AircraftTelemetry ownship,
+            List<F35TrackTrailCache.TrailPoint> trail,
+            double rangeMeters,
+            float centerX,
+            float centerY,
+            float radius,
+            boolean fullCircle,
+            int color
+    ) {
+        if (trail.size() < 2) {
+            return;
+        }
+
+        float[] previous =
+                null;
+
+        for (int i = 0;
+             i < trail.size();
+             i++) {
+            F35TrackTrailCache.TrailPoint sample =
+                    trail.get(
+                            i
+                    );
+
+            float[] point =
+                    scopePoint(
+                            ownship,
+                            sample.position(),
+                            rangeMeters,
+                            centerX,
+                            centerY,
+                            radius,
+                            fullCircle
+                    );
+
+            if (point == null) {
+                previous =
+                        null;
+                continue;
+            }
+
+            if (previous != null) {
+                float fraction =
+                        trail.size() <= 1
+                                ? 1.0F
+                                : (float) i
+                                / (float) (trail.size() - 1);
+
+                int trailColor =
+                        dim(
+                                color,
+                                0.24F
+                                        + fraction
+                                        * 0.66F
+                        );
+
+                canvas.line(
+                        previous[0],
+                        previous[1],
+                        point[0],
+                        point[1],
+                        trailColor
+                );
+            }
+
+            previous =
+                    point;
+        }
+    }
+
+    private void renderVelocityVector(
+            F35DisplayCanvas canvas,
+            AircraftTelemetry ownship,
+            Vec3 position,
+            Vec3 velocity,
+            double seconds,
+            double rangeMeters,
+            float centerX,
+            float centerY,
+            float radius,
+            boolean fullCircle,
+            float startX,
+            float startY,
+            int color
+    ) {
+        if (velocity.lengthSqr()
+                < 1.0E-6) {
+            return;
+        }
+
+        Vec3 future =
+                position.add(
+                        velocity.scale(
+                                seconds
+                        )
+                );
+
+        float[] end =
+                scopePoint(
+                        ownship,
+                        future,
+                        rangeMeters,
+                        centerX,
+                        centerY,
+                        radius,
+                        fullCircle
+                );
+
+        if (end == null) {
+            return;
+        }
+
+        canvas.line(
+                startX,
+                startY,
+                end[0],
+                end[1],
+                dim(
+                        color,
+                        0.78F
+                )
+        );
+    }
+
+    private static float[] scopePoint(
+            AircraftTelemetry ownship,
+            Vec3 target,
+            double rangeMeters,
+            float centerX,
+            float centerY,
+            float radius,
+            boolean fullCircle
+    ) {
+        if (rangeMeters <= 0.0) {
+            return null;
+        }
+
+        Relative relative =
+                relativeToOwnship(
+                        ownship,
+                        target
+                );
+
+        double normalizedRight =
+                relative.right()
+                        / rangeMeters;
+
+        double normalizedForward =
+                relative.forward()
+                        / rangeMeters;
+
+        if (!fullCircle
+                && normalizedForward
+                < -0.05) {
+            return null;
+        }
+
+        double radial =
+                Math.sqrt(
+                        normalizedRight
+                                * normalizedRight
+                                + normalizedForward
+                                * normalizedForward
+                );
+
+        if (radial > 1.0) {
+            return null;
+        }
+
+        return new float[]{
+                centerX
+                        + (float) normalizedRight
+                        * radius,
+                centerY
+                        - (float) normalizedForward
+                        * radius
+        };
     }
 
     private void renderSensorDetectionContacts(
@@ -1589,47 +2241,32 @@ public final class F35PanoramicDisplayRenderer {
 
         for (F35DetectionContact contact :
                 state.detections()) {
-            Relative relative =
-                    relativeToOwnship(
-                            ownship,
-                            contact.position()
-                    );
-
-            double normalizedRight =
-                    relative.right()
-                            / rangeMeters;
-
-            double normalizedForward =
-                    relative.forward()
-                            / rangeMeters;
-
-            double radial =
-                    Math.sqrt(
-                            normalizedRight
-                                    * normalizedRight
-                                    + normalizedForward
-                                    * normalizedForward
-                    );
-
-            if (radial > 1.0) {
+            if (!detectionContactVisible(
+                    contact
+            )) {
                 continue;
             }
 
-            float x =
-                    centerX
-                            + (float) normalizedRight
-                            * radius;
+            float[] point =
+                    scopePoint(
+                            ownship,
+                            contact.position(),
+                            rangeMeters,
+                            centerX,
+                            centerY,
+                            radius,
+                            true
+                    );
 
-            float y =
-                    centerY
-                            - (float) normalizedForward
-                            * radius;
+            if (point == null) {
+                continue;
+            }
 
             drawDetectionSymbol(
                     canvas,
                     contact,
-                    x,
-                    y
+                    point[0],
+                    point[1]
             );
         }
     }
@@ -1642,6 +2279,12 @@ public final class F35PanoramicDisplayRenderer {
 
         for (F35DetectionContact contact :
                 state.detections()) {
+            if (!detectionContactVisible(
+                    contact
+            )) {
+                continue;
+            }
+
             farthest =
                     Math.max(
                             farthest,
@@ -1696,56 +2339,162 @@ public final class F35PanoramicDisplayRenderer {
         AircraftTelemetry ownship =
                 state.ownship();
 
+        double detectionRangeMeters =
+                sensorDetectionRangeMeters(
+                        state
+                );
+
         for (F35DetectionContact contact :
                 state.detections()) {
-            Relative relative =
-                    relativeToOwnship(
+            if (!detectionContactVisible(
+                    contact
+            )) {
+                continue;
+            }
+
+            float[] point =
+                    scopePoint(
                             ownship,
-                            contact.position()
+                            contact.position(),
+                            detectionRangeMeters,
+                            centerX,
+                            centerY,
+                            radius,
+                            fullCircle
                     );
 
-            double normalizedRight =
-                    relative.right()
-                            / state.radarRangeMeters();
-
-            double normalizedForward =
-                    relative.forward()
-                            / state.radarRangeMeters();
-
-            if (!fullCircle
-                    && normalizedForward < -0.05) {
+            if (point == null) {
                 continue;
             }
 
-            double radial =
-                    Math.sqrt(
-                            normalizedRight
-                                    * normalizedRight
-                                    + normalizedForward
-                                    * normalizedForward
+            int color =
+                    detectionColor(
+                            contact
                     );
 
-            if (radial > 1.0) {
-                continue;
+            boolean showTrail =
+                    contact.type()
+                            == F35DetectionType.MISSILE
+                            ? F35DisplayClientConfig.missileTrails()
+                            : F35DisplayClientConfig.trackTrails();
+
+            if (showTrail) {
+                renderDetectionTrail(
+                        canvas,
+                        state,
+                        contact,
+                        detectionRangeMeters,
+                        centerX,
+                        centerY,
+                        radius,
+                        fullCircle,
+                        color
+                );
             }
 
-            float x =
-                    centerX
-                            + (float) normalizedRight
-                            * radius;
-
-            float y =
-                    centerY
-                            - (float) normalizedForward
-                            * radius;
+            if (F35DisplayClientConfig.velocityVectors()) {
+                renderVelocityVector(
+                        canvas,
+                        ownship,
+                        contact.position(),
+                        contact.velocity(),
+                        contact.type()
+                                == F35DetectionType.MISSILE
+                                ? 3.0
+                                : 5.0,
+                        detectionRangeMeters,
+                        centerX,
+                        centerY,
+                        radius,
+                        fullCircle,
+                        point[0],
+                        point[1],
+                        color
+                );
+            }
 
             drawDetectionSymbol(
                     canvas,
                     contact,
-                    x,
-                    y
+                    point[0],
+                    point[1]
             );
         }
+    }
+
+    private static String detectionSummary(
+            F35DisplayState state
+    ) {
+        int mobs = 0;
+        int players = 0;
+        int ships = 0;
+        int missiles = 0;
+
+        for (F35DetectionContact contact :
+                state.detections()) {
+            if (!detectionContactVisible(
+                    contact
+            )) {
+                continue;
+            }
+
+            if (contact.type()
+                    == F35DetectionType.MOB) {
+                mobs++;
+            } else if (contact.type()
+                    == F35DetectionType.PLAYER) {
+                players++;
+            } else if (contact.type()
+                    == F35DetectionType.SHIP) {
+                ships++;
+            } else if (contact.type()
+                    == F35DetectionType.MISSILE) {
+                missiles++;
+            }
+        }
+
+        return "M"
+                + mobs
+                + " P"
+                + players
+                + " S"
+                + ships
+                + " X"
+                + missiles;
+    }
+
+    private static boolean radarTrackVisible(
+            F35RadarTrackView track
+    ) {
+        return F35DisplayClientConfig.radarTrackVisible(
+                track.iffAffiliation()
+        );
+    }
+
+    private static boolean detectionContactVisible(
+            F35DetectionContact contact
+    ) {
+        return switch (contact.type()) {
+            case MOB ->
+                    F35DisplayClientConfig.detectMobs();
+            case PLAYER ->
+                    F35DisplayClientConfig.detectPlayers();
+            case SHIP ->
+                    F35DisplayClientConfig.detectShips();
+            case MISSILE ->
+                    F35DisplayClientConfig.showMissiles();
+        };
+    }
+
+    private static int detectionColor(
+            F35DetectionContact contact
+    ) {
+        return switch (contact.type()) {
+            case SHIP -> F35DisplayPalette.CYAN;
+            case PLAYER -> F35DisplayPalette.GREEN;
+            case MISSILE -> F35DisplayPalette.RED;
+            case MOB -> F35DisplayPalette.AMBER;
+        };
     }
 
     private void drawDetectionSymbol(
@@ -1754,13 +2503,13 @@ public final class F35PanoramicDisplayRenderer {
             float x,
             float y
     ) {
-        int color;
+        int color =
+                detectionColor(
+                        contact
+                );
 
         if (contact.type()
                 == F35DetectionType.SHIP) {
-            color =
-                    F35DisplayPalette.CYAN;
-
             canvas.aircraft(
                     x,
                     y,
@@ -1769,9 +2518,6 @@ public final class F35PanoramicDisplayRenderer {
             );
         } else if (contact.type()
                 == F35DetectionType.PLAYER) {
-            color =
-                    F35DisplayPalette.GREEN;
-
             canvas.rect(
                     x - 4.0F,
                     y - 4.0F,
@@ -1779,10 +2525,26 @@ public final class F35PanoramicDisplayRenderer {
                     8.0F,
                     color
             );
-        } else {
-            color =
-                    F35DisplayPalette.AMBER;
+        } else if (contact.type()
+                == F35DetectionType.MISSILE) {
+            canvas.triangle(
+                    x,
+                    y,
+                    5.5F,
+                    color
+            );
 
+            canvas.line(
+                    x,
+                    y + 6.0F,
+                    x,
+                    y + 11.0F,
+                    dim(
+                            color,
+                            0.72F
+                    )
+            );
+        } else {
             canvas.diamond(
                     x,
                     y,
@@ -1794,6 +2556,10 @@ public final class F35PanoramicDisplayRenderer {
         if (F35DisplayClientConfig.trackLabels()) {
             canvas.text(
                     contact.type()
+                            == F35DetectionType.MISSILE
+                            ? "MSL "
+                            + contact.shortId()
+                            : contact.type()
                             .name()
                             .substring(
                                     0,
@@ -1836,10 +2602,20 @@ public final class F35PanoramicDisplayRenderer {
         if (affiliation.contains(
                 "FRIENDLY"
         )) {
+            color =
+                    "COASTING".equals(
+                            track.trackState()
+                    )
+                            ? dim(
+                            F35DisplayPalette.GREEN,
+                            0.62F
+                    )
+                            : F35DisplayPalette.GREEN;
+
             canvas.aircraft(
                     x,
                     y,
-                    5.0F,
+                    5.5F,
                     color
             );
         } else if (affiliation.contains(
@@ -1848,7 +2624,7 @@ public final class F35PanoramicDisplayRenderer {
             canvas.triangle(
                     x,
                     y,
-                    5.0F,
+                    5.5F,
                     color
             );
         } else {
@@ -1889,6 +2665,14 @@ public final class F35PanoramicDisplayRenderer {
     ) {
         F35RadarTrackView selected =
                 state.selectedTrack();
+
+        if (selected != null
+                && !radarTrackVisible(
+                selected
+        )) {
+            selected =
+                    null;
+        }
 
         canvas.rect(
                 x,
@@ -2022,12 +2806,12 @@ public final class F35PanoramicDisplayRenderer {
                 );
 
         double rightX =
-                Math.cos(
+                -Math.cos(
                         heading
                 );
 
         double rightZ =
-                Math.sin(
+                -Math.sin(
                         heading
                 );
 
@@ -2064,13 +2848,6 @@ public final class F35PanoramicDisplayRenderer {
     ) {
         if (track.iffAffiliation()
                 .contains(
-                        "FRIENDLY_EMERGENCY"
-                )) {
-            return F35DisplayPalette.AMBER;
-        }
-
-        if (track.iffAffiliation()
-                .contains(
                         "FRIENDLY"
                 )) {
             return F35DisplayPalette.GREEN;
@@ -2083,18 +2860,34 @@ public final class F35PanoramicDisplayRenderer {
             return F35DisplayPalette.RED;
         }
 
-        if (track.iffReplyStatus()
-                .contains(
-                        "AUTH_FAILED"
-                )
-                || track.iffReplyStatus()
-                .contains(
-                        "NO_REPLY"
-                )) {
-            return F35DisplayPalette.AMBER;
+        return F35DisplayPalette.AMBER;
+    }
+
+    private static int visibleContactCount(
+            F35DisplayState state
+    ) {
+        int count =
+                0;
+
+        for (F35RadarTrackView track :
+                state.tracks()) {
+            if (radarTrackVisible(
+                    track
+            )) {
+                count++;
+            }
         }
 
-        return F35DisplayPalette.WHITE;
+        for (F35DetectionContact contact :
+                state.detections()) {
+            if (detectionContactVisible(
+                    contact
+            )) {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     private static String iffSummary(
@@ -2105,7 +2898,10 @@ public final class F35PanoramicDisplayRenderer {
                         .stream()
                         .filter(
                                 track ->
-                                        track.iffAffiliation()
+                                        radarTrackVisible(
+                                                track
+                                        )
+                                                && track.iffAffiliation()
                                                 .contains(
                                                         "FRIENDLY"
                                                 )
@@ -2117,8 +2913,9 @@ public final class F35PanoramicDisplayRenderer {
                     + friendlies;
         }
 
-        if (state.totalContactCount()
-                == 0) {
+        if (visibleContactCount(
+                state
+        ) == 0) {
             return "STBY";
         }
 

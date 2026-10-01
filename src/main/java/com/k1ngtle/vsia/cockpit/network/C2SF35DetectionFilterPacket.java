@@ -11,11 +11,26 @@ public final class C2SF35DetectionFilterPacket {
     private final boolean mobs;
     private final boolean players;
     private final boolean ships;
+    private final boolean missiles;
 
     public C2SF35DetectionFilterPacket(
             boolean mobs,
             boolean players,
             boolean ships
+    ) {
+        this(
+                mobs,
+                players,
+                ships,
+                true
+        );
+    }
+
+    public C2SF35DetectionFilterPacket(
+            boolean mobs,
+            boolean players,
+            boolean ships,
+            boolean missiles
     ) {
         this.mobs =
                 mobs;
@@ -23,6 +38,8 @@ public final class C2SF35DetectionFilterPacket {
                 players;
         this.ships =
                 ships;
+        this.missiles =
+                missiles;
     }
 
     public C2SF35DetectionFilterPacket(
@@ -33,6 +50,8 @@ public final class C2SF35DetectionFilterPacket {
         players =
                 buffer.readBoolean();
         ships =
+                buffer.readBoolean();
+        missiles =
                 buffer.readBoolean();
     }
 
@@ -47,6 +66,9 @@ public final class C2SF35DetectionFilterPacket {
         );
         buffer.writeBoolean(
                 ships
+        );
+        buffer.writeBoolean(
+                missiles
         );
     }
 
@@ -70,7 +92,8 @@ public final class C2SF35DetectionFilterPacket {
                             new F35DetectionFilter(
                                     mobs,
                                     players,
-                                    ships
+                                    ships,
+                                    missiles
                             )
                     );
                 }

@@ -16,28 +16,28 @@ public final class F35DisplayConfigScreen
             343.0F;
 
     private static final int BLACK =
-            0xF20B0F0F;
+            0xF2333535;
 
     private static final int GRID =
-            0xFF667A73;
+            0xFF6A7370;
 
     private static final int GREEN =
-            0xFF8CEA63;
+            0xFFA0E0A0;
 
     private static final int CYAN =
-            0xFF65D8C3;
+            0xFF78A8A8;
 
     private static final int MAGENTA =
-            0xFFC95BE4;
+            0xFFA830F8;
 
     private static final int WHITE =
-            0xFFE8EFEA;
+            0xFFF0F0F0;
 
     private static final int DIM =
-            0xFF6B7773;
+            0xFF59615F;
 
     private static final int RED =
-            0xFFFF5B66;
+            0xFFE05858;
 
     private float uiScale =
             1.0F;
@@ -166,144 +166,109 @@ public final class F35DisplayConfigScreen
             return false;
         }
 
-        if (inside(
-                x,
-                y,
-                28,
-                92,
-                177,
-                28
-        )) {
+        if (inside(x, y, 20, 82, 185, 24)) {
             F35DisplayClientConfig.toggleDetectMobs();
             syncDetectionFilter();
             return true;
         }
 
-        if (inside(
-                x,
-                y,
-                28,
-                128,
-                177,
-                28
-        )) {
+        if (inside(x, y, 20, 110, 185, 24)) {
             F35DisplayClientConfig.toggleDetectPlayers();
             syncDetectionFilter();
             return true;
         }
 
-        if (inside(
-                x,
-                y,
-                28,
-                164,
-                177,
-                28
-        )) {
+        if (inside(x, y, 20, 138, 185, 24)) {
             F35DisplayClientConfig.toggleDetectShips();
             syncDetectionFilter();
             return true;
         }
 
-        if (inside(
-                x,
-                y,
-                28,
-                210,
-                83,
-                26
-        )) {
+        if (inside(x, y, 20, 166, 185, 24)) {
+            F35DisplayClientConfig.toggleShowMissiles();
+            syncDetectionFilter();
+            return true;
+        }
+
+        if (inside(x, y, 20, 202, 88, 24)) {
             F35DisplayClientConfig.setAllDetection(
+                    true
+            );
+            F35DisplayClientConfig.setAllRadarTargets(
                     true
             );
             syncDetectionFilter();
             return true;
         }
 
-        if (inside(
-                x,
-                y,
-                122,
-                210,
-                83,
-                26
-        )) {
+        if (inside(x, y, 116, 202, 88, 24)) {
             F35DisplayClientConfig.setAllDetection(
+                    false
+            );
+            F35DisplayClientConfig.setAllRadarTargets(
                     false
             );
             syncDetectionFilter();
             return true;
         }
 
-        if (inside(
-                x,
-                y,
-                242,
-                92,
-                160,
-                34
-        )) {
+        if (inside(x, y, 232, 82, 180, 26)) {
+            F35DisplayClientConfig.toggleShowFriendlyTracks();
+            return true;
+        }
+
+        if (inside(x, y, 232, 114, 180, 26)) {
+            F35DisplayClientConfig.toggleShowHostileTracks();
+            return true;
+        }
+
+        if (inside(x, y, 232, 146, 180, 26)) {
+            F35DisplayClientConfig.toggleShowUnknownTracks();
+            return true;
+        }
+
+        if (inside(x, y, 232, 186, 180, 30)) {
             F35DisplayClientConfig.cycleRadarRange();
             return true;
         }
 
-        if (inside(
-                x,
-                y,
-                242,
-                140,
-                160,
-                34
-        )) {
+        if (inside(x, y, 232, 222, 180, 30)) {
             F35DisplayClientConfig.toggleTrackLabels();
             return true;
         }
 
-        if (inside(
-                x,
-                y,
-                459,
-                92,
-                158,
-                34
-        )) {
+        if (inside(x, y, 448, 82, 180, 26)) {
+            F35DisplayClientConfig.toggleTrackTrails();
+            return true;
+        }
+
+        if (inside(x, y, 448, 114, 180, 26)) {
+            F35DisplayClientConfig.toggleMissileTrails();
+            return true;
+        }
+
+        if (inside(x, y, 448, 146, 180, 26)) {
+            F35DisplayClientConfig.toggleVelocityVectors();
+            return true;
+        }
+
+        if (inside(x, y, 448, 186, 180, 30)) {
             F35DisplayClientConfig.cycleBrightness();
             return true;
         }
 
-        if (inside(
-                x,
-                y,
-                459,
-                140,
-                158,
-                34
-        )) {
+        if (inside(x, y, 448, 222, 180, 30)) {
             F35DisplayClientConfig.cycleDisplayScale();
             return true;
         }
 
-        if (inside(
-                x,
-                y,
-                675,
-                247,
-                156,
-                28
-        )) {
+        if (inside(x, y, 675, 247, 156, 28)) {
             F35DisplayClientConfig.resetDefaults();
             syncDetectionFilter();
             return true;
         }
 
-        if (inside(
-                x,
-                y,
-                675,
-                286,
-                156,
-                28
-        )) {
+        if (inside(x, y, 675, 286, 156, 28)) {
             onClose();
             return true;
         }
@@ -380,40 +345,20 @@ public final class F35DisplayConfigScreen
     ) {
         text(
                 graphics,
-                "F-35 SENSOR CONFIG",
+                "F-35 SENSOR / TARGET CONTROL",
                 18,
                 9,
                 GREEN
         );
 
-        text(
-                graphics,
-                "ICAWS",
-                270,
-                9,
-                GREEN
-        );
+        text(graphics, "ICAWS", 270, 9, GREEN);
+        text(graphics, "PHM", 330, 9, GREEN);
+        text(graphics, "AP", 382, 9, CYAN);
 
         text(
                 graphics,
-                "PHM",
-                330,
-                9,
-                GREEN
-        );
-
-        text(
-                graphics,
-                "AP",
-                382,
-                9,
-                CYAN
-        );
-
-        text(
-                graphics,
-                "DETECT "
-                        + F35DisplayClientConfig.detectionSummary(),
+                "TGT "
+                        + F35DisplayClientConfig.targetSelectionSummary(),
                 458,
                 9,
                 CYAN
@@ -421,224 +366,101 @@ public final class F35DisplayConfigScreen
 
         text(
                 graphics,
-                "IFF / SENSOR",
-                680,
+                "DET "
+                        + F35DisplayClientConfig.detectionSummary(),
+                585,
                 9,
-                WHITE
+                GREEN
         );
 
-        text(
-                graphics,
-                "\\ CLOSE",
-                785,
-                27,
-                DIM
-        );
+        text(graphics, "IFF / TSD", 704, 9, WHITE);
+        text(graphics, "\\ CLOSE", 785, 27, DIM);
     }
 
     private void drawDetectionPanel(
             GuiGraphics graphics
     ) {
-        text(
-                graphics,
-                "DETECTION",
-                10,
-                51,
-                MAGENTA
-        );
+        text(graphics, "DETECTION", 10, 51, MAGENTA);
+        text(graphics, "LOCAL / ENTITY TARGETS", 10, 67, CYAN);
 
-        text(
-                graphics,
-                "RADAR RETURN FILTER",
-                10,
-                67,
-                CYAN
-        );
+        toggleBox(graphics, 20, 82, 185, 24, "MOBS / LIVING",
+                F35DisplayClientConfig.detectMobs());
+        toggleBox(graphics, 20, 110, 185, 24, "PLAYERS",
+                F35DisplayClientConfig.detectPlayers());
+        toggleBox(graphics, 20, 138, 185, 24, "VS SHIPS",
+                F35DisplayClientConfig.detectShips());
+        toggleBox(graphics, 20, 166, 185, 24, "MISSILES / ROCKETS",
+                F35DisplayClientConfig.showMissiles());
 
-        toggleBox(
-                graphics,
-                28,
-                92,
-                177,
-                28,
-                "MOBS / LIVING TARGETS",
-                F35DisplayClientConfig.detectMobs()
-        );
+        actionBox(graphics, 20, 202, 88, 24, "ALL", GREEN);
+        actionBox(graphics, 116, 202, 88, 24, "CLR", RED);
 
-        toggleBox(
-                graphics,
-                28,
-                128,
-                177,
-                28,
-                "PLAYERS",
-                F35DisplayClientConfig.detectPlayers()
-        );
-
-        toggleBox(
-                graphics,
-                28,
-                164,
-                177,
-                28,
-                "VS SHIPS",
-                F35DisplayClientConfig.detectShips()
-        );
-
-        actionBox(
-                graphics,
-                28,
-                210,
-                83,
-                26,
-                "ALL",
-                GREEN
-        );
-
-        actionBox(
-                graphics,
-                122,
-                210,
-                83,
-                26,
-                "CLR",
-                RED
-        );
-
-        text(
-                graphics,
-                "COMBINED FILTER",
-                28,
-                257,
-                DIM
-        );
-
-        text(
-                graphics,
-                F35DisplayClientConfig.detectionSummary(),
-                28,
-                273,
-                GREEN
-        );
-
-        text(
-                graphics,
-                "MOB  PLY  SHIP",
-                28,
-                307,
-                CYAN
-        );
-
-        text(
-                graphics,
-                "SMS",
-                177,
-                329,
-                GREEN
-        );
+        text(graphics, "ENTITY FILTER", 20, 246, DIM);
+        text(graphics, F35DisplayClientConfig.detectionSummary(), 20, 261, GREEN);
+        text(graphics, "MISSILE " + onOff(F35DisplayClientConfig.showMissiles()),
+                20, 279, F35DisplayClientConfig.showMissiles() ? RED : DIM);
+        text(graphics, "MOB  PLY  SHIP  MSL", 20, 306, CYAN);
+        text(graphics, "SMS", 177, 329, GREEN);
     }
 
     private void drawRadarPanel(
             GuiGraphics graphics
     ) {
-        text(
-                graphics,
-                "RADAR",
-                226,
-                51,
-                CYAN
-        );
+        text(graphics, "RADAR / IFF", 226, 51, CYAN);
+        text(graphics, "TSD TARGET SELECTION", 226, 67, GREEN);
 
-        text(
-                graphics,
-                "A-S / TWS",
-                226,
-                67,
-                GREEN
-        );
+        toggleBox(graphics, 232, 82, 180, 26, "FRIENDLY / ALLY",
+                F35DisplayClientConfig.showFriendlyTracks());
+        toggleBox(graphics, 232, 114, 180, 26, "HOSTILE",
+                F35DisplayClientConfig.showHostileTracks());
+        toggleBox(graphics, 232, 146, 180, 26, "UNKNOWN",
+                F35DisplayClientConfig.showUnknownTracks());
 
         actionBox(
                 graphics,
-                242,
-                92,
-                160,
-                34,
-                "RANGE  "
-                        + F35DisplayClientConfig.radarRangeLabel(),
+                232,
+                186,
+                180,
+                30,
+                "RANGE  " + F35DisplayClientConfig.radarRangeLabel(),
                 CYAN
         );
 
         actionBox(
                 graphics,
-                242,
-                140,
-                160,
-                34,
-                "TRACK LABEL  "
-                        + onOff(
-                        F35DisplayClientConfig.trackLabels()
-                ),
-                F35DisplayClientConfig.trackLabels()
-                        ? GREEN
-                        : DIM
+                232,
+                222,
+                180,
+                30,
+                "TRACK LABEL  " + onOff(F35DisplayClientConfig.trackLabels()),
+                F35DisplayClientConfig.trackLabels() ? GREEN : DIM
         );
 
-        drawRadarPreview(
-                graphics,
-                322,
-                247
-        );
-
-        text(
-                graphics,
-                "CONTACT TYPES",
-                242,
-                300,
-                WHITE
-        );
-
-        text(
-                graphics,
-                "SHIP  PLAYER  MOB",
-                242,
-                316,
-                GREEN
-        );
-
-        text(
-                graphics,
-                "IDS",
-                391,
-                329,
-                GREEN
-        );
+        text(graphics, "GREEN AIRCRAFT = ALLY", 232, 270, GREEN);
+        text(graphics, "RED TRIANGLE = HOSTILE", 232, 286, RED);
+        text(graphics, "AMBER DIAMOND = UNKNOWN", 232, 302, MAGENTA);
+        text(graphics, "IDS", 391, 329, GREEN);
     }
 
     private void drawDisplayPanel(
             GuiGraphics graphics
     ) {
-        text(
-                graphics,
-                "DISPLAY",
-                442,
-                51,
-                CYAN
-        );
+        text(graphics, "DISPLAY", 442, 51, CYAN);
+        text(graphics, "TRAIL / VECTOR CONTROL", 442, 67, GREEN);
 
-        text(
-                graphics,
-                "MFD CONTROL",
-                442,
-                67,
-                GREEN
-        );
+        toggleBox(graphics, 448, 82, 180, 26, "TARGET TRAILS",
+                F35DisplayClientConfig.trackTrails());
+        toggleBox(graphics, 448, 114, 180, 26, "MISSILE TRAILS",
+                F35DisplayClientConfig.missileTrails());
+        toggleBox(graphics, 448, 146, 180, 26, "VELOCITY VECTORS",
+                F35DisplayClientConfig.velocityVectors());
 
         actionBox(
                 graphics,
-                459,
-                92,
-                158,
-                34,
+                448,
+                186,
+                180,
+                30,
                 "BRIGHT  "
                         + F35DisplayClientConfig.brightnessPercent()
                         + "%",
@@ -647,176 +469,49 @@ public final class F35DisplayConfigScreen
 
         actionBox(
                 graphics,
-                459,
-                140,
-                158,
-                34,
+                448,
+                222,
+                180,
+                30,
                 "SCALE   "
                         + F35DisplayClientConfig.displayScalePercent()
                         + "%",
                 GREEN
         );
 
-        rect(
-                graphics,
-                474,
-                205,
-                128,
-                76,
-                GRID
-        );
-
-        lineH(
-                graphics,
-                487,
-                589,
-                224,
-                CYAN
-        );
-
-        lineH(
-                graphics,
-                487,
-                575,
-                242,
-                GREEN
-        );
-
-        lineH(
-                graphics,
-                487,
-                561,
-                260,
-                MAGENTA
-        );
-
-        text(
-                graphics,
-                "PANORAMIC DISPLAY",
-                477,
-                291,
-                WHITE
-        );
-
-        text(
-                graphics,
-                "HSD",
-                615,
-                329,
-                GREEN
-        );
+        text(graphics, "10 SEC HISTORY", 448, 276, DIM);
+        text(graphics, "FRIENDLY TRACKS USE GREEN", 448, 292, GREEN);
+        text(graphics, "MISSILE VECTOR = RED", 448, 308, RED);
+        text(graphics, "HSD", 615, 329, GREEN);
     }
 
     private void drawStatusPanel(
             GuiGraphics graphics
     ) {
-        text(
-                graphics,
-                "SYSTEM",
-                657,
-                51,
-                CYAN
-        );
+        text(graphics, "SYSTEM", 657, 51, CYAN);
+        text(graphics, "TACTICAL DISPLAY STATUS", 657, 67, GREEN);
 
-        text(
-                graphics,
-                "CONFIG STATUS",
-                657,
-                67,
-                GREEN
-        );
+        statusLine(graphics, 675, 94, "FRIENDLY",
+                F35DisplayClientConfig.showFriendlyTracks());
+        statusLine(graphics, 675, 116, "HOSTILE",
+                F35DisplayClientConfig.showHostileTracks());
+        statusLine(graphics, 675, 138, "UNKNOWN",
+                F35DisplayClientConfig.showUnknownTracks());
+        statusLine(graphics, 675, 160, "MISSILE",
+                F35DisplayClientConfig.showMissiles());
+        statusLine(graphics, 675, 182, "TRAILS",
+                F35DisplayClientConfig.trackTrails());
+        statusLine(graphics, 675, 204, "VECTORS",
+                F35DisplayClientConfig.velocityVectors());
 
-        statusLine(
-                graphics,
-                675,
-                98,
-                "MOBS",
-                F35DisplayClientConfig.detectMobs()
-        );
+        text(graphics, "RANGE", 675, 228, DIM);
+        text(graphics, F35DisplayClientConfig.radarRangeLabel(), 750, 228, WHITE);
 
-        statusLine(
-                graphics,
-                675,
-                120,
-                "PLAYERS",
-                F35DisplayClientConfig.detectPlayers()
-        );
+        actionBox(graphics, 675, 247, 156, 28, "RESET", MAGENTA);
+        actionBox(graphics, 675, 286, 156, 28, "DONE", GREEN);
 
-        statusLine(
-                graphics,
-                675,
-                142,
-                "SHIPS",
-                F35DisplayClientConfig.detectShips()
-        );
-
-        text(
-                graphics,
-                "RANGE",
-                675,
-                177,
-                DIM
-        );
-
-        text(
-                graphics,
-                F35DisplayClientConfig.radarRangeLabel(),
-                750,
-                177,
-                WHITE
-        );
-
-        text(
-                graphics,
-                "Loaded entities only",
-                675,
-                205,
-                DIM
-        );
-
-        text(
-                graphics,
-                "Loaded VS ships",
-                675,
-                219,
-                DIM
-        );
-
-        actionBox(
-                graphics,
-                675,
-                247,
-                156,
-                28,
-                "RESET",
-                MAGENTA
-        );
-
-        actionBox(
-                graphics,
-                675,
-                286,
-                156,
-                28,
-                "DONE",
-                GREEN
-        );
-
-        text(
-                graphics,
-                "HSI",
-                735,
-                329,
-                GREEN
-        );
-
-        text(
-                graphics,
-                "VAR",
-                811,
-                329,
-                GREEN
-        );
+        text(graphics, "HSI", 735, 329, GREEN);
+        text(graphics, "VAR", 811, 329, GREEN);
     }
 
     private void drawRadarPreview(
@@ -992,7 +687,8 @@ public final class F35DisplayConfigScreen
                 new C2SF35DetectionFilterPacket(
                         F35DisplayClientConfig.detectMobs(),
                         F35DisplayClientConfig.detectPlayers(),
-                        F35DisplayClientConfig.detectShips()
+                        F35DisplayClientConfig.detectShips(),
+                        F35DisplayClientConfig.showMissiles()
                 )
         );
     }

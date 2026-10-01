@@ -5,12 +5,15 @@ import com.k1ngtle.vsia.cockpit.F35VsShipHelper;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.registries.ForgeRegistries;
 
 public final class F35DetectionScanner {
     private static final int MAX_CONTACTS =
@@ -49,7 +52,8 @@ public final class F35DetectionScanner {
                 new ArrayList<>();
 
         if (filter.mobs()
-                || filter.players()) {
+                || filter.players()
+                || filter.missiles()) {
             scanLoadedEntities(
                     level,
                     viewer,
@@ -119,7 +123,16 @@ public final class F35DetectionScanner {
 
             F35DetectionType type;
 
-            if (entity instanceof Player) {
+            if (isMissileLike(
+                    entity
+            )) {
+                if (!filter.missiles()) {
+                    continue;
+                }
+
+                type =
+                        F35DetectionType.MISSILE;
+            } else if (entity instanceof Player) {
                 if (!filter.players()) {
                     continue;
                 }
@@ -163,6 +176,55 @@ public final class F35DetectionScanner {
                     )
             );
         }
+    }
+
+    private static boolean isMissileLike(
+            Entity entity
+    ) {
+        String className =
+                entity.getClass()
+                        .getSimpleName()
+                        .toLowerCase(
+                                Locale.ROOT
+                        );
+
+        ResourceLocation registryId =
+                ForgeRegistries.ENTITY_TYPES
+                        .getKey(
+                                entity.getType()
+                        );
+
+        String id =
+                registryId == null
+                        ? ""
+                        : registryId.toString()
+                        .toLowerCase(
+                                Locale.ROOT
+                        );
+
+        return missileToken(
+                className
+        ) || missileToken(
+                id
+        );
+    }
+
+    private static boolean missileToken(
+            String value
+    ) {
+        return value.contains(
+                "missile"
+        ) || value.contains(
+                "rocket"
+        ) || value.contains(
+                "munition"
+        ) || value.contains(
+                "torpedo"
+        ) || value.contains(
+                "guided_bomb"
+        ) || value.contains(
+                "guidedbomb"
+        );
     }
 
     private static void scanLoadedShips(

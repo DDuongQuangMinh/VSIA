@@ -54,7 +54,8 @@ public final class F35DisplayClientInputEvents {
                     new C2SF35DetectionFilterPacket(
                             F35DisplayClientConfig.detectMobs(),
                             F35DisplayClientConfig.detectPlayers(),
-                            F35DisplayClientConfig.detectShips()
+                            F35DisplayClientConfig.detectShips(),
+                            F35DisplayClientConfig.showMissiles()
                     )
             );
 

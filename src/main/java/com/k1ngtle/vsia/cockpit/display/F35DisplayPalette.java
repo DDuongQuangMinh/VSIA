@@ -2,31 +2,31 @@ package com.k1ngtle.vsia.cockpit.display;
 
 public final class F35DisplayPalette {
     public static final int BACKGROUND =
-            0xFF0F1514;
+            0xFF333535;
 
     public static final int GRID =
-            0xFF63736E;
+            0xFF6A7370;
 
     public static final int DIM =
-            0xFF50615C;
+            0xFF59615F;
 
     public static final int GREEN =
-            0xFF8CEA63;
+            0xFFA0E0A0;
 
     public static final int CYAN =
-            0xFF65D8C3;
+            0xFF78A8A8;
 
     public static final int MAGENTA =
-            0xFFC95BE4;
+            0xFFA830F8;
 
     public static final int WHITE =
-            0xFFE8EFEA;
+            0xFFF0F0F0;
 
     public static final int RED =
-            0xFFFF5B66;
+            0xFFE05858;
 
     public static final int AMBER =
-            0xFFE5CD67;
+            0xFFE0C86C;
 
     private F35DisplayPalette() {
     }
