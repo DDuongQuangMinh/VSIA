@@ -18,6 +18,13 @@ public final class IffInterrogator {
             long gameTime
     ) {
         IIffTransponder transponder = IffRegistry.find(contact.targetId());
+        // Cockpit transponders use enrolled mission keys, never the legacy network key.
+        if (!com.k1ngtle.vsia.cockpit.iff.F35IffService.matching(emitter.level(),contact.targetId()).isEmpty()) {
+            Object ship=emitter.vsShip();
+            com.k1ngtle.vsia.cockpit.F35CockpitSeatBlockEntity cockpit=ship==null?null:
+                    com.k1ngtle.vsia.cockpit.iff.F35IffService.forShip(emitter.level(),com.k1ngtle.vsia.signality.integration.vs.VsRuntimeCompat.shipId(ship));
+            return com.k1ngtle.vsia.cockpit.iff.F35IffService.interrogate(cockpit,contact.targetId());
+        }
         if (transponder == null) {
             return IffResult.noTransponder();
         }

@@ -177,6 +177,7 @@ public final class S2CF35DetectionSnapshotPacket {
                 buffer,
                 contact.velocity()
         );
+        buffer.writeBoolean(contact.iffAuthenticated());buffer.writeUtf(contact.iffStatus(),64);buffer.writeUtf(contact.iffTelemetry(),256);
     }
 
     private static F35DetectionContact readContact(
@@ -222,7 +223,7 @@ public final class S2CF35DetectionSnapshotPacket {
                 type,
                 label,
                 position,
-                velocity
+                velocity, buffer.readBoolean(), buffer.readUtf(64), buffer.readUtf(256)
         );
     }
 

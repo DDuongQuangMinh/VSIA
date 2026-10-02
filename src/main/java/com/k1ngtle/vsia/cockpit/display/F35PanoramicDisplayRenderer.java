@@ -2218,9 +2218,7 @@ public final class F35PanoramicDisplayRenderer {
                 relative.forward()
                         / rangeMeters;
 
-        if (!fullCircle
-                && normalizedForward
-                < -0.05) {
+        if (!com.k1ngtle.vsia.cockpit.network.F35RadarContactProjection.forwardVisible(fullCircle,normalizedForward)) {
             return null;
         }
 
@@ -2511,9 +2509,10 @@ public final class F35PanoramicDisplayRenderer {
     private static int detectionColor(
             F35DetectionContact contact
     ) {
+        if(contact.iffAuthenticated()&&contact.iffStatus().startsWith("FRIENDLY"))return F35DisplayPalette.GREEN;
         return switch (contact.type()) {
-            case SHIP -> F35DisplayPalette.CYAN;
-            case PLAYER -> F35DisplayPalette.GREEN;
+            case SHIP -> F35DisplayPalette.AMBER;
+            case PLAYER -> F35DisplayPalette.AMBER;
             case MISSILE -> F35DisplayPalette.RED;
             case MOB -> F35DisplayPalette.AMBER;
         };
@@ -2633,7 +2632,7 @@ public final class F35PanoramicDisplayRenderer {
         String affiliation =
                 track.iffAffiliation();
 
-        if (affiliation.contains(
+        if (track.iffAuthenticated() && affiliation.contains(
                 "FRIENDLY"
         )) {
             color =
@@ -2771,6 +2770,7 @@ public final class F35PanoramicDisplayRenderer {
                             selected
                     )
             );
+            canvas.text(selected.iffAuthenticated()?(selected.iffTelemetry().startsWith("M5")?"FRIEND M5":"FRIEND M4"):"IFF UNKNOWN",x+5.0F,y+36.0F,0.55F,trackColor(selected));
 
             canvas.text(
                     "R "
@@ -2812,6 +2812,7 @@ public final class F35PanoramicDisplayRenderer {
                         detection
                 )
         );
+        canvas.text(detection.iffAuthenticated()?(detection.iffTelemetry().startsWith("M5")?"FRIEND M5":"FRIEND M4"):"IFF UNKNOWN",x+5.0F,y+36.0F,0.55F,detectionColor(detection));
 
         canvas.text(
                 "R "

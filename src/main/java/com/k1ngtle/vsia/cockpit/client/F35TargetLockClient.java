@@ -38,17 +38,24 @@ public final class F35TargetLockClient {
     public static void toggleRadar(UUID id){if(isRadarLocked(id))clear();else lockRadar(id);}
     public static void toggleDetection(UUID id){if(isDetectionLocked(id))clear();else lockDetection(id);}
     public static void clear(){
-        LockState s=state();s.kind=LockKind.NONE;s.targetId=null;s.lastRadarTrack=null;s.lastDetection=null;s.missingSinceMillis=-1;s.targetVisible=false;
+        reset(state());
+    }
+    private static void reset(LockState s){s.kind=LockKind.NONE;s.targetId=null;s.lastRadarTrack=null;s.lastDetection=null;s.missingSinceMillis=-1;s.targetVisible=false;}
+    public static void invalidate(UUID cockpit,List<UUID> radar,List<UUID> detection){
+        LockState s=LOCKS.get(cockpit);if(s==null)return;
+        if((s.kind==LockKind.RADAR&&radar.contains(s.targetId))||(s.kind==LockKind.DETECTION&&detection.contains(s.targetId)))reset(s);
     }
     public static boolean isRadarLocked(UUID id){return state().kind==LockKind.RADAR&&state().targetId!=null&&state().targetId.equals(id);}
     public static boolean isDetectionLocked(UUID id){return state().kind==LockKind.DETECTION&&state().targetId!=null&&state().targetId.equals(id);}
     @Nullable public static F35RadarTrackView lockedRadarTrack(List<F35RadarTrackView> tracks){
         if(state().kind!=LockKind.RADAR||state().targetId==null)return null;
-        F35RadarTrackView found=findRadarTrack(tracks);return found==null?state().lastRadarTrack:found;
+        F35RadarTrackView found=findRadarTrack(tracks);if(found!=null)return found;F35RadarTrackView old=state().lastRadarTrack;
+        return old==null?null:new F35RadarTrackView(old.trackId(),"COASTING",old.position(),old.velocity(),old.quality(),old.uncertaintyMeters(),old.bestSnrLinear(),old.sensorCount(),old.hits(),"UNKNOWN","NO_REPLY","",0,false,"");
     }
     @Nullable public static F35DetectionContact lockedDetection(List<F35DetectionContact> contacts){
         if(state().kind!=LockKind.DETECTION||state().targetId==null)return null;
-        F35DetectionContact found=findDetection(contacts);return found==null?state().lastDetection:found;
+        F35DetectionContact found=findDetection(contacts);if(found!=null)return found;F35DetectionContact old=state().lastDetection;
+        return old==null?null:new F35DetectionContact(old.contactId(),old.type(),old.label(),old.position(),old.velocity(),false,"UNKNOWN/NO_REPLY","");
     }
     public static void validate(List<F35RadarTrackView> tracks,List<F35DetectionContact> contacts){
         if(!hasLock())return;

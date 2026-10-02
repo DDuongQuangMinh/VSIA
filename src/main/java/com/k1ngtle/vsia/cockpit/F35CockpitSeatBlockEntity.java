@@ -58,7 +58,11 @@ public final class F35CockpitSeatBlockEntity
             cockpitId = UUID.randomUUID();
             sync();
         }
+        if (level != null && !level.isClientSide) com.k1ngtle.vsia.cockpit.iff.F35IffService.register(this);
     }
+
+    @Override public void setRemoved() { com.k1ngtle.vsia.cockpit.iff.F35IffService.unregister(this); super.setRemoved(); }
+    @Override public void onChunkUnloaded() { com.k1ngtle.vsia.cockpit.iff.F35IffService.unregister(this); super.onChunkUnloaded(); }
 
     public F35CockpitSeatBlockEntity(
             BlockPos pos,

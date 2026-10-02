@@ -25,6 +25,11 @@ public final class F35ClientDetectionCache {
     }
 
     public static void clearAll() { SNAPSHOTS.clear(); }
+    public static void invalidate(UUID cockpitId,long tick,List<UUID> ids) {
+        Snapshot old=SNAPSHOTS.get(cockpitId);
+        if(old==null||tick<old.serverTick())return;
+        SNAPSHOTS.put(cockpitId,new Snapshot(tick,old.contacts().stream().filter(c->!ids.contains(c.contactId())).toList(),old.silhouette(),old.receivedMillis()));
+    }
 
     public static void accept(
             UUID cockpitId,
@@ -33,6 +38,7 @@ public final class F35ClientDetectionCache {
             F35ShipSilhouette silhouette
     ) {
         if (cockpitId == null || cockpitId.equals(new UUID(0L, 0L))) return;
+        Snapshot old=SNAPSHOTS.get(cockpitId);if(old!=null&&serverTick<old.serverTick())return;
         SNAPSHOTS.put(cockpitId,
                 new Snapshot(
                         serverTick,

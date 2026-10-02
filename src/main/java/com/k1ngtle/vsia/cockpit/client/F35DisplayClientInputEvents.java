@@ -24,7 +24,7 @@ public final class F35DisplayClientInputEvents {
         Minecraft mc=Minecraft.getInstance();
         if(connection!=mc.getConnection()){
             connection=mc.getConnection();previousCockpit=null;
-            F35TargetLockClient.clearAll();F35IffClientState.clearAll();F35ClientDetectionCache.clearAll();F35DisplayClientConfig.clearContext();
+            F35TargetLockClient.clearAll();F35IffClientState.clearAll();F35ClientDetectionCache.clearAll();com.k1ngtle.vsia.cockpit.display.F35ClientRadarCache.clearAll();F35DisplayClientConfig.clearContext();
         }
         if(mc.player==null||connection==null)return;
         F35CockpitSeatBlockEntity cockpit=F35CockpitClientContext.seated();

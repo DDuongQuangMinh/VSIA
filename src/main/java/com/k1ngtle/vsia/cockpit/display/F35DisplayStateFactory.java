@@ -71,7 +71,7 @@ public final class F35DisplayStateFactory {
         }
 
         F35ClientRadarCache.Snapshot radar =
-                F35ClientRadarCache.snapshot();
+                F35ClientRadarCache.snapshot(cockpit.cockpitId());
 
         List<F35RadarTrackView> tracks =
                 radar.tracks();
@@ -85,6 +85,14 @@ public final class F35DisplayStateFactory {
                 F35TargetLockClient.lockedRadarTrack(
                         tracks
                 );
+
+        // Keep both sensor datasets for lock validation, but draw only one symbol per source.
+        // The live typed contact is primary unless the pilot already locked its radar identity.
+        List<F35DetectionContact> rawContacts=detections;
+        tracks=tracks.stream().filter(t->F35TargetLockClient.isRadarLocked(t.trackId())||
+                !com.k1ngtle.vsia.cockpit.network.F35RadarContactProjection.hasRawContact(t.trackId(),rawContacts)).toList();
+        detections=detections.stream().filter(c->!F35TargetLockClient.isRadarLocked(
+                com.k1ngtle.vsia.cockpit.network.F35RadarContactProjection.displayId(c.contactId()))).toList();
 
         double farthestRadar =
                 tracks.stream()

@@ -19,17 +19,17 @@ public record C2SF35IffActionPacket(UUID cockpitId, int action, String value) {
             ServerPlayer player = ctx.getSender(); if (player == null) return;
             F35CockpitSeatBlockEntity cockpit = F35SeatController.cockpitFor(player);
             if (cockpit == null || !cockpitId.equals(cockpit.cockpitId())) return;
+            if(action==30||(action>=70&&action<=76)){com.k1ngtle.vsia.cockpit.iff.F35IffKeyActions.perform(player,cockpit,action,value);return;}
             F35IffConfig iff = cockpit.iff();
             switch (action) {
                 case 0 -> iff.cycleMaster();
                 case 1, 2, 3, 4, 5 -> iff.toggleMode(action);
                 case 10, 11, 12, 13 -> iff.toggleTelemetry(action - 10);
                 case 20, 21 -> iff.selectSlot(action - 20);
-                case 30 -> iff.generateKey(iff.activeSlot(), cleanId(value), 6 * 3600L);
                 case 31 -> iff.zeroize();
-                case 40 -> { String[] p = value.split(":", 3); if (p.length == 3) iff.setCodes(p[0], p[1], p[2]); }
-                case 41 -> iff.setCodes(next(iff.mode1(), 100, false), iff.mode2(), iff.mode3a());
-                case 42 -> iff.setCodes(iff.mode1(), next(iff.mode2(), 10000, false), iff.mode3a());
+                case 40 -> { String[] p = value.split(":", 3); if (p.length == 3 && p[0].matches("[0-7][0-3]") && p[1].matches("[0-7]{4}") && p[2].matches("[0-7]{4}")) iff.setCodes(p[0], p[1], p[2]);else player.sendSystemMessage(net.minecraft.network.chat.Component.literal("Codes: Mode 1 [0-7][0-3]; Mode 2 and 3/A four octal digits.")); }
+                case 41 -> { int n=((iff.mode1().charAt(0)-'0')*4+(iff.mode1().charAt(1)-'0')+1)%32;iff.setCodes(Integer.toString(n/4)+n%4, iff.mode2(), iff.mode3a()); }
+                case 42 -> iff.setCodes(iff.mode1(), next(iff.mode2(), 4096, true), iff.mode3a());
                 case 43 -> iff.setCodes(iff.mode1(), iff.mode2(), next(iff.mode3a(), 4096, true));
                 default -> { }
             }

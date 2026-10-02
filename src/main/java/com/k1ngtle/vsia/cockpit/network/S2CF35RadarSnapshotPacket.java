@@ -18,14 +18,24 @@ public final class S2CF35RadarSnapshotPacket {
             128;
 
     private final String networkId;
+    private final UUID cockpitId;
     private final long serverTick;
     private final List<F35RadarTrackView> tracks;
+    private final F35RadarContactProjection.Removals removals;
 
     public S2CF35RadarSnapshotPacket(
             String networkId,
             long serverTick,
             List<RadarNetworkTrack> source
     ) {
+        this(new UUID(0L,0L),networkId,serverTick,source);
+    }
+    public S2CF35RadarSnapshotPacket(UUID cockpitId,String networkId,long serverTick,List<RadarNetworkTrack> source) {
+        this(cockpitId,networkId,serverTick,source,new F35RadarContactProjection.Removals(List.of(),List.of()));
+    }
+    public S2CF35RadarSnapshotPacket(UUID cockpitId,String networkId,long serverTick,List<RadarNetworkTrack> source,F35RadarContactProjection.Removals removals) {
+        this.removals=removals;
+        this.cockpitId=cockpitId;
         this.networkId =
                 networkId;
 
@@ -67,6 +77,7 @@ public final class S2CF35RadarSnapshotPacket {
     public S2CF35RadarSnapshotPacket(
             FriendlyByteBuf buffer
     ) {
+        cockpitId=buffer.readUUID();
         networkId =
                 buffer.readUtf(
                         64
@@ -75,11 +86,7 @@ public final class S2CF35RadarSnapshotPacket {
         serverTick =
                 buffer.readLong();
 
-        int count =
-                Math.min(
-                        MAX_TRACKS,
-                        buffer.readVarInt()
-                );
+        int count=boundedCount(buffer,MAX_TRACKS);
 
         List<F35RadarTrackView> decoded =
                 new ArrayList<>(
@@ -100,11 +107,13 @@ public final class S2CF35RadarSnapshotPacket {
                 List.copyOf(
                         decoded
                 );
+        removals=new F35RadarContactProjection.Removals(readIds(buffer),readIds(buffer));
     }
 
     public void toBytes(
             FriendlyByteBuf buffer
     ) {
+        buffer.writeUUID(cockpitId);
         buffer.writeUtf(
                 networkId,
                 64
@@ -125,6 +134,7 @@ public final class S2CF35RadarSnapshotPacket {
                     track
             );
         }
+        writeIds(buffer,removals.radar());writeIds(buffer,removals.detection());
     }
 
     public void handle(
@@ -139,11 +149,7 @@ public final class S2CF35RadarSnapshotPacket {
                                 Dist.CLIENT,
                                 () ->
                                         () ->
-                                                F35ClientRadarCache.accept(
-                                                        networkId,
-                                                        serverTick,
-                                                        tracks
-                                                )
+                                                acceptClient()
                         )
         );
 
@@ -151,6 +157,16 @@ public final class S2CF35RadarSnapshotPacket {
                 true
         );
     }
+    private void acceptClient(){
+        if(!F35ClientRadarCache.acceptSnapshot(cockpitId,networkId,serverTick,tracks))return;
+        com.k1ngtle.vsia.cockpit.client.F35TargetLockClient.invalidate(cockpitId,removals.radar(),removals.detection());
+        com.k1ngtle.vsia.cockpit.display.F35TrackTrailCache.forget(removals.radar(),removals.detection());
+        com.k1ngtle.vsia.cockpit.display.F35ClientDetectionCache.invalidate(cockpitId,serverTick,removals.detection());
+    }
+    public F35RadarContactProjection.Removals removals(){return removals;}
+    private static int boundedCount(FriendlyByteBuf buffer,int max){int count=buffer.readVarInt();if(count<0||count>max)throw new IllegalArgumentException("Invalid F-35 snapshot count");return count;}
+    private static List<UUID> readIds(FriendlyByteBuf buffer){int count=boundedCount(buffer,8192);List<UUID> ids=new ArrayList<>(count);for(int i=0;i<count;i++)ids.add(buffer.readUUID());return List.copyOf(ids);}
+    private static void writeIds(FriendlyByteBuf buffer,List<UUID> ids){if(ids.size()>8192)throw new IllegalArgumentException("Too many terminal contacts");buffer.writeVarInt(ids.size());ids.forEach(buffer::writeUUID);}
 
     private static F35RadarTrackView fromTrack(
             RadarNetworkTrack track
@@ -176,7 +192,8 @@ public final class S2CF35RadarSnapshotPacket {
                 track.iff()
                         .squawkCode(),
                 track.iff()
-                        .authenticated()
+                        .authenticated(),
+                track.iff().authenticatedTelemetry()
         );
     }
 
@@ -245,6 +262,7 @@ public final class S2CF35RadarSnapshotPacket {
         buffer.writeBoolean(
                 track.iffAuthenticated()
         );
+        buffer.writeUtf(track.iffTelemetry(),256);
     }
 
     private static F35RadarTrackView decodeTrack(
@@ -303,6 +321,7 @@ public final class S2CF35RadarSnapshotPacket {
 
         boolean authenticated =
                 buffer.readBoolean();
+        String telemetry=buffer.readUtf(256);
 
         return new F35RadarTrackView(
                 trackId,
@@ -318,7 +337,7 @@ public final class S2CF35RadarSnapshotPacket {
                 reply,
                 callsign,
                 squawk,
-                authenticated
+                authenticated, telemetry
         );
     }
 

@@ -259,6 +259,8 @@ public final class RadarNetwork {
                     < track.lastMeasurementTick) {
                 continue;
             }
+            // Never associate a measurement with a different known aircraft's track.
+            if (!java.util.Objects.equals(track.sourceTargetId, measurement.sourceTargetId())) continue;
 
             double dt =
                     Math.max(
@@ -514,6 +516,7 @@ public final class RadarNetwork {
             MutableTrack b,
             long nowTick
     ) {
+        if (!java.util.Objects.equals(a.sourceTargetId, b.sourceTargetId)) return false;
         if (iffConflict(
                 a.latestIff,
                 b.latestIff
@@ -832,6 +835,7 @@ public final class RadarNetwork {
 
     private static final class MutableTrack {
         private final UUID trackId;
+        private final UUID sourceTargetId;
         private final long createdTick;
         private final Set<UUID> contributingSensors =
                 new HashSet<>();
@@ -869,6 +873,7 @@ public final class RadarNetwork {
                 UUID trackId,
                 RadarMeasurement first
         ) {
+            sourceTargetId = first.sourceTargetId();
             this.trackId =
                     trackId;
 
@@ -1560,7 +1565,8 @@ public final class RadarNetwork {
                             0.0,
                             1.0
                     ),
-                    snapshotIff
+                    snapshotIff,
+                    sourceTargetId
             );
         }
 

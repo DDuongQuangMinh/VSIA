@@ -131,6 +131,12 @@ public final class F35DisplaySectionScreen extends Screen {
             }
         }
 
+        if(section>1&&state!=null){
+            F35RadarTrackView locked=F35TargetLockClient.lockedRadarTrack(state.tracks());
+            F35DetectionContact contact=locked==null?F35TargetLockClient.lockedDetection(state.detections()):null;
+            String data=locked!=null&&locked.iffAuthenticated()?locked.iffTelemetry():(contact!=null&&contact.iffAuthenticated()?contact.iffTelemetry():"");
+            if(!data.isBlank())graphics.drawWordWrap(font,Component.literal("VERIFIED "+data),28,369,800,GREEN);
+        }
         pose.popPose();
         super.render(graphics, mouseX, mouseY, partialTick);
     }
@@ -191,6 +197,7 @@ public final class F35DisplaySectionScreen extends Screen {
 
         if (section == 1) {
             int action = iffActionAt(x, y);
+            if(action==32){minecraft.setScreen(new F35IffKeyScreen(this,cockpitId));return true;}
             if (action >= 0 && !F35IffClientState.get(cockpitId).status().equals("WAIT")) {
                 VsiaNetwork.sendToServer(new C2SF35IffActionPacket(cockpitId, action, "MISSION-" + Long.toString(System.currentTimeMillis(), 36).toUpperCase())); return true;
             }
@@ -315,7 +322,7 @@ public final class F35DisplaySectionScreen extends Screen {
         text(g,"MISSION KEY",350,88,CYAN); rect(g,340,104,220,96,GRID);
         text(g,"SLOT  [A] [B]  ACTIVE "+(s.activeSlot()==0?"A":"B"),354,118,WHITE); text(g,"KEY ID  "+s.keyId(),354,140,GREEN);
         long remain=Math.max(0,s.expiresAt()-Instant.now().getEpochSecond()); text(g,"VALID  "+remain/60+" MIN",354,162,remain>0?GREEN:AMBER); text(g,s.status(),354,184,remain>0?GREEN:AMBER);
-        rect(g,580,104,245,96,GRID); text(g,"KEY OPERATIONS",594,118,CYAN); text(g,"[GENERATE / ROTATE]",594,144,WHITE); text(g,"[ZEROIZE]",594,176,RED);
+        rect(g,580,104,245,112,GRID); text(g,"KEY OPERATIONS",594,118,CYAN); text(g,"[CREATE SHARED MISSION]",594,140,WHITE); text(g,"[DISTRIBUTE / LOAD / ROTATE]",594,164,CYAN); text(g,"[ZEROIZE THIS COCKPIT]",594,192,RED);
         text(g,"MODE 5 AUTHENTICATED DATA",350,226,CYAN); String[] fields={"POSITION","VELOCITY","HEADING","MISSION"};
         for(int i=0;i<4;i++){int x=350+(i%2)*230,y=254+(i/2)*38;rect(g,x,y-8,210,28,GRID);text(g,fields[i]+"  "+(s.telemetry(i)?"SEND":"HOLD"),x+12,y,s.telemetry(i)?GREEN:DIM);}
         text(g,"Server owns keys and authentication. Secret material is never sent to clients.",350,340,DIM);
@@ -326,7 +333,7 @@ public final class F35DisplaySectionScreen extends Screen {
         if(x>=28&&x<=218&&y>=104&&y<=134)return 0;
         for(int i=0;i<5;i++)if(x>=28&&x<=308&&y>=146+i*34&&y<=174+i*34)return (i<3&&x>=282)?41+i:i+1;
         if(x>=390&&x<=420&&y>=104&&y<=134)return 20; if(x>=421&&x<=451&&y>=104&&y<=134)return 21;
-        if(x>=580&&x<=825&&y>=124&&y<=160)return 30; if(x>=580&&x<=825&&y>=160&&y<=198)return 31;
+        if(x>=580&&x<=825&&y>=124&&y<=152)return 30; if(x>=580&&x<=825&&y>152&&y<=178)return 32; if(x>=580&&x<=825&&y>178&&y<=216)return 31;
         for(int i=0;i<4;i++){int xx=350+(i%2)*230,yy=246+(i/2)*38;if(x>=xx&&x<=xx+210&&y>=yy&&y<=yy+28)return 10+i;} return -1;
     }
 
@@ -675,6 +682,7 @@ public final class F35DisplaySectionScreen extends Screen {
             text(graphics, "R " + format0(distance) + " M", x + 10, y + 54, WHITE);
             text(graphics, "V " + format0(radar.speedMps()) + " M/S", x + 10, y + 72, WHITE);
             text(graphics, "Q " + format1(radar.quality()), x + 10, y + 90, GREEN);
+            text(graphics, radar.iffAuthenticated() ? "AUTH " + (radar.iffTelemetry().startsWith("M5")?"M5":"M4") : "IFF " + radar.iffReplyStatus(), x + 10, y + 106, trackColor(radar));
             return;
         }
 
@@ -687,6 +695,7 @@ public final class F35DisplaySectionScreen extends Screen {
             text(graphics, "R " + format0(distance) + " M", x + 10, y + 54, WHITE);
             text(graphics, "V " + format0(contact.speedMps()) + " M/S", x + 10, y + 72, WHITE);
             text(graphics, contact.label(), x + 10, y + 90, DIM);
+            text(graphics, contact.iffAuthenticated() ? "AUTH " + (contact.iffTelemetry().startsWith("M5")?"M5":"M4") : "IFF UNKNOWN", x + 10, y + 106, detectionColor(contact));
             return;
         }
 
@@ -704,7 +713,7 @@ public final class F35DisplaySectionScreen extends Screen {
         int color = trackColor(track);
         String affiliation = track.iffAffiliation() == null ? "" : track.iffAffiliation();
 
-        if (affiliation.contains("FRIENDLY")) {
+        if (track.iffAuthenticated() && affiliation.contains("FRIENDLY")) {
             aircraft(graphics, x, y, 7.0F, GREEN);
         } else if (affiliation.contains("HOSTILE")) {
             triangle(graphics, x, y, 7.0F, RED);
@@ -839,7 +848,7 @@ public final class F35DisplaySectionScreen extends Screen {
         double normalizedRight = relative.right() / rangeMeters;
         double normalizedForward = relative.forward() / rangeMeters;
 
-        if (!fullCircle && normalizedForward < -0.05) {
+        if (!com.k1ngtle.vsia.cockpit.network.F35RadarContactProjection.forwardVisible(fullCircle,normalizedForward)) {
             return null;
         }
 
@@ -899,9 +908,10 @@ public final class F35DisplaySectionScreen extends Screen {
     }
 
     private static int detectionColor(F35DetectionContact contact) {
+        if(contact.iffAuthenticated()&&contact.iffStatus().startsWith("FRIENDLY"))return GREEN;
         return switch (contact.type()) {
-            case SHIP -> CYAN;
-            case PLAYER -> GREEN;
+            case SHIP -> AMBER;
+            case PLAYER -> AMBER;
             case MISSILE -> RED;
             case MOB -> AMBER;
         };

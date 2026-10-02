@@ -18,8 +18,10 @@ public record RadarNetworkTrack(
         double bestSnrLinear,
         double positionUncertaintyMeters,
         double quality,
-        IffResult iff
+        IffResult iff,
+        UUID sourceTargetId
 ) {
+    public RadarNetworkTrack(UUID trackId,RadarTrackState state,Vec3 position,Vec3 velocity,long createdTick,long lastMeasurementTick,int hits,int sensorCount,Set<UUID> contributingSensors,double bestSnrLinear,double positionUncertaintyMeters,double quality,IffResult iff){this(trackId,state,position,velocity,createdTick,lastMeasurementTick,hits,sensorCount,contributingSensors,bestSnrLinear,positionUncertaintyMeters,quality,iff,null);}
     public RadarNetworkTrack {
         contributingSensors =
                 Set.copyOf(
@@ -30,6 +32,7 @@ public record RadarNetworkTrack(
     public double speedMps() {
         return velocity.length();
     }
+    public RadarNetworkTrack withIff(IffResult result) {return new RadarNetworkTrack(trackId,state,position,velocity,createdTick,lastMeasurementTick,hits,sensorCount,contributingSensors,bestSnrLinear,positionUncertaintyMeters,quality,result,sourceTargetId);}
 
     public double ageSeconds(
             long nowTick

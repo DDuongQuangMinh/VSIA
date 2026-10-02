@@ -95,6 +95,9 @@ public final class F35TrackTrailCache {
         RADAR_TRAILS.clear();
         DETECTION_TRAILS.clear();
     }
+    public static synchronized void forget(List<UUID> radar,List<UUID> detection){
+        radar.forEach(RADAR_TRAILS::remove);detection.forEach(DETECTION_TRAILS::remove);
+    }
 
     private static void sample(
             Map<UUID, Trail> trails,
