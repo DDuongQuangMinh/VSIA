@@ -46,6 +46,8 @@ public final class F35CockpitSeatBlockEntity
     private final F35IffConfig iff = new F35IffConfig();
     private UUID cockpitId;
     private final F35DisplaySettings displaySettings = new F35DisplaySettings();
+    private final com.k1ngtle.vsia.cockpit.detection.F35StructureMonitor structure = new com.k1ngtle.vsia.cockpit.detection.F35StructureMonitor();
+    public com.k1ngtle.vsia.cockpit.detection.F35StructureMonitor structureMonitor(){return structure;}
 
     public F35IffConfig iff() { return iff; }
     public UUID cockpitId() { return cockpitId; }
@@ -191,6 +193,7 @@ public final class F35CockpitSeatBlockEntity
         tag.put("F35Iff", iff.save());
         if (cockpitId != null) tag.putUUID("F35CockpitId", cockpitId);
         tag.put("F35DisplaySettings", displaySettings.save());
+        tag.put("F35Structure",structure.save());
     }
 
     @Override
@@ -231,12 +234,14 @@ public final class F35CockpitSeatBlockEntity
         if (tag.contains("F35Iff")) iff.load(tag.getCompound("F35Iff"));
         if (tag.hasUUID("F35CockpitId")) cockpitId = tag.getUUID("F35CockpitId");
         if (tag.contains("F35DisplaySettings")) displaySettings.load(tag.getCompound("F35DisplaySettings"));
+        if (tag.contains("F35Structure")) structure.load(tag.getCompound("F35Structure"));
     }
 
     @Override
     public CompoundTag getUpdateTag() {
         CompoundTag tag = saveWithoutMetadata();
         tag.remove("F35Iff");
+        tag.remove("F35Structure");
         return tag;
     }
 

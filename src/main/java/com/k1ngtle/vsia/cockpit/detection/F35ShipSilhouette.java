@@ -9,9 +9,16 @@ public record F35ShipSilhouette(
         int anchorY,
         int sourceWidthBlocks,
         int sourceLengthBlocks,
-        boolean[] occupied
+        boolean[] occupied,
+        F35HullDamage damage
 ) {
+    public F35ShipSilhouette(int width,int height,int anchorX,int anchorY,int sourceWidthBlocks,int sourceLengthBlocks,boolean[] occupied){
+        this(width,height,anchorX,anchorY,sourceWidthBlocks,sourceLengthBlocks,occupied,F35HullDamage.unknown("NO BASELINE"));
+    }
     public F35ShipSilhouette {
+        damage=damage==null?F35HullDamage.unknown("NO DATA"):damage;
+        if(width<0||width>64||height<0||height>64)throw new IllegalArgumentException("Invalid hull grid dimensions");
+        if(damage.known()&&damage.expected().length!=width*height)throw new IllegalArgumentException("Hull damage grid differs from plan");
         width =
                 Math.max(
                         0,
@@ -32,6 +39,8 @@ public record F35ShipSilhouette(
                         occupied.length
                 );
     }
+    @Override public boolean[] occupied(){return occupied.clone();}
+    public static F35ShipSilhouette empty(F35HullDamage damage){return new F35ShipSilhouette(0,0,-1,-1,0,0,new boolean[0],damage);}
 
     public static F35ShipSilhouette empty() {
         return new F35ShipSilhouette(

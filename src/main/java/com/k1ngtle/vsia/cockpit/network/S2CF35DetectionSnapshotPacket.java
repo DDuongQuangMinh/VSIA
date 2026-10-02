@@ -227,161 +227,38 @@ public final class S2CF35DetectionSnapshotPacket {
         );
     }
 
-    private static void writeSilhouette(
-            FriendlyByteBuf buffer,
-            F35ShipSilhouette silhouette
-    ) {
-        buffer.writeBoolean(
-                silhouette.available()
-        );
-
-        if (!silhouette.available()) {
-            return;
+    private static void writeSilhouette(FriendlyByteBuf buffer,F35ShipSilhouette s) {
+        buffer.writeBoolean(s.available());
+        if(s.available()){
+            buffer.writeVarInt(s.width());buffer.writeVarInt(s.height());buffer.writeVarInt(s.anchorX());buffer.writeVarInt(s.anchorY());
+            buffer.writeVarInt(s.sourceWidthBlocks());buffer.writeVarInt(s.sourceLengthBlocks());
+            for(int y=0;y<s.height();y++)for(int x=0;x<s.width();x++)buffer.writeBoolean(s.occupied(x,y));
         }
-
-        int width =
-                Math.min(
-                        64,
-                        silhouette.width()
-                );
-
-        int height =
-                Math.min(
-                        64,
-                        silhouette.height()
-                );
-
-        buffer.writeVarInt(
-                width
-        );
-
-        buffer.writeVarInt(
-                height
-        );
-
-        buffer.writeVarInt(
-                silhouette.anchorX()
-        );
-
-        buffer.writeVarInt(
-                silhouette.anchorY()
-        );
-
-        buffer.writeVarInt(
-                silhouette.sourceWidthBlocks()
-        );
-
-        buffer.writeVarInt(
-                silhouette.sourceLengthBlocks()
-        );
-
-        int cellCount =
-                Math.min(
-                        MAX_GRID_CELLS,
-                        width * height
-                );
-
-        buffer.writeVarInt(
-                cellCount
-        );
-
-        for (int i = 0;
-             i < cellCount;
-             i++) {
-            int x =
-                    i % width;
-
-            int y =
-                    i / width;
-
-            buffer.writeBoolean(
-                    silhouette.occupied(
-                            x,
-                            y
-                    )
-            );
-        }
+        var damage=s.damage();buffer.writeBoolean(damage.known());buffer.writeUtf(damage.status(),32);
+        buffer.writeVarInt(damage.baselineBlocks());buffer.writeVarInt(damage.missingBlocks());
+        buffer.writeLong(damage.lastLossTick());buffer.writeLong(damage.observationTick());
+        int[] expected=damage.expected(),missing=damage.missing(),health=damage.healthPermille();buffer.writeVarInt(expected.length);
+        for(int i=0;i<expected.length;i++){buffer.writeVarInt(expected[i]);buffer.writeVarInt(missing[i]);buffer.writeVarInt(health[i]);}
     }
-
-    private static F35ShipSilhouette readSilhouette(
-            FriendlyByteBuf buffer
-    ) {
-        if (!buffer.readBoolean()) {
-            return F35ShipSilhouette.empty();
+    private static F35ShipSilhouette readSilhouette(FriendlyByteBuf buffer) {
+        boolean available=buffer.readBoolean();int width=0,height=0,ax=-1,ay=-1,sw=0,sl=0;boolean[] occupied=new boolean[0];
+        if(available){
+            width=bounded(buffer.readVarInt(),1,64);height=bounded(buffer.readVarInt(),1,64);
+            ax=bounded(buffer.readVarInt(),-1,width-1);ay=bounded(buffer.readVarInt(),-1,height-1);
+            sw=bounded(buffer.readVarInt(),1,131072);sl=bounded(buffer.readVarInt(),1,131072);
+            occupied=new boolean[width*height];for(int i=0;i<occupied.length;i++)occupied[i]=buffer.readBoolean();
         }
-
-        int width =
-                Math.min(
-                        64,
-                        Math.max(
-                                0,
-                                buffer.readVarInt()
-                        )
-                );
-
-        int height =
-                Math.min(
-                        64,
-                        Math.max(
-                                0,
-                                buffer.readVarInt()
-                        )
-                );
-
-        int anchorX =
-                buffer.readVarInt();
-
-        int anchorY =
-                buffer.readVarInt();
-
-        int sourceWidth =
-                buffer.readVarInt();
-
-        int sourceLength =
-                buffer.readVarInt();
-
-        int declaredCells =
-                Math.min(
-                        MAX_GRID_CELLS,
-                        Math.max(
-                                0,
-                                buffer.readVarInt()
-                        )
-                );
-
-        int targetCells =
-                Math.min(
-                        MAX_GRID_CELLS,
-                        width * height
-                );
-
-        boolean[] occupied =
-                new boolean[
-                        targetCells
-                        ];
-
-        for (int i = 0;
-             i < declaredCells;
-             i++) {
-            boolean value =
-                    buffer.readBoolean();
-
-            if (i < occupied.length) {
-                occupied[i] =
-                        value;
-            }
-        }
-
-        return new F35ShipSilhouette(
-                width,
-                height,
-                anchorX,
-                anchorY,
-                sourceWidth,
-                sourceLength,
-                occupied
-        );
+        boolean known=buffer.readBoolean();String status=buffer.readUtf(32);
+        int total=bounded(buffer.readVarInt(),0,32768),lost=bounded(buffer.readVarInt(),0,total);
+        long lastLoss=buffer.readLong(),observed=buffer.readLong();
+        int count=bounded(buffer.readVarInt(),0,MAX_GRID_CELLS);
+        if((known&&(!available||count!=width*height))||(!known&&count!=0))throw new IllegalArgumentException("Invalid F-35 hull damage shape");
+        int[] expected=new int[count],missing=new int[count],health=new int[count];
+        for(int i=0;i<count;i++){expected[i]=bounded(buffer.readVarInt(),0,32768);missing[i]=bounded(buffer.readVarInt(),0,expected[i]);health[i]=bounded(buffer.readVarInt(),0,1000);}
+        var damage=new com.k1ngtle.vsia.cockpit.detection.F35HullDamage(known,status,total,lost,lastLoss,observed,expected,missing,health);
+        return new F35ShipSilhouette(width,height,ax,ay,sw,sl,occupied,damage);
     }
+    private static int bounded(int value,int min,int max){if(value<min||value>max)throw new IllegalArgumentException("Invalid F-35 hull packet value");return value;}
 
     private static void writeVec3(
             FriendlyByteBuf buffer,

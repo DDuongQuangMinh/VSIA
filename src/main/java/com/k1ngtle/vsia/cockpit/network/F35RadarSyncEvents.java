@@ -47,4 +47,24 @@ public final class F35RadarSyncEvents {
     }
     @SubscribeEvent public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event){F35DetectionPreferences.clear(event.getEntity().getUUID());}
     @SubscribeEvent public static void onServerStopped(ServerStoppedEvent event){MEMORIES.clear();LAST_USED.clear();}
+    @SubscribeEvent public static void onCommands(net.minecraftforge.event.RegisterCommandsEvent event){
+        event.getDispatcher().register(net.minecraft.commands.Commands.literal("f35hull")
+                .then(net.minecraft.commands.Commands.literal("inspect").executes(ctx->{
+                    ServerPlayer player=ctx.getSource().getPlayerOrException();
+                    var hit=player.pick(16.0,0.0F,false);
+                    if(!(hit instanceof net.minecraft.world.phys.BlockHitResult block)){ctx.getSource().sendFailure(net.minecraft.network.chat.Component.literal("Look at a hull block within 16 blocks."));return 0;}
+                    String info=F35BlockHealthEvents.inspect(player.serverLevel(),block.getBlockPos());
+                    ctx.getSource().sendSuccess(()->net.minecraft.network.chat.Component.literal(info),false);return 1;
+                }))
+                .then(net.minecraft.commands.Commands.literal("baseline")
+                .then(net.minecraft.commands.Commands.literal("confirm").executes(ctx->{
+                    ServerPlayer player=ctx.getSource().getPlayerOrException();
+                    var cockpit=F35SeatController.cockpitFor(player);
+                    if(cockpit==null){ctx.getSource().sendFailure(net.minecraft.network.chat.Component.literal("Sit in the cockpit whose reference hull you want to record."));return 0;}
+                    var plan=F35ShipSilhouetteScanner.scan(cockpit,true);
+                    if(!plan.damage().known()){ctx.getSource().sendFailure(net.minecraft.network.chat.Component.literal("Reference not changed: "+plan.damage().status()));return 0;}
+                    ctx.getSource().sendSuccess(()->net.minecraft.network.chat.Component.literal("This cockpit's reference hull recorded: "+plan.damage().baselineBlocks()+" blocks. Existing losses are now the reference; this does not repair the ship."),false);
+                    return 1;
+                }))));
+    }
 }

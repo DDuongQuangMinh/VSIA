@@ -680,73 +680,24 @@ public final class F35PanoramicDisplayRenderer {
                 stores
         );
 
-        canvas.text(
-                silhouette.available()
-                        ? "SHIP SCAN "
-                        + silhouette.sourceWidthBlocks()
-                        + "X"
-                        + silhouette.sourceLengthBlocks()
-                        : "SHIP SCAN WAIT",
-                54.0F,
-                306.0F,
-                0.72F,
-                silhouette.available()
-                        ? F35DisplayPalette.GREEN
-                        : F35DisplayPalette.DIM
-        );
+        var damage=silhouette.damage();
+        canvas.text(silhouette.available()?"MAG INTACT / AMB LOSS / RED GONE":"REFERENCE ONLY / SCAN WAIT",
+                6.0F,291.0F,0.62F,silhouette.available()?F35DisplayPalette.DIM:F35DisplayPalette.AMBER);
+        canvas.text(damage.known()?"STRUCT "+format0(damage.retainedPercent())+"%  LOST "+damage.missingBlocks()+"/"+damage.baselineBlocks():
+                "STRUCT UNKNOWN: "+damage.status(),6.0F,304.0F,0.70F,
+                !damage.known()?F35DisplayPalette.DIM:damage.missingBlocks()==0?F35DisplayPalette.GREEN:F35DisplayPalette.AMBER);
+        canvas.text("HP LEFT "+damage.zones(silhouette.width(),silhouette.height()),6.0F,316.0F,0.65F,
+                F35DisplayPalette.AMBER);
+        canvas.text("NEW BLOCK HP MODEL  LOSS "+(damage.lossAgeSeconds()<0?"--":damage.lossAgeSeconds()+"S"),
+                6.0F,329.0F,0.62F,F35DisplayPalette.DIM);
     }
 
     private void renderScannedShipSilhouette(
             F35DisplayCanvas canvas,
             F35ShipSilhouette silhouette
     ) {
-        float areaX =
-                64.0F;
-
-        float areaY =
-                132.0F;
-
-        float areaWidth =
-                88.0F;
-
-        float areaHeight =
-                152.0F;
-
-        float cellScale =
-                Math.min(
-                        areaWidth
-                                / Math.max(
-                                1,
-                                silhouette.width()
-                        ),
-                        areaHeight
-                                / Math.max(
-                                1,
-                                silhouette.height()
-                        )
-                );
-
-        float drawWidth =
-                silhouette.width()
-                        * cellScale;
-
-        float drawHeight =
-                silhouette.height()
-                        * cellScale;
-
-        float originX =
-                areaX
-                        + (
-                        areaWidth
-                                - drawWidth
-                ) / 2.0F;
-
-        float originY =
-                areaY
-                        + (
-                        areaHeight
-                                - drawHeight
-                ) / 2.0F;
+        F35ShipPlanLayout layout=F35ShipPlanLayout.fit(silhouette,DIVIDER_1/2.0F-44.0F,132.0F,88.0F,152.0F);
+        float originX=layout.originX(),originY=layout.originY(),cellWidth=layout.cellWidth(),cellHeight=layout.cellHeight();
 
         int outline =
                 F35DisplayPalette.MAGENTA;
@@ -767,20 +718,29 @@ public final class F35PanoramicDisplayRenderer {
                 float left =
                         originX
                                 + x
-                                * cellScale;
+                                * cellWidth;
 
                 float top =
                         originY
                                 + y
-                                * cellScale;
+                                * cellHeight;
 
                 float right =
                         left
-                                + cellScale;
+                                + cellWidth;
 
                 float bottom =
                         top
-                                + cellScale;
+                                + cellHeight;
+
+                int missing=silhouette.damage().missingAt(y*silhouette.width()+x);
+                if(silhouette.damage().damagedAt(y*silhouette.width()+x)){
+                    boolean destroyed=silhouette.damage().cellRetainedPercent(y*silhouette.width()+x)==0.0;
+                    int damageColor=destroyed?F35DisplayPalette.RED:F35DisplayPalette.AMBER;
+                    canvas.rect(left,top,cellWidth,cellHeight,damageColor);
+                    if(destroyed){canvas.line(left,top,right,bottom,damageColor);canvas.line(right,top,left,bottom,damageColor);}
+                    continue;
+                }
 
                 if (!silhouette.occupied(
                         x,
@@ -843,14 +803,14 @@ public final class F35PanoramicDisplayRenderer {
                             + (
                             silhouette.anchorX()
                                     + 0.5F
-                    ) * cellScale;
+                    ) * cellWidth;
 
             float anchorY =
                     originY
                             + (
                             silhouette.anchorY()
                                     + 0.5F
-                    ) * cellScale;
+                    ) * cellHeight;
 
             canvas.cross(
                     anchorX,
@@ -865,13 +825,13 @@ public final class F35PanoramicDisplayRenderer {
             F35DisplayCanvas canvas
     ) {
         float cx =
-                108.0F;
+                DIVIDER_1 / 2.0F;
 
         float cy =
                 205.0F;
 
         int magenta =
-                F35DisplayPalette.MAGENTA;
+                F35DisplayPalette.DIM;
 
         canvas.line(
                 cx,
