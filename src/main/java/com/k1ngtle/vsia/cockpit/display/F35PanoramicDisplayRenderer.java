@@ -40,6 +40,21 @@ public final class F35PanoramicDisplayRenderer {
                     "HH:mm:ss"
             );
 
+    private String cachedLayout="";
+    private com.k1ngtle.vsia.cockpit.program.DisplayDesign cachedDesign;
+    public void renderCustom(PoseStack pose,MultiBufferSource buffers,F35DisplayState state,String layout,float width,float height){
+        if(!layout.equals(cachedLayout)){cachedLayout=layout;try{cachedDesign=com.k1ngtle.vsia.cockpit.program.DisplayDesign.parse(layout);}catch(Exception e){cachedDesign=null;}}
+        if(cachedDesign==null){renderStatus(pose,buffers,"NO VALID CUSTOM DESIGN","PROGRAM DRIVE WITH LAPTOP",width,height);return;}
+        float scale=Math.min(width/VIRTUAL_WIDTH,height/VIRTUAL_HEIGHT)*F35DisplayClientConfig.displayScale();
+        pose.pushPose();pose.translate(-VIRTUAL_WIDTH*scale/2,VIRTUAL_HEIGHT*scale/2,-.0008f);pose.scale(scale,-scale,scale);
+        F35DisplayCanvas canvas=new F35DisplayCanvas(pose,buffers);
+        com.k1ngtle.vsia.cockpit.client.DisplayDesignPainter.paint(new com.k1ngtle.vsia.cockpit.client.DisplayDesignPainter.Draw(){
+            public void line(float a,float b,float c,float d,int color){canvas.line(a,b,c,d,color);}
+            public void text(String text,float x,float y,float size,int color){canvas.text(text,x,y,size,color);}
+            public void clip(float x,float y,float w,float h){canvas.setClip(x,y,x+w,y+h);}
+        },cachedDesign,state);canvas.clearClip();pose.popPose();
+    }
+
     public void render(
             PoseStack poseStack,
             MultiBufferSource buffers,

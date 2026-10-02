@@ -25,6 +25,26 @@ public class DisplayHardDriveItem extends Item {
     private static final String TAG_NAME =
             "VsiaDisplayName";
 
+    public static java.util.UUID driveId(ItemStack stack) {
+        CompoundTag tag=stack.getTag();return tag!=null&&tag.hasUUID("VsiaDriveId")?tag.getUUID("VsiaDriveId"):null;
+    }
+    public static java.util.UUID ensureDriveId(ItemStack stack) {
+        if(!isDisplayDrive(stack))throw new IllegalArgumentException("Not a display drive");
+        java.util.UUID id=driveId(stack);if(id==null){id=java.util.UUID.randomUUID();stack.getOrCreateTag().putUUID("VsiaDriveId",id);}return id;
+    }
+    public static long revision(ItemStack stack){return stack.getTag()==null?0:stack.getTag().getLong("VsiaDriveRevision");}
+    public static String layout(ItemStack stack){return stack.getTag()==null?"":stack.getTag().getString("VsiaDisplayLayout");}
+    public static String language(ItemStack stack){return stack.getTag()==null?"PYTHON":stack.getTag().getString("VsiaDisplayLanguage");}
+    public static boolean writable(ItemStack stack){return isDisplayDrive(stack)&&!((DisplayHardDriveItem)stack.getItem()).factoryProgrammed();}
+    private static void changed(ItemStack stack){stack.getOrCreateTag().putLong("VsiaDriveRevision",revision(stack)+1);}
+    public static void writeDesign(ItemStack stack,String name,String layout,String language,String source){
+        if(!writable(stack))throw new IllegalArgumentException("Read-only drive");
+        String validated=com.k1ngtle.vsia.cockpit.program.DisplayDesign.parse(layout).json();
+        com.k1ngtle.vsia.cockpit.program.DisplayCodeLanguage.valueOf(language);
+        if(name==null||name.length()>48||source==null||source.length()>24576)throw new IllegalArgumentException("Program too large");
+        setCustomSource(stack,name,source);CompoundTag tag=stack.getOrCreateTag();tag.putString("VsiaDisplayLayout",validated);tag.putString("VsiaDisplayLanguage",language);changed(stack);
+    }
+
     private final String factoryProgramId;
 
     public DisplayHardDriveItem(
@@ -91,7 +111,7 @@ public class DisplayHardDriveItem extends Item {
             ItemStack stack,
             String programId
     ) {
-        if (!isDisplayDrive(stack)) {
+        if (!writable(stack)) {
             return;
         }
 
@@ -102,12 +122,13 @@ public class DisplayHardDriveItem extends Item {
                                 ? ""
                                 : programId
                 );
+        changed(stack);
     }
 
     public static void clearProgram(
             ItemStack stack
     ) {
-        if (!isDisplayDrive(stack)) {
+        if (!writable(stack)) {
             return;
         }
 
@@ -126,6 +147,7 @@ public class DisplayHardDriveItem extends Item {
         tag.remove(
                 TAG_NAME
         );
+        tag.remove("VsiaDisplayLayout");tag.remove("VsiaDisplayLanguage");changed(stack);
     }
 
     public static String source(
@@ -148,7 +170,7 @@ public class DisplayHardDriveItem extends Item {
             String name,
             String source
     ) {
-        if (!isDisplayDrive(stack)) {
+        if (!writable(stack)) {
             return;
         }
 

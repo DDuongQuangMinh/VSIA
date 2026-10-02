@@ -1,4 +1,6 @@
 package com.k1ngtle.vsia.network;
+import com.k1ngtle.vsia.cockpit.network.S2CDisplayProgramPacket;
+import com.k1ngtle.vsia.cockpit.network.C2SDisplayProgramPacket;
 import com.k1ngtle.vsia.cockpit.network.C2SF35DisplayActionPacket;
 
 import com.k1ngtle.vsia.cockpit.network.C2SF35DetectionFilterPacket;
@@ -49,9 +51,9 @@ public class VsiaNetwork {
     public static void register() {
         SimpleChannel net = NetworkRegistry.ChannelBuilder
                 .named(new ResourceLocation(Vsia.MOD_ID, "messages"))
-                .networkProtocolVersion(() -> "f35-2.6.9")
-                .clientAcceptedVersions("f35-2.6.9"::equals)
-                .serverAcceptedVersions("f35-2.6.9"::equals)
+                .networkProtocolVersion(() -> "f35-2.7.0")
+                .clientAcceptedVersions("f35-2.7.0"::equals)
+                .serverAcceptedVersions("f35-2.7.0"::equals)
                 .simpleChannel();
 
         INSTANCE = net;
@@ -344,7 +346,7 @@ public class VsiaNetwork {
                 .encoder(S2CF35DetectionSnapshotPacket::toBytes)
                 .consumerMainThread(S2CF35DetectionSnapshotPacket::handle)
                 .add();
-        // BEGIN F35 COCKPIT v2.6.9
+        // BEGIN F35 COCKPIT v2.7.0
         net.messageBuilder(C2SF35IffRequestPacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
                 .decoder(C2SF35IffRequestPacket::new).encoder(C2SF35IffRequestPacket::toBytes)
                 .consumerMainThread(C2SF35IffRequestPacket::handle).add();
@@ -357,7 +359,13 @@ public class VsiaNetwork {
         net.messageBuilder(C2SF35DisplayActionPacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
                 .decoder(C2SF35DisplayActionPacket::new).encoder(C2SF35DisplayActionPacket::toBytes)
                 .consumerMainThread(C2SF35DisplayActionPacket::handle).add();
-        // END F35 COCKPIT v2.6.9
+        net.messageBuilder(C2SDisplayProgramPacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
+                .decoder(C2SDisplayProgramPacket::new).encoder(C2SDisplayProgramPacket::toBytes)
+                .consumerMainThread(C2SDisplayProgramPacket::handle).add();
+        net.messageBuilder(S2CDisplayProgramPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(S2CDisplayProgramPacket::new).encoder(S2CDisplayProgramPacket::toBytes)
+                .consumerMainThread(S2CDisplayProgramPacket::handle).add();
+        // END F35 COCKPIT v2.7.0
     }
 
     public static <MSG> void sendToServer(MSG message) {

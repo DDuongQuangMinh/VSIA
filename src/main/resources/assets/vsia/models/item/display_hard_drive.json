@@ -1,5 +1,6 @@
 {
-  "parent": "minecraft:item/handheld",
+  "parent": "minecraft:block/block",
+  "gui_light": "front",
   "textures": {
     "body": "minecraft:block/black_concrete",
     "shell": "minecraft:block/polished_deepslate",

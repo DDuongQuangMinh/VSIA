@@ -1,5 +1,6 @@
 {
-  "parent": "minecraft:item/handheld",
+  "parent": "minecraft:block/block",
+  "gui_light": "front",
   "textures": {
     "case": "minecraft:block/gray_concrete",
     "deck": "minecraft:block/black_concrete",
