@@ -173,14 +173,7 @@ public final class F35CockpitSeatRenderer
             } else if (DisplayHardDriveItem.PROGRAM_CUSTOM.equals(
                     programId
             )) {
-                renderDisplayStatusOnMonitorCube(
-                        poseStack,
-                        bufferSource,
-                        bone,
-                        monitorCube,
-                        "CUSTOM DISPLAY DRIVE",
-                        "SOURCE STORED - RUNTIME NEXT PHASE"
-                );
+                renderPanoramicDisplayOnMonitorCube(poseStack,bufferSource,animatable,bone,monitorCube,partialTick);
             } else {
                 renderDisplayStatusOnMonitorCube(
                         poseStack,
@@ -313,7 +306,9 @@ public final class F35CockpitSeatRenderer
                         partialTick
                 );
 
-        panoramicRenderer.render(
+        if(DisplayHardDriveItem.PROGRAM_CUSTOM.equals(DisplayHardDriveItem.programId(cockpit.displayDrive()))) {
+            panoramicRenderer.renderCustom(poseStack,bufferSource,state,DisplayHardDriveItem.layout(cockpit.displayDrive()),surface.width(),surface.height());
+        } else panoramicRenderer.render(
                 poseStack,
                 bufferSource,
                 state,

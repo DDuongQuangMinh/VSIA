@@ -20,16 +20,21 @@ public final class DisplayDesignPainter {
     public static int color(String theme){return switch(theme){case "GREEN"->GREEN;case "AMBER"->AMBER;case "WHITE"->0xffeeeeee;default->0xff7fdddd;};}
     public static double value(String binding,F35DisplayState s){
         if(s==null)return switch(binding){case "SPEED"->185;case "ALTITUDE"->1200;case "HEADING"->90;case "FUEL","STRUCTURE"->82;case "FUEL_KG"->1400;case "CONTACT_COUNT"->3;case "LOCK_RANGE"->850;default->0;};
+        if(!s.ownship().shipDetected())return Double.NaN;
         return switch(binding){case "SPEED"->s.ownship().speedMps();case "ALTITUDE"->s.ownship().altitudeMeters();case "HEADING"->s.ownship().headingDeg();case "PITCH"->s.ownship().pitchDeg();case "ROLL"->s.ownship().rollDeg();case "VSPEED"->s.ownship().verticalSpeedMps();case "FUEL"->s.stores().fuelPercent();case "FUEL_KG"->s.stores().fuelKg();case "CONTACT_COUNT"->s.totalContactCount();case "STRUCTURE"->s.shipSilhouette().damage().retainedPercent();case "LOCK_RANGE"->{Vec3 p=lockedPosition(s);yield p==null?Double.NaN:p.distanceTo(s.ownship().position());}default->Double.NaN;};
     }
     private static String num(double v){return Double.isFinite(v)?String.format(Locale.ROOT,"%.1f",v):"NO DATA";}
     private static String shortText(String s,int n){return s==null?"":s.substring(0,Math.min(n,s.length()));}
     public static void paint(Draw d,DisplayDesign design,F35DisplayState state){
-        if(state!=null&&!state.ownship().shipDetected()){d.clip(0,0,860,343);d.text("NO SHIP DETECTED",290,156,1.5f,DIM);return;}
+        boolean noShip=state!=null&&!state.ownship().shipDetected();
         int c=color(design.theme());for(DisplayDesign.Widget w:design.widgets()){
             d.clip(w.x(),w.y(),w.w(),w.h());float x=w.x()+8,y=w.y()+8,bw=w.w()-16,bh=w.h()-16;
             if(w.variant()!=4){d.rect(w.x()+1,w.y()+1,w.w()-2,w.h()-2,w.variant()==2?c:DIM);if(w.variant()==3){d.line(x,y+16,x+bw,y+16,c);d.rect(x,y,bw,bh,DIM);}}
             if(!w.type().equals("LABEL"))d.text(w.text().isEmpty()?w.type():w.text(),x,y,.75f,c);
+            // A placed cockpit still displays its layout, never preview or stale aircraft data.
+            if(noShip&&!w.type().equals("LABEL")&&!w.type().equals("PANEL")&&!w.type().equals("CLOCK")){
+                d.text("NO SHIP DETECTED",x,y+Math.min(26,Math.max(0,bh-10)),.7f,DIM);continue;
+            }
             switch(w.type()) {
                 case "LABEL" -> d.text(w.text().isEmpty()?"LABEL":w.text(),x,y,w.variant()==1?1.6f:1,c);
                 case "PANEL" -> {if(w.variant()==1)for(int k=32;k<w.h();k+=24)d.line(x,w.y()+k,x+bw,w.y()+k,DIM);}
