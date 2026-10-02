@@ -77,12 +77,18 @@ public final class DisplayLaptopScreen extends Screen {
     @Override public void render(GuiGraphics g,int mx,int my,float partial){renderBackground(g);g.drawString(font,"DISPLAY DRIVE "+snapshot.driveId().toString().substring(0,8).toUpperCase()+" / REV "+snapshot.revision()+(snapshot.readOnly()?" / READ ONLY":""),8,8,0x88dddd);
         if(compact()){int row=0;for(var line:font.split(Component.literal("Editor needs at least 380 x 260 GUI pixels. Reduce Minecraft's GUI Scale in Video Settings, then reopen the laptop. Unsaved drafts are retained while resizing this screen."),width-16))g.drawString(font,line,8,76+row++*11,0xdddddd);super.render(g,mx,my,partial);return;}
         if(!coding){g.fill((int)canvasX,(int)canvasY,(int)(canvasX+860*canvasScale),(int)(canvasY+343*canvasScale),0xff050a0a);
+            // GuiGraphics scissors form a stack. Own one entry and release it before widgets render.
+            try(DisplayGuiClipScope clips=new DisplayGuiClipScope(new DisplayGuiClipScope.Backend(){
+                public void push(int left,int top,int right,int bottom){g.enableScissor(left,top,right,bottom);}
+                public void pop(){g.disableScissor();}
+            })){
             DisplayDesignPainter.Draw draw=new DisplayDesignPainter.Draw(){
                 public void line(float x1,float y1,float x2,float y2,int color){int steps=Math.max(1,(int)Math.ceil(Math.max(Math.abs(x2-x1),Math.abs(y2-y1))*canvasScale));for(int i=0;i<=steps;i++){float t=i/(float)steps;int x=Math.round(canvasX+(x1+(x2-x1)*t)*canvasScale),y=Math.round(canvasY+(y1+(y2-y1)*t)*canvasScale);g.fill(x,y,x+1,y+1,color);}}
-                public void text(String text,float x,float y,float scale,int color){g.pose().pushPose();g.pose().translate(canvasX+x*canvasScale,canvasY+y*canvasScale,0);float s=scale*canvasScale;g.pose().scale(s,s,s);g.drawString(font,text,0,0,color,false);g.pose().popPose();}
-                public void clip(float x,float y,float w,float h){g.disableScissor();g.enableScissor((int)(canvasX+x*canvasScale),(int)(canvasY+y*canvasScale),(int)(canvasX+(x+w)*canvasScale),(int)(canvasY+(y+h)*canvasScale));}
+                public void text(String text,float x,float y,float scale,int color){g.pose().pushPose();try{g.pose().translate(canvasX+x*canvasScale,canvasY+y*canvasScale,0);float s=scale*canvasScale;g.pose().scale(s,s,s);g.drawString(font,text,0,0,color,false);}finally{g.pose().popPose();}}
+                public void clip(float x,float y,float w,float h){clips.replace((int)(canvasX+x*canvasScale),(int)(canvasY+y*canvasScale),(int)(canvasX+(x+w)*canvasScale),(int)(canvasY+(y+h)*canvasScale));}
             };DisplayDesignPainter.paint(draw,design(),null);
-            if(selected>=0&&selected<widgets.size()){var w=widgets.get(selected);draw.rect(w.x(),w.y(),w.w(),w.h(),0xffffffff);draw.rect(w.x()+w.w()-16,w.y()+w.h()-16,16,16,0xffffffff);}g.disableScissor();
+            if(selected>=0&&selected<widgets.size()){var w=widgets.get(selected);draw.rect(w.x(),w.y(),w.w(),w.h(),0xffffffff);draw.rect(w.x()+w.w()-16,w.y()+w.h()-16,16,16,0xffffffff);}
+            }
         }
         g.drawString(font,coding?"REAL EXECUTION on Compile + write. stdout = scene JSON; errors leave drive unchanged.":"PREVIEW / SAMPLE DATA - drag widgets; drag lower-right corner to resize.",8,height-52,0x999999);
         var lines=font.split(Component.literal(status),Math.max(20,width-16));for(int i=0;i<Math.min(3,lines.size());i++)g.drawString(font,lines.get(i),8,height-38+i*10,status.startsWith("ERROR")||stale?0xff7777:0x88cccc);
