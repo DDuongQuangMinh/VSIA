@@ -36,7 +36,7 @@ public final class DisplayLaptopScreen extends Screen {
             button(8,48,116,language.label,()->{remember();language=DisplayCodeLanguage.values()[(language.ordinal()+1)%9];source=drafts.getOrDefault(language,"");rebuildWidgets();},!snapshot.readOnly());
             button(130,48,100,"Example",()->confirm("Replace this code draft with an example?",()->{source=language.example(design());rebuildWidgets();}),!snapshot.readOnly());
             button(236,48,Math.max(78,width-244),"Compile + write",()->send(1),canWrite());
-            code=new MultiLineEditBox(font,8,86,width-16,Math.max(32,height-143),Component.literal("Program must print one scene JSON to stdout"),Component.literal("Source"));code.setCharacterLimit(24576);code.setValue(source);code.setValueListener(v->source=v);code.active=!snapshot.readOnly();addRenderableWidget(code);
+            code=new MultiLineEditBox(font,8,86,width-16,Math.max(32,height-143),Component.literal("Use this language's display builder. Example shows native code; emit() finishes the layout."),Component.literal("Source"));code.setCharacterLimit(DisplayProgramLimits.SOURCE_CHARS);code.setValue(source);code.setValueListener(v->source=v);code.active=!snapshot.readOnly();addRenderableWidget(code);
         }else{
             code=null;
             button(8,48,102,DisplayDesign.PRESETS.get(preset),()->confirm("Replace the unsaved layout with the next preset?",()->{preset=(preset+1)%8;DisplayDesign d=DisplayDesign.preset(preset);widgets=new ArrayList<>(d.widgets());theme=d.theme();selected=-1;rebuildWidgets();}),!snapshot.readOnly());
@@ -50,15 +50,16 @@ public final class DisplayLaptopScreen extends Screen {
                 var w=widgets.get(selected);label=new EditBox(font,rx,110,96,18,Component.literal("Widget label"));label.setMaxLength(48);label.setValue(w.text());label.setEditable(canWrite());label.setResponder(v->{if(selected>=0&&selected<widgets.size()&&!v.chars().anyMatch(c->c<32||c==167)){var old=widgets.get(selected);widgets.set(selected,old.style(old.variant(),v,old.binding()));}});addRenderableWidget(label);
                 button(rx,132,96,"Style "+w.variant(),()->{var old=widgets.get(selected);widgets.set(selected,old.style((old.variant()+1)%5,old.text(),old.binding()));rebuildWidgets();},canWrite());
                 button(rx,154,96,w.binding(),()->{var old=widgets.get(selected);widgets.set(selected,old.style(old.variant(),old.text(),DisplayDesign.BINDINGS.get((DisplayDesign.BINDINGS.indexOf(old.binding())+1)%11)));rebuildWidgets();},canWrite());
-                if(height>=280){button(rx,176,96,"Duplicate",()->{if(widgets.size()<48){widgets.add(widgets.get(selected).move(w.x()+16,w.y()+16));selected=widgets.size()-1;rebuildWidgets();}},canWrite());button(rx,198,96,"Remove",()->{widgets.remove(selected);selected=-1;rebuildWidgets();},canWrite());}
-                else button(rx,176,96,"Remove",()->{widgets.remove(selected);selected=-1;rebuildWidgets();},canWrite());
+                button(rx,176,96,w.section()==0?"Section AUTO":"Section "+w.section(),()->{var old=widgets.get(selected);widgets.set(selected,old.inSection((old.section()+1)%7));rebuildWidgets();},canWrite());
+                if(height>=304){button(rx,198,96,"Duplicate",()->{if(widgets.size()<48){widgets.add(widgets.get(selected).move(w.x()+16,w.y()+16));selected=widgets.size()-1;rebuildWidgets();}},canWrite());button(rx,220,96,"Remove",()->{widgets.remove(selected);selected=-1;rebuildWidgets();},canWrite());}
+                else button(rx,198,96,"Remove",()->{widgets.remove(selected);selected=-1;rebuildWidgets();},canWrite());
             }else label=null;
         }
     }
     private boolean canWrite(){return !snapshot.readOnly()&&!busy&&!stale;}
     private void button(int x,int y,int w,String text,Runnable action,boolean enabled){Button b=Button.builder(Component.literal(text),v->action.run()).bounds(x,y,w,18).build();b.active=enabled;addRenderableWidget(b);}
     private void confirm(String text,Runnable action){remember();minecraft.setScreen(new ConfirmScreen(yes->{minecraft.setScreen(this);if(yes)action.run();},Component.literal(text),Component.literal("Only the selected drive will be changed.")));}
-    private void send(int action){if(!canWrite())return;remember();VsiaNetwork.sendToServer(new C2SDisplayProgramPacket(snapshot.session(),snapshot.driveId(),snapshot.revision(),action,programName,language.name(),design().json(),source));busy=true;status=action==1?"BUSY: waiting for isolated compiler...":"BUSY: waiting for server write...";rebuildWidgets();}
+    private void send(int action){if(!canWrite())return;remember();UUID upload=null;if(action==0||action==1){List<String> parts;try{parts=DisplayProgramLimits.uploadParts(source);}catch(IllegalArgumentException e){status="ERROR: "+e.getMessage();return;}upload=UUID.randomUUID();for(int i=0;i<parts.size();i++)VsiaNetwork.sendToServer(new C2SDisplaySourceChunkPacket(snapshot.session(),snapshot.driveId(),snapshot.revision(),upload,i,parts.size(),parts.get(i)));}VsiaNetwork.sendToServer(new C2SDisplayProgramPacket(snapshot.session(),snapshot.driveId(),snapshot.revision(),action,programName,language.name(),design().json(),"",upload));busy=true;status=action==1?"BUSY: waiting for isolated compiler...":"BUSY: waiting for server write...";rebuildWidgets();}
     @Override public void tick(){if(minecraft.player==null)return;if(System.nanoTime()-openedAt>=java.util.concurrent.TimeUnit.MINUTES.toNanos(5)){minecraft.player.displayClientMessage(Component.literal("Laptop session expired; reopen to continue"),true);minecraft.setScreen(null);return;}var drive=minecraft.player.getItemInHand(snapshot.hand());var other=minecraft.player.getItemInHand(snapshot.hand()==net.minecraft.world.InteractionHand.MAIN_HAND?net.minecraft.world.InteractionHand.OFF_HAND:net.minecraft.world.InteractionHand.MAIN_HAND);
         if(!snapshot.driveId().equals(DisplayHardDriveItem.driveId(drive))||!(other.getItem() instanceof DisplayLaptopItem)){minecraft.setScreen(null);return;}if(name!=null)name.tick();if(code!=null)code.tick();}
     @Override public boolean isPauseScreen(){return false;}
@@ -90,7 +91,7 @@ public final class DisplayLaptopScreen extends Screen {
             if(selected>=0&&selected<widgets.size()){var w=widgets.get(selected);draw.rect(w.x(),w.y(),w.w(),w.h(),0xffffffff);draw.rect(w.x()+w.w()-16,w.y()+w.h()-16,16,16,0xffffffff);}
             }
         }
-        g.drawString(font,coding?"REAL EXECUTION on Compile + write. stdout = scene JSON; errors leave drive unchanged.":"PREVIEW / SAMPLE DATA - drag widgets; drag lower-right corner to resize.",8,height-52,0x999999);
+        g.drawString(font,coding?"Native display-builder code / 131072 characters. Compile errors leave drive unchanged.":"PREVIEW / SAMPLE DATA - drag widgets; drag lower-right corner to resize.",8,height-52,0x999999);
         var lines=font.split(Component.literal(status),Math.max(20,width-16));for(int i=0;i<Math.min(3,lines.size());i++)g.drawString(font,lines.get(i),8,height-38+i*10,status.startsWith("ERROR")||stale?0xff7777:0x88cccc);
         super.render(g,mx,my,partial);
     }

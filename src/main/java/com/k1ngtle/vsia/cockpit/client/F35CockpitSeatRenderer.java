@@ -307,7 +307,7 @@ public final class F35CockpitSeatRenderer
                 );
 
         if(DisplayHardDriveItem.PROGRAM_CUSTOM.equals(DisplayHardDriveItem.programId(cockpit.displayDrive()))) {
-            panoramicRenderer.renderCustom(poseStack,bufferSource,state,DisplayHardDriveItem.layout(cockpit.displayDrive()),surface.width(),surface.height());
+            panoramicRenderer.renderCustom(poseStack,bufferSource,state,DisplayHardDriveItem.layout(cockpit.displayDrive()),surface.width(),surface.height(),CustomDisplayFocus.selected(cockpit.cockpitId(),DisplayHardDriveItem.driveId(cockpit.displayDrive()),DisplayHardDriveItem.revision(cockpit.displayDrive())));
         } else panoramicRenderer.render(
                 poseStack,
                 bufferSource,

@@ -19,7 +19,7 @@ public final class DisplayProgrammingServer {
     private static final Semaphore JOBS=new Semaphore(2);
     private static final ExecutorService WORKERS=Executors.newFixedThreadPool(2,r->{Thread t=new Thread(r,"VSIA display compiler");t.setDaemon(true);return t;});
     private static final class Session {
-        final UUID token=UUID.randomUUID(),drive;final InteractionHand hand;final ItemStack physical;final long expires=System.nanoTime()+TimeUnit.MINUTES.toNanos(5);long lastAction;boolean busy;
+        final UUID token=UUID.randomUUID(),drive;final InteractionHand hand;final ItemStack physical;final DisplaySourceUpload upload=new DisplaySourceUpload();final long expires=System.nanoTime()+TimeUnit.MINUTES.toNanos(5);long lastAction,lastUpload;boolean busy;
         Session(UUID drive,InteractionHand hand,ItemStack physical){this.drive=drive;this.hand=hand;this.physical=physical;}
     }
     private DisplayProgrammingServer(){}
@@ -36,7 +36,13 @@ public final class DisplayProgrammingServer {
     private static String limit(String s,int max){return s==null?"":s.substring(0,Math.min(max,s.length()));}
     private static void snapshot(ServerPlayer player,Session s,boolean open,String status){
         ItemStack drive=held(player,s);if(drive.isEmpty())return;String lang=DisplayHardDriveItem.language(drive);try{DisplayCodeLanguage.valueOf(lang);}catch(Exception e){lang="PYTHON";}
-        VsiaNetwork.sendToPlayer(player,new S2CDisplayProgramPacket(s.token,s.drive,DisplayHardDriveItem.revision(drive),s.hand,open,!DisplayHardDriveItem.writable(drive),limit(DisplayHardDriveItem.programName(drive),48),lang,limit(DisplayHardDriveItem.layout(drive),24576),limit(DisplayHardDriveItem.source(drive),24576),limit(status,2048)));
+        VsiaNetwork.sendToPlayer(player,new S2CDisplayProgramPacket(s.token,s.drive,DisplayHardDriveItem.revision(drive),s.hand,open,!DisplayHardDriveItem.writable(drive),limit(DisplayHardDriveItem.programName(drive),48),lang,limit(DisplayHardDriveItem.layout(drive),24576),limit(DisplayHardDriveItem.source(drive),DisplayProgramLimits.SOURCE_CHARS),limit(status,2048)));
+    }
+    public static void chunk(ServerPlayer player,C2SDisplaySourceChunkPacket p){
+        Session s=SESSIONS.get(player.getUUID());if(s==null||s.busy||!s.token.equals(p.session())||!s.drive.equals(p.driveId()))return;
+        ItemStack drive=held(player,s);if(drive.isEmpty()||!DisplayHardDriveItem.writable(drive)||DisplayHardDriveItem.revision(drive)!=p.revision())return;
+        long now=System.currentTimeMillis();if(p.index()==0){if(now-s.lastUpload<400)return;s.lastUpload=now;}
+        try{s.upload.append(p.upload(),p.index(),p.count(),p.part(),now);}catch(IllegalArgumentException e){s.upload.clear();}
     }
     public static void action(ServerPlayer player,C2SDisplayProgramPacket p){
         Session s=SESSIONS.get(player.getUUID());if(s==null||!s.token.equals(p.session())||!s.drive.equals(p.driveId()))return;
@@ -46,21 +52,24 @@ public final class DisplayProgrammingServer {
         long now=System.nanoTime();if(s.busy||now-s.lastAction<TimeUnit.MILLISECONDS.toNanos(400)){snapshot(player,s,false,s.busy?"BUSY: waiting for compiler":"Wait briefly before another write");return;}s.lastAction=now;
         try {
             DisplayCodeLanguage.valueOf(p.language());if(p.name().chars().anyMatch(c->c<32||c==167))throw new IllegalArgumentException("Invalid program name");
+            String source=p.upload()==null?p.source():s.upload.take(p.upload(),System.currentTimeMillis());
+            if(p.upload()!=null&&!p.source().isEmpty())throw new IllegalArgumentException("Ambiguous source upload");
+            DisplayProgramLimits.validate(source);
             if(p.action()==1){
                 if(!JOBS.tryAcquire()){snapshot(player,s,false,"Compiler busy: try again shortly");return;}s.busy=true;snapshot(player,s,false,"BUSY: compiling in isolated service...");
                 var server=player.getServer();UUID owner=player.getUUID();long revision=p.revision();
                 WORKERS.execute(()->{
-                    DisplayDesign result=null;String error=null;try{result=DisplayCompilerClient.compile(p.language(),p.source());}catch(Exception e){error=limit(e.getMessage(),1800);}finally{JOBS.release();}
+                    DisplayDesign result=null;String error=null;try{result=DisplayCompilerClient.compile(p.language(),source);}catch(Exception e){error=limit(e.getMessage(),1800);}finally{JOBS.release();}
                     DisplayDesign compiled=result;String failure=error;
                     if(server!=null&&server.isRunning())server.execute(()->{s.busy=false;ServerPlayer live=server.getPlayerList().getPlayer(owner);if(live==null||SESSIONS.get(owner)!=s)return;ItemStack current=held(live,s);if(current.isEmpty())return;
                         if(!matches(s.drive,revision,DisplayHardDriveItem.driveId(current),DisplayHardDriveItem.revision(current))){snapshot(live,s,false,"STALE: compile result discarded; drive changed");return;}
                         if(compiled==null){snapshot(live,s,false,"ERROR: "+failure);return;}
-                        DisplayHardDriveItem.writeDesign(current,p.name(),compiled.json(),p.language(),p.source());live.getInventory().setChanged();live.inventoryMenu.broadcastChanges();snapshot(live,s,false,"OK: real "+p.language()+" execution completed; design written to this drive");
+                        DisplayHardDriveItem.writeDesign(current,p.name(),compiled.json(),p.language(),source);live.getInventory().setChanged();live.inventoryMenu.broadcastChanges();snapshot(live,s,false,"OK: real "+p.language()+" execution completed; design written to this drive");
                     });
                 });return;
             }
             switch(p.action()) {
-                case 0 -> DisplayHardDriveItem.writeDesign(drive,p.name(),p.layout(),p.language(),p.source());
+                case 0 -> DisplayHardDriveItem.writeDesign(drive,p.name(),p.layout(),p.language(),source);
                 case 2 -> {DisplayHardDriveItem.clearProgram(drive);DisplayHardDriveItem.setProgramId(drive,DisplayHardDriveItem.PROGRAM_F35_CREATE);}
                 case 3 -> DisplayHardDriveItem.clearProgram(drive);
                 default -> throw new IllegalArgumentException("Unknown editor action");

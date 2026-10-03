@@ -41,7 +41,8 @@ public class DisplayHardDriveItem extends Item {
         if(!writable(stack))throw new IllegalArgumentException("Read-only drive");
         String validated=com.k1ngtle.vsia.cockpit.program.DisplayDesign.parse(layout).json();
         com.k1ngtle.vsia.cockpit.program.DisplayCodeLanguage.valueOf(language);
-        if(name==null||name.length()>48||source==null||source.length()>24576)throw new IllegalArgumentException("Program too large");
+        if(name==null||name.length()>48)throw new IllegalArgumentException("Program name too large");
+        com.k1ngtle.vsia.cockpit.program.DisplayProgramLimits.validate(source);
         setCustomSource(stack,name,source);CompoundTag tag=stack.getOrCreateTag();tag.putString("VsiaDisplayLayout",validated);tag.putString("VsiaDisplayLanguage",language);changed(stack);
     }
 
@@ -148,6 +149,7 @@ public class DisplayHardDriveItem extends Item {
                 TAG_NAME
         );
         tag.remove("VsiaDisplayLayout");tag.remove("VsiaDisplayLanguage");changed(stack);
+        com.k1ngtle.vsia.cockpit.program.DisplayProgramLimits.clear(tag);
     }
 
     public static String source(
@@ -160,9 +162,7 @@ public class DisplayHardDriveItem extends Item {
             return "";
         }
 
-        return tag.getString(
-                TAG_SOURCE
-        );
+        return com.k1ngtle.vsia.cockpit.program.DisplayProgramLimits.read(tag);
     }
 
     public static void setCustomSource(
@@ -173,6 +173,7 @@ public class DisplayHardDriveItem extends Item {
         if (!writable(stack)) {
             return;
         }
+        com.k1ngtle.vsia.cockpit.program.DisplayProgramLimits.validate(source==null?"":source);
 
         CompoundTag tag =
                 stack.getOrCreateTag();
@@ -189,12 +190,7 @@ public class DisplayHardDriveItem extends Item {
                         : name
         );
 
-        tag.putString(
-                TAG_SOURCE,
-                source == null
-                        ? ""
-                        : source
-        );
+        com.k1ngtle.vsia.cockpit.program.DisplayProgramLimits.store(tag,source==null?"":source);
     }
 
     public static String programName(

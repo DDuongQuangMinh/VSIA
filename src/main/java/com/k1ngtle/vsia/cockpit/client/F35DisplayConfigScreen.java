@@ -292,17 +292,13 @@ public final class F35DisplayConfigScreen
     ) {
         if (!bindCockpit()) return false;
         int section =
-                F35DisplaySectionScreen.sectionForKey(
+                com.k1ngtle.vsia.cockpit.program.CustomDisplaySections.key(
                         keyCode
                 );
 
         if (section > 0) {
             if (minecraft != null) {
-                minecraft.setScreen(
-                        new F35DisplaySectionScreen(
-                                section
-                        )
-                );
+                CustomDisplayScreenRouter.open(section);
             }
             return true;
         }

@@ -74,6 +74,22 @@ public final class DisplayDesignPainter {
         if(w.type().equals("GAUGE")){float r=Math.max(4,Math.min(width,height-50)/2),cx=x+width/2,cy=y+height-r;d.circle(cx,cy,r,c);double a=Math.toRadians(135+270*f);d.line(cx,cy,cx+(float)Math.cos(a)*r,cy+(float)Math.sin(a)*r,Double.isFinite(v)?AMBER:DIM);}
     }
     private static boolean friendly(boolean auth,String affiliation){return auth&&affiliation!=null&&affiliation.startsWith("FRIEND");}
+    public static void focus(Draw d,DisplayDesign design,int section){if(section<1||section>6)return;for(int i=0;i<design.widgets().size();i++){var w=design.widgets().get(i);if(com.k1ngtle.vsia.cockpit.program.CustomDisplaySections.section(w,i)==section)d.rect(w.x()+2,w.y()+2,w.w()-4,w.h()-4,0xffffffff);}}
+    public record Pick(java.util.UUID id,boolean radar){}
+    private record Point(float x,float y){}
+    private static Point project(DisplayDesign.Widget w,F35DisplayState state,Vec3 position){
+        boolean sector=w.type().equals("RADARFORWARD");float cx=w.x()+w.w()/2f,cy=sector?w.y()+w.h()-22:w.y()+w.h()/2f+8,r=Math.max(1,Math.min(w.w()/2f-18,sector?w.h()-44:w.h()/2f-24));double range=Math.max(1,state.radarRangeMeters());
+        Vec3 delta=position.subtract(state.ownship().position());double heading=Math.toRadians(state.ownship().headingDeg());double right=-delta.x*Math.cos(heading)-delta.z*Math.sin(heading),fwd=-delta.x*Math.sin(heading)+delta.z*Math.cos(heading);
+        if(Math.hypot(right,fwd)>range||(sector&&fwd<0))return null;return new Point(cx+(float)(right/range)*r,cy-(float)(fwd/range)*r);
+    }
+    public static Pick pick(DisplayDesign design,F35DisplayState state,float x,float y,float tolerance){
+        if(state==null||!state.ownship().shipDetected())return null;
+        for(int i=design.widgets().size()-1;i>=0;i--){var w=design.widgets().get(i);if(x<w.x()||x>w.x()+w.w()||y<w.y()||y>w.y()+w.h())continue;
+            if(w.type().equals("CONTACTS")){int row=(int)Math.floor((y-w.y()-28)/16),limit=Math.max(0,(w.h()-38)/16);if(row<0||row>=limit)return null;if(row<state.tracks().size())return new Pick(state.tracks().get(row).trackId(),true);row-=state.tracks().size();return row<state.detections().size()?new Pick(state.detections().get(row).contactId(),false):null;}
+            if(!w.type().equals("RADAR360")&&!w.type().equals("RADARFORWARD"))return null;
+            Pick hit=null;double best=tolerance*tolerance;for(var t:state.tracks()){Point p=project(w,state,t.position());if(p!=null){double distance=(p.x-x)*(p.x-x)+(p.y-y)*(p.y-y);if(distance<=best){best=distance;hit=new Pick(t.trackId(),true);}}}for(var t:state.detections()){Point p=project(w,state,t.position());if(p!=null){double distance=(p.x-x)*(p.x-x)+(p.y-y)*(p.y-y);if(distance<=best){best=distance;hit=new Pick(t.contactId(),false);}}}return hit;
+        }return null;
+    }
     private static void symbol(Draw d,float x,float y,String id,boolean friend,boolean locked,int variant){int c=friend?GREEN:AMBER;if(friend||variant==2)d.rect(x-4,y-4,8,8,c);else{d.line(x,y-5,x+5,y,c);d.line(x+5,y,x,y+5,c);d.line(x,y+5,x-5,y,c);d.line(x-5,y,x,y-5,c);}if(locked)d.rect(x-8,y-8,16,16,0xffffffff);if(variant!=4)d.text(id,x+7,y-5,.65f,c);}
     private static void radar(Draw d,DisplayDesign.Widget w,F35DisplayState state,int c){
         boolean forward=w.type().equals("RADARFORWARD");float cx=w.x()+w.w()/2f,cy=forward?w.y()+w.h()-22:w.y()+w.h()/2f+8;
@@ -86,10 +102,7 @@ public final class DisplayDesignPainter {
         for(F35DetectionContact t:state.detections())plot(d,w,state,t.position(),t.shortId(),friendly(t.iffAuthenticated(),t.iffStatus()),F35TargetLockClient.isDetectionLocked(t.contactId()),cx,cy,radius,range,forward);
     }
     private static void plot(Draw d,DisplayDesign.Widget w,F35DisplayState state,Vec3 position,String id,boolean friend,boolean locked,float cx,float cy,float r,double range,boolean sector){
-        Vec3 delta=position.subtract(state.ownship().position());double heading=Math.toRadians(state.ownship().headingDeg());
-        double right=-delta.x*Math.cos(heading)-delta.z*Math.sin(heading),fwd=-delta.x*Math.sin(heading)+delta.z*Math.cos(heading);
-        if(Math.hypot(right,fwd)>range||(sector&&fwd<0))return;
-        symbol(d,cx+(float)(right/range)*r,cy-(float)(fwd/range)*r,id,friend,locked,w.variant());
+        Point p=project(w,state,position);if(p!=null)symbol(d,p.x,p.y,id,friend,locked,w.variant());
     }
     private static void contacts(Draw d,DisplayDesign.Widget w,F35DisplayState state,int c,float x,float y,float height){
         if(state==null){d.text("PREVIEW CONTACT LIST",x,y+28,.8f,DIM);return;}

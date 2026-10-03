@@ -23,7 +23,7 @@ public final class DisplayCompilerClient {
     private DisplayCompilerClient(){}
     public static DisplayDesign compile(String language,String source) throws Exception {
         DisplayCodeLanguage.valueOf(language);
-        if(source.length()>24576||source.getBytes(StandardCharsets.UTF_8).length>49152)throw new IOException("Source exceeds limit");
+        DisplayProgramLimits.validate(source);
         Properties p=new Properties();Path config=FMLPaths.CONFIGDIR.get().resolve("vsia-display-service.properties");
         if(!Files.isRegularFile(config))throw new IOException("Compiler service is not configured. See DISPLAY-SERVICE.md");
         try(InputStream in=Files.newInputStream(config)){p.load(in);}

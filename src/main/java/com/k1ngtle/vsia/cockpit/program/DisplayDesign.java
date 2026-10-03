@@ -10,18 +10,20 @@ public record DisplayDesign(String theme, List<Widget> widgets) {
     public static final List<String> THEMES = List.of("CYAN", "GREEN", "AMBER", "WHITE");
     public static final List<String> BINDINGS = List.of("SPEED", "ALTITUDE", "HEADING", "PITCH", "ROLL", "VSPEED", "FUEL", "FUEL_KG", "CONTACT_COUNT", "STRUCTURE", "LOCK_RANGE");
     public static final List<String> PRESETS = List.of("Tactical", "Wide radar", "Flight", "Landing", "Damage", "Stores", "IFF contacts", "Minimal");
-    public record Widget(String type, int x, int y, int w, int h, int variant, String text, String binding) {
+    public record Widget(String type, int x, int y, int w, int h, int variant, String text, String binding, int section) {
+        public Widget(String type,int x,int y,int w,int h,int variant,String text,String binding){this(type,x,y,w,h,variant,text,binding,0);}
         public Widget {
-            if (!TYPES.contains(type) || x < 0 || y < 0 || w < 24 || h < 24 || x + w > WIDTH || y + h > HEIGHT || variant < 0 || variant > 4)
+            if (!TYPES.contains(type) || x < 0 || y < 0 || w < 24 || h < 24 || x + w > WIDTH || y + h > HEIGHT || variant < 0 || variant > 4 || section<0 || section>6)
                 throw new IllegalArgumentException("Invalid widget type, size, position or variant");
             text = text == null ? "" : text;
             binding = binding == null ? "SPEED" : binding;
             if (text.length() > 48 || text.chars().anyMatch(c -> c < 32 || c == 167) || !BINDINGS.contains(binding))
                 throw new IllegalArgumentException("Invalid label or telemetry binding");
         }
-        public Widget move(int nx, int ny) { return new Widget(type, Math.max(0, Math.min(WIDTH-w, nx)), Math.max(0, Math.min(HEIGHT-h, ny)), w, h, variant, text, binding); }
-        public Widget resize(int nw, int nh) { return new Widget(type, x, y, Math.max(24, Math.min(WIDTH-x, nw)), Math.max(24, Math.min(HEIGHT-y, nh)), variant, text, binding); }
-        public Widget style(int v, String label, String data) { return new Widget(type,x,y,w,h,v,label,data); }
+        public Widget move(int nx, int ny) { return new Widget(type, Math.max(0, Math.min(WIDTH-w, nx)), Math.max(0, Math.min(HEIGHT-h, ny)), w, h, variant, text, binding,section); }
+        public Widget resize(int nw, int nh) { return new Widget(type, x, y, Math.max(24, Math.min(WIDTH-x, nw)), Math.max(24, Math.min(HEIGHT-y, nh)), variant, text, binding,section); }
+        public Widget style(int v, String label, String data) { return new Widget(type,x,y,w,h,v,label,data,section); }
+        public Widget inSection(int value){return new Widget(type,x,y,w,h,variant,text,binding,value);}
     }
     public DisplayDesign {
         if (!THEMES.contains(theme) || widgets == null || widgets.size() > MAX_WIDGETS) throw new IllegalArgumentException("Invalid theme or widget count");
@@ -49,13 +51,13 @@ public record DisplayDesign(String theme, List<Widget> widgets) {
             if(integer(root,"version",0)!=1) throw new IllegalArgumentException("Scene version must be 1");
             JsonArray array=root.getAsJsonArray("widgets"); if(array==null||array.size()>MAX_WIDGETS) throw new IllegalArgumentException("At most 48 widgets");
             List<Widget> list=new ArrayList<>();
-            for(JsonElement e:array) { JsonObject w=e.getAsJsonObject(); fields(w,Set.of("type","x","y","w","h","variant","text","binding")); list.add(new Widget(string(w,"type",""),integer(w,"x",0),integer(w,"y",0),integer(w,"w",180),integer(w,"h",120),integer(w,"variant",0),string(w,"text",""),string(w,"binding","SPEED"))); }
+            for(JsonElement e:array) { JsonObject w=e.getAsJsonObject(); fields(w,Set.of("type","x","y","w","h","variant","text","binding","section")); list.add(new Widget(string(w,"type",""),integer(w,"x",0),integer(w,"y",0),integer(w,"w",180),integer(w,"h",120),integer(w,"variant",0),string(w,"text",""),string(w,"binding","SPEED"),integer(w,"section",0))); }
             return new DisplayDesign(string(root,"theme","CYAN"),list);
         } catch (JsonParseException | IllegalStateException | ClassCastException e) { throw new IllegalArgumentException("Invalid design JSON"); }
     }
     public String json() {
         JsonObject root=new JsonObject(); root.addProperty("version",1);root.addProperty("theme",theme);JsonArray array=new JsonArray();
-        for(Widget w:widgets){JsonObject o=new JsonObject();o.addProperty("type",w.type);o.addProperty("x",w.x);o.addProperty("y",w.y);o.addProperty("w",w.w);o.addProperty("h",w.h);o.addProperty("variant",w.variant);o.addProperty("text",w.text);o.addProperty("binding",w.binding);array.add(o);} root.add("widgets",array);return root.toString();
+        for(Widget w:widgets){JsonObject o=new JsonObject();o.addProperty("type",w.type);o.addProperty("x",w.x);o.addProperty("y",w.y);o.addProperty("w",w.w);o.addProperty("h",w.h);o.addProperty("variant",w.variant);o.addProperty("text",w.text);o.addProperty("binding",w.binding);o.addProperty("section",w.section);array.add(o);} root.add("widgets",array);return root.toString();
     }
     private static Widget w(String type,int x,int y,int width,int height,int style,String binding){return new Widget(type,x,y,width,height,style,"",binding);}
     public static DisplayDesign preset(int index) {

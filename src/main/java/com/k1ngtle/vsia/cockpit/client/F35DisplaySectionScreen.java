@@ -213,6 +213,7 @@ public final class F35DisplaySectionScreen extends Screen {
             int modifiers
     ) {
         if (!bindCockpit()) return false;
+        if(CustomDisplayScreenRouter.customInstalled()){int custom=com.k1ngtle.vsia.cockpit.program.CustomDisplaySections.key(keyCode);if(custom>0){CustomDisplayScreenRouter.open(custom);return true;}}
         int requestedSection = sectionForKey(keyCode);
 
         if (requestedSection > 0) {
