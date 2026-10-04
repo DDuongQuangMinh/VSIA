@@ -347,7 +347,7 @@ public class VsiaNetwork {
                 .encoder(S2CF35DetectionSnapshotPacket::toBytes)
                 .consumerMainThread(S2CF35DetectionSnapshotPacket::handle)
                 .add();
-        // BEGIN F35 COCKPIT v2.7.6
+        // BEGIN F35 COCKPIT v2.7.7
         net.messageBuilder(C2SF35IffRequestPacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
                 .decoder(C2SF35IffRequestPacket::new).encoder(C2SF35IffRequestPacket::toBytes)
                 .consumerMainThread(C2SF35IffRequestPacket::handle).add();
@@ -369,7 +369,7 @@ public class VsiaNetwork {
         net.messageBuilder(C2SDisplaySourceChunkPacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
                 .decoder(C2SDisplaySourceChunkPacket::new).encoder(C2SDisplaySourceChunkPacket::toBytes)
                 .consumerMainThread(C2SDisplaySourceChunkPacket::handle).add();
-        // END F35 COCKPIT v2.7.6
+        // END F35 COCKPIT v2.7.7
     }
 
     public static <MSG> void sendToServer(MSG message) {

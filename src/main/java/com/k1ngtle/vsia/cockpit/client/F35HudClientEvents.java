@@ -35,7 +35,11 @@ public final class F35HudClientEvents {
         if(frame.level()!=mc.level||frame.connection()!=mc.getConnection()||!eligible(mc,F35CockpitClientContext.seated()))frame=null;
     }
     @SubscribeEvent public static void capture(RenderLevelStageEvent event){
-        if(event.getStage()!=RenderLevelStageEvent.Stage.AFTER_LEVEL)return;
+        // Forge 1.20.1 AFTER_LEVEL supplies GameRenderer's projection-only PoseStack,
+        // NOT the LevelRenderer camera view. Multiplying that by projection again
+        // puts valid forward contacts behind the camera. AFTER_ENTITIES carries the
+        // actual world view, including VS mounted-camera rotation and camera effects.
+        if(event.getStage()!=RenderLevelStageEvent.Stage.AFTER_ENTITIES)return;
         Minecraft mc=Minecraft.getInstance();F35CockpitSeatBlockEntity cockpit=F35CockpitClientContext.seated();
         frame=null;
         if(!eligible(mc,cockpit)||cockpit.cockpitId()==null)return;
@@ -48,19 +52,27 @@ public final class F35HudClientEvents {
         F35DisplayClientConfig.bind(cockpit);F35TargetLockClient.bind(cockpit.cockpitId());
         var contacts=F35HudContacts.select(f.state(),cockpit.displaySettings(),F35TargetLockClient.kind(),F35TargetLockClient.targetId());
         int color=F35DisplayClientConfig.applyBrightness(F35HologramPainter.GREEN);
-        F35ContactSymbols.Lines lines=(a,b,c,d,tint)->{
-            int steps=Math.max(1,(int)Math.ceil(Math.max(Math.abs(c-a),Math.abs(d-b))));
-            for(int i=0;i<=steps;i++){float t=i/(float)steps;int x=Math.round(a+(c-a)*t),y=Math.round(b+(d-b)*t);if(x>=0&&x<width&&y>=0&&y<height)graphics.fill(x,y,x+1,y+1,tint);}
-        };
         for(var contact:contacts){
             var point=F35HudProjection.project(contact.position(),f.camera(),f.view(),f.projection(),width,height);
             if(point==null)continue;
-            F35ContactSymbols.draw(lines,point.x(),point.y(),contact.locked()?9:6,contact.friendly(),contact.locked(),color,color);
+            // Dark edge first, then an opaque two-GUI-pixel green stroke. This keeps
+            // the symbol readable over bright skies without an opaque target panel.
+            float radius=contact.locked()?14:10;
+            F35ContactSymbols.draw((a,b,c,d,tint)->stroke(graphics,a,b,c,d,5,0xe0001800,width,height),point.x(),point.y(),radius,contact.friendly(),contact.locked(),color,color);
+            F35ContactSymbols.draw((a,b,c,d,tint)->stroke(graphics,a,b,c,d,2,tint,width,height),point.x(),point.y(),radius,contact.friendly(),contact.locked(),color,color);
             if(F35DisplayClientConfig.trackLabels()||contact.locked()){
                 String label=(contact.locked()?"LOCK ":"")+contact.label()+" "+(contact.friendly()?"FRIEND":"UNK")+" "+Math.round(contact.position().distanceTo(f.state().ownship().position()))+"M";
-                int x=Math.max(0,Math.min(width-mc.font.width(label),(int)point.x()+17)),y=Math.max(0,Math.min(height-9,(int)point.y()-4));
-                graphics.drawString(mc.font,label,x,y,color,false);
+                int x=Math.max(0,Math.min(width-mc.font.width(label),(int)point.x()+26)),y=Math.max(0,Math.min(height-9,(int)point.y()-4));
+                graphics.drawString(mc.font,label,x,y,color,true);
             }
+        }
+    }
+    private static void stroke(GuiGraphics g,float a,float b,float c,float d,int thickness,int color,int width,int height){
+        int steps=Math.max(1,(int)Math.ceil(Math.max(Math.abs(c-a),Math.abs(d-b))));
+        for(int i=0;i<=steps;i++){
+            float t=i/(float)steps;int x=Math.round(a+(c-a)*t)-thickness/2,y=Math.round(b+(d-b)*t)-thickness/2;
+            int left=Math.max(0,x),top=Math.max(0,y),right=Math.min(width,x+thickness),bottom=Math.min(height,y+thickness);
+            if(right>left&&bottom>top)g.fill(left,top,right,bottom,color);
         }
     }
     @Mod.EventBusSubscriber(modid=Vsia.MOD_ID,value=Dist.CLIENT,bus=Mod.EventBusSubscriber.Bus.MOD)
