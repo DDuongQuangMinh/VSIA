@@ -186,6 +186,10 @@ public final class F35CockpitSeatRenderer
             }
         }
 
+        if (F35HudClientEvents.installed(animatable)) {
+            renderHologramAboveMonitor(poseStack, bufferSource, animatable, bone, monitorCube, partialTick);
+        }
+
         bufferSource.getBuffer(
                 renderType
         );
@@ -213,6 +217,23 @@ public final class F35CockpitSeatRenderer
         }
 
         return null;
+    }
+
+    private void renderHologramAboveMonitor(PoseStack pose,MultiBufferSource buffers,F35CockpitSeatBlockEntity cockpit,GeoBone bone,GeoCube cube,float partialTick) {
+        MonitorSurface surface=surfaceFor(cube);
+        if(surface==null)return;
+        pose.pushPose();
+        try {
+            applyMonitorTransform(pose,bone,cube,surface.center());
+            pose.mulPose(Axis.YP.rotationDegrees(180.0F));
+            float hudWidth=surface.width()*0.98F,hudHeight=surface.height()*1.9F;
+            // Relative to the monitor's center/front: upward with a visible gap, never left/right offset.
+            pose.translate(0,surface.height()/2+0.05F+hudHeight/2,0.025F);
+            F35DisplayState state=F35DisplayStateFactory.capture(cockpit,partialTick);
+            var contacts=com.k1ngtle.vsia.cockpit.display.F35HudContacts.select(state,cockpit.displaySettings(),F35TargetLockClient.kind(),F35TargetLockClient.targetId());
+            boolean liveLock=com.k1ngtle.vsia.cockpit.display.F35HudContacts.hasLiveLock(state,F35TargetLockClient.kind(),F35TargetLockClient.targetId());
+            F35HologramRenderer.render(pose,buffers,state,contacts,F35TargetLockClient.hasLock(),liveLock,hudWidth,hudHeight);
+        } finally { pose.popPose(); }
     }
 
     private boolean approximately(

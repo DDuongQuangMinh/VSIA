@@ -73,7 +73,7 @@ public final class DisplayDesignPainter {
         if(w.type().equals("BAR")){float cy=y+height-18;d.rect(x,cy,width,12,DIM);if(Double.isFinite(v))d.rect(x,cy,width*f,12,c);}
         if(w.type().equals("GAUGE")){float r=Math.max(4,Math.min(width,height-50)/2),cx=x+width/2,cy=y+height-r;d.circle(cx,cy,r,c);double a=Math.toRadians(135+270*f);d.line(cx,cy,cx+(float)Math.cos(a)*r,cy+(float)Math.sin(a)*r,Double.isFinite(v)?AMBER:DIM);}
     }
-    private static boolean friendly(boolean auth,String affiliation){return auth&&affiliation!=null&&affiliation.startsWith("FRIEND");}
+    private static boolean friendly(boolean auth,String affiliation){return F35ContactSymbols.friendly(auth,affiliation);}
     public static void focus(Draw d,DisplayDesign design,int section){if(section<1||section>6)return;for(int i=0;i<design.widgets().size();i++){var w=design.widgets().get(i);if(com.k1ngtle.vsia.cockpit.program.CustomDisplaySections.section(w,i)==section)d.rect(w.x()+2,w.y()+2,w.w()-4,w.h()-4,0xffffffff);}}
     public record Pick(java.util.UUID id,boolean radar){}
     private record Point(float x,float y){}
@@ -90,7 +90,7 @@ public final class DisplayDesignPainter {
             Pick hit=null;double best=tolerance*tolerance;for(var t:state.tracks()){Point p=project(w,state,t.position());if(p!=null){double distance=(p.x-x)*(p.x-x)+(p.y-y)*(p.y-y);if(distance<=best){best=distance;hit=new Pick(t.trackId(),true);}}}for(var t:state.detections()){Point p=project(w,state,t.position());if(p!=null){double distance=(p.x-x)*(p.x-x)+(p.y-y)*(p.y-y);if(distance<=best){best=distance;hit=new Pick(t.contactId(),false);}}}return hit;
         }return null;
     }
-    private static void symbol(Draw d,float x,float y,String id,boolean friend,boolean locked,int variant){int c=friend?GREEN:AMBER;if(friend||variant==2)d.rect(x-4,y-4,8,8,c);else{d.line(x,y-5,x+5,y,c);d.line(x+5,y,x,y+5,c);d.line(x,y+5,x-5,y,c);d.line(x-5,y,x,y-5,c);}if(locked)d.rect(x-8,y-8,16,16,0xffffffff);if(variant!=4)d.text(id,x+7,y-5,.65f,c);}
+    private static void symbol(Draw d,float x,float y,String id,boolean friend,boolean locked,int variant){int c=friend?GREEN:AMBER;F35ContactSymbols.draw(d::line,x,y,5,friend,locked,c,0xffffffff);if(variant!=4)d.text(id,x+7,y-5,.65f,c);}
     private static void radar(Draw d,DisplayDesign.Widget w,F35DisplayState state,int c){
         boolean forward=w.type().equals("RADARFORWARD");float cx=w.x()+w.w()/2f,cy=forward?w.y()+w.h()-22:w.y()+w.h()/2f+8;
         float radius=Math.max(1,Math.min(w.w()/2f-18,forward?w.h()-44:w.h()/2f-24));

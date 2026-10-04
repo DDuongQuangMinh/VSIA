@@ -2487,7 +2487,7 @@ public final class F35PanoramicDisplayRenderer {
     private static int detectionColor(
             F35DetectionContact contact
     ) {
-        if(contact.iffAuthenticated()&&contact.iffStatus().startsWith("FRIENDLY"))return F35DisplayPalette.GREEN;
+        if(F35ContactSymbols.friendly(contact.iffAuthenticated(),contact.iffStatus()))return F35DisplayPalette.GREEN;
         return switch (contact.type()) {
             case SHIP -> F35DisplayPalette.AMBER;
             case PLAYER -> F35DisplayPalette.AMBER;
@@ -2507,24 +2507,8 @@ public final class F35PanoramicDisplayRenderer {
                         contact
                 );
 
+        boolean friend=F35ContactSymbols.friendly(contact.iffAuthenticated(),contact.iffStatus());
         if (contact.type()
-                == F35DetectionType.SHIP) {
-            canvas.aircraft(
-                    x,
-                    y,
-                    6.0F,
-                    color
-            );
-        } else if (contact.type()
-                == F35DetectionType.PLAYER) {
-            canvas.rect(
-                    x - 4.0F,
-                    y - 4.0F,
-                    8.0F,
-                    8.0F,
-                    color
-            );
-        } else if (contact.type()
                 == F35DetectionType.MISSILE) {
             canvas.triangle(
                     x,
@@ -2544,24 +2528,13 @@ public final class F35PanoramicDisplayRenderer {
                     )
             );
         } else {
-            canvas.diamond(
-                    x,
-                    y,
-                    4.0F,
-                    color
-            );
+            F35ContactSymbols.draw(canvas::line,x,y,5,friend,false,color,F35DisplayPalette.WHITE);
         }
 
         if (F35TargetLockClient.isDetectionLocked(
                 contact.contactId()
         )) {
-            canvas.rect(
-                    x - 8.0F,
-                    y - 8.0F,
-                    16.0F,
-                    16.0F,
-                    F35DisplayPalette.WHITE
-            );
+            F35ContactSymbols.lock(canvas::line,x,y,5,friend,F35DisplayPalette.WHITE);
         }
 
         if (F35DisplayClientConfig.trackLabels()) {
@@ -2610,9 +2583,8 @@ public final class F35PanoramicDisplayRenderer {
         String affiliation =
                 track.iffAffiliation();
 
-        if (track.iffAuthenticated() && affiliation.contains(
-                "FRIENDLY"
-        )) {
+        boolean friend=F35ContactSymbols.friendly(track.iffAuthenticated(),affiliation);
+        if (friend) {
             color =
                     "COASTING".equals(
                             track.trackState()
@@ -2623,39 +2595,8 @@ public final class F35PanoramicDisplayRenderer {
                     )
                             : F35DisplayPalette.GREEN;
 
-            canvas.aircraft(
-                    x,
-                    y,
-                    5.5F,
-                    color
-            );
-        } else if (affiliation.contains(
-                "HOSTILE"
-        )) {
-            canvas.triangle(
-                    x,
-                    y,
-                    5.5F,
-                    color
-            );
-        } else {
-            canvas.diamond(
-                    x,
-                    y,
-                    4.0F,
-                    color
-            );
         }
-
-        if (selected) {
-            canvas.rect(
-                    x - 8.0F,
-                    y - 8.0F,
-                    16.0F,
-                    16.0F,
-                    F35DisplayPalette.WHITE
-            );
-        }
+        F35ContactSymbols.draw(canvas::line,x,y,5,friend,selected,color,F35DisplayPalette.WHITE);
 
         if (F35DisplayClientConfig.trackLabels()) {
             canvas.text(
@@ -2927,17 +2868,11 @@ public final class F35PanoramicDisplayRenderer {
     private static int trackColor(
             F35RadarTrackView track
     ) {
-        if (track.iffAuthenticated() && track.iffAffiliation()
-                .contains(
-                        "FRIENDLY"
-                )) {
+        if (F35ContactSymbols.friendly(track.iffAuthenticated(),track.iffAffiliation())) {
             return F35DisplayPalette.GREEN;
         }
 
-        if (track.iffAffiliation()
-                .contains(
-                        "HOSTILE"
-                )) {
+        if ("HOSTILE".equalsIgnoreCase(track.iffAffiliation())) {
             return F35DisplayPalette.RED;
         }
 

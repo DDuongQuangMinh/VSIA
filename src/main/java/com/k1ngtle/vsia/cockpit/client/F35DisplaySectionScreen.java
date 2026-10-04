@@ -473,7 +473,7 @@ public final class F35DisplaySectionScreen extends Screen {
         drawLockBox(graphics, state, 650, 110, 170, 120);
 
         text(graphics, "TSD2 / 360 DEGREE HSI", 28, 350, MAGENTA);
-        text(graphics, "Locked target is boxed in white and mirrored on the physical display.", 460, 350, DIM);
+        text(graphics, "Circle = authenticated ally; diamond = unknown; double symbol = lock.", 460, 350, DIM);
     }
 
     private void renderContacts(
@@ -712,20 +712,9 @@ public final class F35DisplaySectionScreen extends Screen {
             boolean locked
     ) {
         int color = trackColor(track);
-        String affiliation = track.iffAffiliation() == null ? "" : track.iffAffiliation();
-
-        if (track.iffAuthenticated() && affiliation.contains("FRIENDLY")) {
-            aircraft(graphics, x, y, 7.0F, GREEN);
-        } else if (affiliation.contains("HOSTILE")) {
-            triangle(graphics, x, y, 7.0F, RED);
-        } else {
-            diamond(graphics, x, y, 6.0F, AMBER);
-        }
-
-        if (locked) {
-            rect(graphics, (int) x - 10, (int) y - 10, 20, 20, WHITE);
-            cross(graphics, x, y, 13.0F, WHITE);
-        }
+        boolean friend=com.k1ngtle.vsia.cockpit.display.F35ContactSymbols.friendly(track.iffAuthenticated(),track.iffAffiliation());
+        if(friend)color=GREEN;
+        com.k1ngtle.vsia.cockpit.display.F35ContactSymbols.draw((a,b,c,d,tint)->line(graphics,a,b,c,d,tint),x,y,6,friend,locked,color,WHITE);
 
         if (F35DisplayClientConfig.trackLabels()) {
             text(graphics, track.shortId(), (int) x + 9, (int) y - 5, color);
@@ -741,20 +730,12 @@ public final class F35DisplaySectionScreen extends Screen {
     ) {
         int color = detectionColor(contact);
 
-        switch (contact.type()) {
-            case SHIP -> aircraft(graphics, x, y, 7.0F, color);
-            case PLAYER -> rect(graphics, (int) x - 5, (int) y - 5, 10, 10, color);
-            case MISSILE -> {
-                triangle(graphics, x, y, 7.0F, color);
-                line(graphics, x, y + 7.0F, x, y + 14.0F, color);
-            }
-            case MOB -> diamond(graphics, x, y, 5.0F, color);
-        }
-
-        if (locked) {
-            rect(graphics, (int) x - 10, (int) y - 10, 20, 20, WHITE);
-            cross(graphics, x, y, 13.0F, WHITE);
-        }
+        boolean friend=com.k1ngtle.vsia.cockpit.display.F35ContactSymbols.friendly(contact.iffAuthenticated(),contact.iffStatus());
+        if(friend)color=GREEN;
+        if(contact.type()==F35DetectionType.MISSILE){
+            triangle(graphics,x,y,7,color);line(graphics,x,y+7,x,y+14,color);
+            if(locked)com.k1ngtle.vsia.cockpit.display.F35ContactSymbols.lock((a,b,c,d,tint)->line(graphics,a,b,c,d,tint),x,y,7,friend,WHITE);
+        } else com.k1ngtle.vsia.cockpit.display.F35ContactSymbols.draw((a,b,c,d,tint)->line(graphics,a,b,c,d,tint),x,y,6,friend,locked,color,WHITE);
 
         if (F35DisplayClientConfig.trackLabels()) {
             String label = contact.type() == F35DetectionType.MISSILE
