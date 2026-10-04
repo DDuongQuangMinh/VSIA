@@ -1,0 +1,15 @@
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "case": "minecraft:block/black_concrete",
+    "metal": "minecraft:block/iron_block",
+    "accent": "minecraft:block/cyan_concrete",
+    "particle": "minecraft:block/gray_concrete"
+  },
+  "elements": [
+    {"from": [12.2, 0.3, 5.6], "to": [15.9, 1.2, 9.6], "faces": {"north": {"texture": "#case"}, "south": {"texture": "#case"}, "east": {"texture": "#case"}, "west": {"texture": "#case"}, "up": {"texture": "#metal"}, "down": {"texture": "#case"}}},
+    {"from": [12.15, 1.2, 5.6], "to": [15.95, 1.55, 5.9], "faces": {"north": {"texture": "#accent"}, "south": {"texture": "#accent"}, "east": {"texture": "#accent"}, "west": {"texture": "#accent"}, "up": {"texture": "#accent"}, "down": {"texture": "#accent"}}},
+    {"from": [12.15, 1.2, 9.3], "to": [15.95, 1.55, 9.6], "faces": {"north": {"texture": "#accent"}, "south": {"texture": "#accent"}, "east": {"texture": "#accent"}, "west": {"texture": "#accent"}, "up": {"texture": "#accent"}, "down": {"texture": "#accent"}}},
+    {"from": [11.7, 0.55, 7.0], "to": [12.3, 1.0, 8.2], "faces": {"north": {"texture": "#case"}, "south": {"texture": "#case"}, "east": {"texture": "#case"}, "west": {"texture": "#case"}, "up": {"texture": "#case"}, "down": {"texture": "#case"}}}
+  ]
+}

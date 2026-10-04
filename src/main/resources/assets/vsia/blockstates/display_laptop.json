@@ -1,0 +1,8 @@
+{
+  "multipart": [
+    {"when": {"facing": "north"}, "apply": [{"model": "vsia:block/display_laptop"}, {"model": "vsia:block/display_laptop_dock"}]},
+    {"when": {"facing": "east"}, "apply": [{"model": "vsia:block/display_laptop", "y": 90}, {"model": "vsia:block/display_laptop_dock", "y": 90}]},
+    {"when": {"facing": "south"}, "apply": [{"model": "vsia:block/display_laptop", "y": 180}, {"model": "vsia:block/display_laptop_dock", "y": 180}]},
+    {"when": {"facing": "west"}, "apply": [{"model": "vsia:block/display_laptop", "y": 270}, {"model": "vsia:block/display_laptop_dock", "y": 270}]}
+  ]
+}

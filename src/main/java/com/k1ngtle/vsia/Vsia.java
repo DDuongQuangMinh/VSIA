@@ -32,6 +32,7 @@ public class Vsia {
         ModCreativeTabs.register(modEventBus);
         ModMenuTypes.register(modEventBus);
         F35CockpitRegistry.register(modEventBus);
+        com.k1ngtle.vsia.cockpit.program.DisplayLaptopRegistry.register(modEventBus);
 
         // Initialize sub-systems
         Signality.initialize(FMLJavaModLoadingContext.get());

@@ -151,6 +151,14 @@ public final class F35VsShipHelper {
         );
     }
 
+    /** Shared block interaction position for ground devices and devices on moving VS ships. */
+    public static Vec3 blockWorldPosition(BlockEntity blockEntity) {
+        Vec3 local = Vec3.atCenterOf(blockEntity.getBlockPos());
+        if (blockEntity.getLevel() == null) return local;
+        Object ship = findManagingShip(blockEntity.getLevel(), blockEntity.getBlockPos());
+        return ship == null ? local : transformShipToWorld(ship, local);
+    }
+
     public static Vec3 seatWorldPosition(
             BlockEntity blockEntity,
             Direction facing
