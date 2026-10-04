@@ -7,6 +7,8 @@ import java.util.List;
 public final class F35HudStroke {
     public record Point(float x,float y) { }
     private F35HudStroke() { }
+    /** World cues are sized in screen pixels, not magnified by GUI scale. */
+    public static float guiPixelScale(double guiScale){return Double.isFinite(guiScale)&&guiScale>=1?(float)(1/guiScale):1;}
     public static List<Point> polygon(float a,float b,float c,float d,float thickness,float width,float height){
         for(float v:new float[]{a,b,c,d,thickness,width,height})if(!Float.isFinite(v))return List.of();
         if(thickness<=0||width<=0||height<=0)return List.of();

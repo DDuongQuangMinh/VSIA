@@ -25,8 +25,9 @@ public final class F35HologramRenderer {
                 public float textWidth(String text,float size){return font.width(text)*size;}
                 public void line(float x1,float y1,float x2,float y2,int color){
                     // Unlit, two-sided filled geometry instead of one-pixel GL_LINES.
-                    stroke(pose,buffers,x1,y1,x2,y2,3.6f,0xc0001800);
-                    stroke(pose,buffers,x1,y1,x2,y2,1.8f,F35DisplayClientConfig.applyBrightness(color));
+                    // A single slender stroke avoids the broad dark border and
+                    // coplanar halo/core overlap seen in the previous screenshot.
+                    stroke(pose,buffers,x1,y1,x2,y2,F35HologramPainter.STROKE_WIDTH,F35DisplayClientConfig.applyBrightness(color));
                 }
                 public void text(String text,float x,float y,float size,int color){
                     if(size<=0||x<0||y<0||y+font.lineHeight*size>F35HologramPainter.HEIGHT)return;
