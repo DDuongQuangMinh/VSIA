@@ -30,8 +30,10 @@ public final class F35HudClientEvents {
     }
     private static boolean eligible(Minecraft mc,F35CockpitSeatBlockEntity cockpit){return mc.player!=null&&mc.level!=null&&mc.getConnection()!=null&&F35HudContacts.eligible(cockpit!=null,mc.options.getCameraType().isFirstPerson(),mc.screen!=null,mc.options.hideGui,installed(cockpit));}
     @SubscribeEvent public static void lifecycle(TickEvent.ClientTickEvent event){
-        if(event.phase!=TickEvent.Phase.END||frame==null)return;
+        if(event.phase!=TickEvent.Phase.END)return;
         Minecraft mc=Minecraft.getInstance();
+        if(!F35HelmetHudClient.visible(mc)||!mc.isWindowActive()||!eligible(mc,F35CockpitClientContext.seated()))F35GazeLockClient.reset();
+        if(frame==null)return;
         if(frame.level()!=mc.level||frame.connection()!=mc.getConnection()||!eligible(mc,F35CockpitClientContext.seated()))frame=null;
     }
     @SubscribeEvent public static void capture(RenderLevelStageEvent event){
@@ -49,12 +51,14 @@ public final class F35HudClientEvents {
     private static void render(GuiGraphics graphics,int width,int height){
         Minecraft mc=Minecraft.getInstance();F35CockpitSeatBlockEntity cockpit=F35CockpitClientContext.seated();Frame f=frame;
         boolean helmet=F35HelmetHudClient.visible(mc);
+        if(!helmet||!mc.isWindowActive()||!eligible(mc,cockpit)||f==null||f.level()!=mc.level||f.connection()!=mc.getConnection()||!f.cockpit().equals(cockpit.cockpitId())||System.nanoTime()-f.atNanos()>250_000_000L)F35GazeLockClient.reset();
         if(helmet&&cockpit==null){F35HelmetHudClient.status(graphics,width,height,"HELMET / NO COCKPIT LINK");return;}
         if(helmet&&!installed(cockpit)){F35HelmetHudClient.status(graphics,width,height,"HELMET / NO DISPLAY DRIVE");return;}
         if(helmet&&(f==null||f.level()!=mc.level||f.connection()!=mc.getConnection()||!f.cockpit().equals(cockpit.cockpitId())||System.nanoTime()-f.atNanos()>250_000_000L)){F35HelmetHudClient.status(graphics,width,height,"HELMET / WAITING FOR COCKPIT");return;}
         if(!eligible(mc,cockpit)||f==null||f.level()!=mc.level||f.connection()!=mc.getConnection()||!f.cockpit().equals(cockpit.cockpitId())||System.nanoTime()-f.atNanos()>250_000_000L)return;
         F35DisplayClientConfig.bind(cockpit);F35TargetLockClient.bind(cockpit.cockpitId());
         var contacts=F35HudContacts.select(f.state(),cockpit.displaySettings(),F35TargetLockClient.kind(),F35TargetLockClient.targetId());
+        if(helmet&&mc.isWindowActive()&&F35GazeLockClient.update(cockpit.cockpitId(),mc.level,mc.getConnection(),contacts,f.camera(),f.view(),f.projection(),width,height,System.nanoTime()))contacts=F35HudContacts.select(f.state(),cockpit.displaySettings(),F35TargetLockClient.kind(),F35TargetLockClient.targetId());
         if(helmet)F35HelmetHudClient.flight(graphics,width,height,f.state(),contacts,F35TargetLockClient.hasLock(),F35HudContacts.hasLiveLock(f.state(),F35TargetLockClient.kind(),F35TargetLockClient.targetId()));
         int color=F35DisplayClientConfig.applyBrightness(F35HologramPainter.GREEN);
         // Undo GUI magnification only for these sensor cues. Projection stays in
@@ -73,7 +77,7 @@ public final class F35HudClientEvents {
                 F35ContactSymbols.draw((a,b,c,d,tint)->stroke(graphics,a,b,c,d,3,0xc0001800,pixelWidth,pixelHeight),x,y,radius,contact.friendly(),contact.locked(),color,color);
                 F35ContactSymbols.draw((a,b,c,d,tint)->stroke(graphics,a,b,c,d,1,tint,pixelWidth,pixelHeight),x,y,radius,contact.friendly(),contact.locked(),color,color);
                 if(F35DisplayClientConfig.trackLabels()||contact.locked()){
-                    String label=(contact.locked()?"LOCK ":"")+contact.label()+" "+(contact.friendly()?"FRIEND":"UNK")+" "+Math.round(contact.position().distanceTo(f.state().ownship().position()))+"M";
+                    String label=(contact.locked()?"LOCK ":"")+contact.label()+" "+(contact.friendly()?"FRIEND":contact.hostile()?"ENEMY":"UNK")+" "+Math.round(contact.position().distanceTo(f.state().ownship().position()))+"M";
                     int labelX=Math.max(0,Math.min(pixelWidth-(int)Math.ceil(mc.font.width(label)*1.5f),(int)x+28)),labelY=Math.max(0,Math.min(pixelHeight-14,(int)y-7));
                     graphics.pose().pushPose();
                     try{
@@ -82,6 +86,7 @@ public final class F35HudClientEvents {
                     }finally{graphics.pose().popPose();}
                 }
             }
+            if(helmet&&mc.isWindowActive())F35GazeLockClient.progress(graphics,pixelWidth,pixelHeight,color,System.nanoTime());
         }finally{graphics.pose().popPose();}
     }
     static void stroke(GuiGraphics g,float a,float b,float c,float d,int thickness,int color,int width,int height){

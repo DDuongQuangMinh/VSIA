@@ -696,7 +696,7 @@ public final class F35DisplaySectionScreen extends Screen {
             text(graphics, "R " + format0(distance) + " M", x + 10, y + 54, WHITE);
             text(graphics, "V " + format0(contact.speedMps()) + " M/S", x + 10, y + 72, WHITE);
             text(graphics, contact.label(), x + 10, y + 90, DIM);
-            text(graphics, contact.iffAuthenticated() ? "AUTH " + (contact.iffTelemetry().startsWith("M5")?"M5":"M4") : "IFF UNKNOWN", x + 10, y + 106, detectionColor(contact));
+            text(graphics, contact.iffAuthenticated() ? "AUTH " + (contact.iffTelemetry().startsWith("M5")?"M5":"M4") : com.k1ngtle.vsia.cockpit.display.F35ContactSymbols.hostile(contact.iffStatus())?"ENEMY / IFF TIMEOUT":"IFF UNKNOWN", x + 10, y + 106, detectionColor(contact));
             return;
         }
 
@@ -870,6 +870,7 @@ public final class F35DisplaySectionScreen extends Screen {
     }
 
     private static boolean detectionContactVisible(F35DetectionContact contact) {
+        if(contact.type()==F35DetectionType.SHIP&&!F35DisplayClientConfig.radarTrackVisible(contact.iffStatus()))return false;
         return switch (contact.type()) {
             case MOB -> F35DisplayClientConfig.detectMobs();
             case PLAYER -> F35DisplayClientConfig.detectPlayers();
@@ -891,6 +892,7 @@ public final class F35DisplaySectionScreen extends Screen {
 
     private static int detectionColor(F35DetectionContact contact) {
         if(contact.iffAuthenticated()&&contact.iffStatus().startsWith("FRIENDLY"))return GREEN;
+        if(com.k1ngtle.vsia.cockpit.display.F35ContactSymbols.hostile(contact.iffStatus()))return RED;
         return switch (contact.type()) {
             case SHIP -> AMBER;
             case PLAYER -> AMBER;

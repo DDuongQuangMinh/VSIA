@@ -79,8 +79,8 @@ public final class F35TargetLockClient {
     }
     public static String summary(List<F35RadarTrackView> tracks,List<F35DetectionContact> contacts){
         F35RadarTrackView radar=lockedRadarTrack(tracks);
-        if(radar!=null){String affiliation=radar.iffAffiliation();return "RADAR "+radar.shortId()+" "+(affiliation==null||affiliation.isBlank()?"UNKNOWN":affiliation);}
+        if(radar!=null){return "RADAR "+radar.shortId()+" "+com.k1ngtle.vsia.cockpit.display.F35ContactSymbols.label(radar.iffAuthenticated(),radar.iffAffiliation());}
         F35DetectionContact detection=lockedDetection(contacts);
-        return detection==null?"NONE":detection.type().name()+" "+detection.shortId();
+        return detection==null?"NONE":detection.type().name()+" "+detection.shortId()+" "+com.k1ngtle.vsia.cockpit.display.F35ContactSymbols.label(detection.iffAuthenticated(),detection.iffStatus());
     }
 }

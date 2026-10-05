@@ -8,7 +8,9 @@ import net.minecraft.world.phys.Vec3;
 /** Only current server-supplied contacts; no entity enumeration, team guesses or coasted target extrapolation. */
 public final class F35HudContacts {
     public static final int MAX_CUES=24;
-    public record Contact(UUID id,String label,Vec3 position,boolean friendly,boolean locked,boolean radar) { }
+    public record Contact(UUID id,String label,Vec3 position,boolean friendly,boolean locked,boolean radar,boolean hostile) {
+        public Contact(UUID id,String label,Vec3 position,boolean friendly,boolean locked,boolean radar){this(id,label,position,friendly,locked,radar,false);}
+    }
     private F35HudContacts() { }
     public static boolean eligible(boolean seated,boolean firstPerson,boolean screenOpen,boolean hideGui,boolean validDrive){return seated&&firstPerson&&!screenOpen&&!hideGui&&validDrive;}
     public static boolean hasLiveLock(F35DisplayState state,F35TargetLockClient.LockKind kind,UUID id){
@@ -25,7 +27,7 @@ public final class F35HudContacts {
             boolean friend=F35ContactSymbols.friendly(t.iffAuthenticated(),t.iffAffiliation());
             int bit=friend?F35DisplaySettings.FRIENDS:("HOSTILE".equalsIgnoreCase(t.iffAffiliation())?F35DisplaySettings.HOSTILES:F35DisplaySettings.UNKNOWNS);
             if(!settings.flag(bit))continue;
-            all.add(new Contact(t.trackId(),t.shortId(),t.position(),friend,kind==F35TargetLockClient.LockKind.RADAR&&t.trackId().equals(lockedId),true));
+            all.add(new Contact(t.trackId(),t.shortId(),t.position(),friend,kind==F35TargetLockClient.LockKind.RADAR&&t.trackId().equals(lockedId),true,F35ContactSymbols.hostile(t.iffAffiliation())));
         }
         for(var t:state.detections()){
             if(t.contactId()==null||t.type()==null)continue;
@@ -35,8 +37,9 @@ public final class F35HudContacts {
             int typeBit=switch(t.type()){case SHIP->F35DisplaySettings.SHIPS;case PLAYER->F35DisplaySettings.PLAYERS;case MOB->F35DisplaySettings.MOBS;case MISSILE->F35DisplaySettings.MISSILES;};
             if(!settings.flag(typeBit)||!F35HudProjection.finite(t.position()))continue;
             boolean friend=F35ContactSymbols.friendly(t.iffAuthenticated(),t.iffStatus());
-            if(!settings.flag(friend?F35DisplaySettings.FRIENDS:F35DisplaySettings.UNKNOWNS))continue;
-            all.add(new Contact(t.contactId(),t.shortId(),t.position(),friend,locked,false));
+            boolean hostile=F35ContactSymbols.hostile(t.iffStatus());
+            if(!settings.flag(friend?F35DisplaySettings.FRIENDS:hostile?F35DisplaySettings.HOSTILES:F35DisplaySettings.UNKNOWNS))continue;
+            all.add(new Contact(t.contactId(),t.shortId(),t.position(),friend,locked,false,hostile));
         }
         all.sort(Comparator.comparingInt((Contact c)->c.locked()?0:c.friendly()?1:2).thenComparingDouble(c->c.position().distanceToSqr(state.ownship().position())).thenComparing(c->c.id().toString()));
         return List.copyOf(all.subList(0,Math.min(MAX_CUES,all.size())));

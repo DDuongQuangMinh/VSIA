@@ -4,6 +4,8 @@ import com.k1ngtle.vsia.Vsia;
 import com.k1ngtle.vsia.cockpit.*;
 import com.k1ngtle.vsia.cockpit.detection.*;
 import com.k1ngtle.vsia.cockpit.iff.F35IffService;
+import com.k1ngtle.vsia.cockpit.iff.F35IffResponsePolicy;
+import com.k1ngtle.vsia.cockpit.iff.F35IffMissions;
 import com.k1ngtle.vsia.network.VsiaNetwork;
 import com.k1ngtle.vsia.signality.radar.iff.IffResult;
 import com.k1ngtle.vsia.signality.radar.network.RadarNetworkApi;
@@ -21,23 +23,32 @@ public final class F35RadarSyncEvents {
     private static final String DISPLAY_NETWORK="default";
     private static final Map<UUID,F35RadarContactProjection.Memory> MEMORIES=new HashMap<>();
     private static final Map<UUID,Long> LAST_USED=new HashMap<>();
+    private static final Map<UUID,F35IffResponsePolicy> IFF_WINDOWS=new HashMap<>();
     private F35RadarSyncEvents() { }
     @SubscribeEvent public static void onPlayerTick(TickEvent.PlayerTickEvent event) {
         if(event.phase!=TickEvent.Phase.END||!(event.player instanceof ServerPlayer player)||player.tickCount%5!=0)return;
         F35CockpitSeatBlockEntity cockpit=F35SeatController.cockpitFor(player);
         if(cockpit==null)return;
         long tick=player.serverLevel().getGameTime(),now=System.currentTimeMillis();
-        LAST_USED.entrySet().removeIf(e->{if(now-e.getValue()>30_000L){MEMORIES.remove(e.getKey());return true;}return false;});
+        LAST_USED.entrySet().removeIf(e->{if(now-e.getValue()>30_000L){MEMORIES.remove(e.getKey());IFF_WINDOWS.remove(e.getKey());return true;}return false;});
         LAST_USED.put(cockpit.cockpitId(),now);
         var own=F35VsShipHelper.shipSnapshot(cockpit);
         F35LiveContactCatalog catalog=own.detected()?F35LiveContactCatalog.capture(player.serverLevel(),player):new F35LiveContactCatalog(Map.of());
         F35DetectionFilter filter=cockpit.displaySettings().detectionFilter();
-        Map<UUID,IffResult> proofs=new HashMap<>();
-        java.util.function.Function<UUID,IffResult> authenticate=id->proofs.computeIfAbsent(id,key->F35IffService.interrogate(cockpit,key));
         List<RadarNetworkTrack> projected=own.detected()?F35RadarContactProjection.project(
                 RadarNetworkApi.tracks(player.serverLevel(),DISPLAY_NETWORK),catalog,filter,own.shipId(),own.worldCenter(),tick):List.of();
-        List<RadarNetworkTrack> tracks=projected.stream().map(t->t.withIff(authenticate.apply(t.sourceTargetId()))).toList();
         var scan=F35DetectionScanner.scan(cockpit,filter,catalog);
+        Set<UUID> liveShips=new HashSet<>();
+        for(var c:scan.contacts())if(c.type()==F35DetectionType.SHIP)liveShips.add(c.contactId());
+        for(var t:projected){var live=catalog.get(t.sourceTargetId());if(live!=null&&live.type()==F35DetectionType.SHIP&&!"COASTING".equals(t.state().name()))liveShips.add(live.canonicalId());}
+        F35IffResponsePolicy policy=IFF_WINDOWS.computeIfAbsent(cockpit.cockpitId(),id->new F35IffResponsePolicy());
+        policy.begin(player.serverLevel(),tick,liveShips,own.detected()&&F35IffService.canInterrogate(cockpit.iff(),F35IffMissions.get(player.getServer()),java.time.Instant.now().getEpochSecond()));
+        Map<UUID,IffResult> proofs=new HashMap<>();
+        java.util.function.Function<UUID,IffResult> authenticate=id->{
+            var live=catalog.get(id);UUID canonical=live==null?id:live.canonicalId();
+            return proofs.computeIfAbsent(canonical,key->policy.apply(key,F35IffService.interrogate(cockpit,key)));
+        };
+        List<RadarNetworkTrack> tracks=projected.stream().map(t->t.withIff(authenticate.apply(t.sourceTargetId()))).toList();
         List<F35DetectionContact> contacts=scan.contacts().stream().map(c->c.withIff(authenticate.apply(c.contactId()))).toList();
         Map<UUID,UUID> sources=new HashMap<>();tracks.forEach(t->sources.put(t.trackId(),t.sourceTargetId()));
         var removals=MEMORIES.computeIfAbsent(cockpit.cockpitId(),id->new F35RadarContactProjection.Memory()).update(sources,contacts,catalog,own.shipId(),tick);
@@ -46,7 +57,7 @@ public final class F35RadarSyncEvents {
         if(player.tickCount%20==0)F35IffPackets.sendSnapshot(player,cockpit,java.time.Instant.now().getEpochSecond());
     }
     @SubscribeEvent public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event){F35DetectionPreferences.clear(event.getEntity().getUUID());}
-    @SubscribeEvent public static void onServerStopped(ServerStoppedEvent event){MEMORIES.clear();LAST_USED.clear();}
+    @SubscribeEvent public static void onServerStopped(ServerStoppedEvent event){MEMORIES.clear();LAST_USED.clear();IFF_WINDOWS.clear();}
     @SubscribeEvent public static void onCommands(net.minecraftforge.event.RegisterCommandsEvent event){
         event.getDispatcher().register(net.minecraft.commands.Commands.literal("f35hull")
                 .then(net.minecraft.commands.Commands.literal("inspect").executes(ctx->{

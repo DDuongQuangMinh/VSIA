@@ -90,25 +90,25 @@ public final class DisplayDesignPainter {
             Pick hit=null;double best=tolerance*tolerance;for(var t:state.tracks()){Point p=project(w,state,t.position());if(p!=null){double distance=(p.x-x)*(p.x-x)+(p.y-y)*(p.y-y);if(distance<=best){best=distance;hit=new Pick(t.trackId(),true);}}}for(var t:state.detections()){Point p=project(w,state,t.position());if(p!=null){double distance=(p.x-x)*(p.x-x)+(p.y-y)*(p.y-y);if(distance<=best){best=distance;hit=new Pick(t.contactId(),false);}}}return hit;
         }return null;
     }
-    private static void symbol(Draw d,float x,float y,String id,boolean friend,boolean locked,int variant){int c=friend?GREEN:AMBER;F35ContactSymbols.draw(d::line,x,y,5,friend,locked,c,0xffffffff);if(variant!=4)d.text(id,x+7,y-5,.65f,c);}
+    private static void symbol(Draw d,float x,float y,String id,boolean friend,boolean hostile,boolean locked,int variant){int c=friend?GREEN:hostile?RED:AMBER;F35ContactSymbols.draw(d::line,x,y,5,friend,locked,c,0xffffffff);if(variant!=4)d.text(id,x+7,y-5,.65f,c);}
     private static void radar(Draw d,DisplayDesign.Widget w,F35DisplayState state,int c){
         boolean forward=w.type().equals("RADARFORWARD");float cx=w.x()+w.w()/2f,cy=forward?w.y()+w.h()-22:w.y()+w.h()/2f+8;
         float radius=Math.max(1,Math.min(w.w()/2f-18,forward?w.h()-44:w.h()/2f-24));
         for(int i=1;i<=3;i++){float r=radius*i/3; if(!forward)d.circle(cx,cy,r,i==3?c:DIM);else{float px=cx-r,py=cy;for(int k=1;k<=30;k++){double a=Math.PI+k*Math.PI/30;float nx=cx+(float)Math.cos(a)*r,ny=cy+(float)Math.sin(a)*r;d.line(px,py,nx,ny,DIM);px=nx;py=ny;}}}
         d.line(cx-8,cy,cx+8,cy,c);d.line(cx,cy-8,cx,cy+8,c);
-        if(state==null){symbol(d,cx+radius*.25f,cy-radius*.35f,"DEMO",false,false,w.variant());d.text("SAMPLE DATA",w.x()+8,w.y()+w.h()-14,.65f,DIM);return;}
+        if(state==null){symbol(d,cx+radius*.25f,cy-radius*.35f,"DEMO",false,false,false,w.variant());d.text("SAMPLE DATA",w.x()+8,w.y()+w.h()-14,.65f,DIM);return;}
         double range=Math.max(1,state.radarRangeMeters());d.text("RNG "+Math.round(range)+" M",w.x()+8,w.y()+22,.65f,c);
-        for(F35RadarTrackView t:state.tracks())plot(d,w,state,t.position(),t.shortId(),friendly(t.iffAuthenticated(),t.iffAffiliation()),F35TargetLockClient.isRadarLocked(t.trackId()),cx,cy,radius,range,forward);
-        for(F35DetectionContact t:state.detections())plot(d,w,state,t.position(),t.shortId(),friendly(t.iffAuthenticated(),t.iffStatus()),F35TargetLockClient.isDetectionLocked(t.contactId()),cx,cy,radius,range,forward);
+        for(F35RadarTrackView t:state.tracks())plot(d,w,state,t.position(),t.shortId(),friendly(t.iffAuthenticated(),t.iffAffiliation()),F35ContactSymbols.hostile(t.iffAffiliation()),F35TargetLockClient.isRadarLocked(t.trackId()),cx,cy,radius,range,forward);
+        for(F35DetectionContact t:state.detections())plot(d,w,state,t.position(),t.shortId(),friendly(t.iffAuthenticated(),t.iffStatus()),F35ContactSymbols.hostile(t.iffStatus()),F35TargetLockClient.isDetectionLocked(t.contactId()),cx,cy,radius,range,forward);
     }
-    private static void plot(Draw d,DisplayDesign.Widget w,F35DisplayState state,Vec3 position,String id,boolean friend,boolean locked,float cx,float cy,float r,double range,boolean sector){
-        Point p=project(w,state,position);if(p!=null)symbol(d,p.x,p.y,id,friend,locked,w.variant());
+    private static void plot(Draw d,DisplayDesign.Widget w,F35DisplayState state,Vec3 position,String id,boolean friend,boolean hostile,boolean locked,float cx,float cy,float r,double range,boolean sector){
+        Point p=project(w,state,position);if(p!=null)symbol(d,p.x,p.y,id,friend,hostile,locked,w.variant());
     }
     private static void contacts(Draw d,DisplayDesign.Widget w,F35DisplayState state,int c,float x,float y,float height){
         if(state==null){d.text("PREVIEW CONTACT LIST",x,y+28,.8f,DIM);return;}
         int row=0,limit=Math.max(0,(int)(height-22)/16);
-        for(var t:state.tracks()){if(row>=limit)break;boolean f=friendly(t.iffAuthenticated(),t.iffAffiliation());d.text(t.shortId()+" "+(f?"FRIEND AUTH":"UNKNOWN")+" "+Math.round(t.position().distanceTo(state.ownship().position()))+"M",x,y+24+row++*16,.7f,f?GREEN:AMBER);}
-        for(var t:state.detections()){if(row>=limit)break;boolean f=friendly(t.iffAuthenticated(),t.iffStatus());d.text(t.shortId()+" "+(f?"FRIEND AUTH":t.type().name())+" "+Math.round(t.position().distanceTo(state.ownship().position()))+"M",x,y+24+row++*16,.7f,f?GREEN:AMBER);}
+        for(var t:state.tracks()){if(row>=limit)break;boolean f=friendly(t.iffAuthenticated(),t.iffAffiliation()),h=F35ContactSymbols.hostile(t.iffAffiliation());d.text(t.shortId()+" "+(f?"FRIEND AUTH":h?"ENEMY":"UNKNOWN")+" "+Math.round(t.position().distanceTo(state.ownship().position()))+"M",x,y+24+row++*16,.7f,f?GREEN:h?RED:AMBER);}
+        for(var t:state.detections()){if(row>=limit)break;boolean f=friendly(t.iffAuthenticated(),t.iffStatus()),h=F35ContactSymbols.hostile(t.iffStatus());d.text(t.shortId()+" "+(f?"FRIEND AUTH":h?"ENEMY":t.type().name())+" "+Math.round(t.position().distanceTo(state.ownship().position()))+"M",x,y+24+row++*16,.7f,f?GREEN:h?RED:AMBER);}
         if(row==0)d.text("NO CONTACTS",x,y+24,.8f,DIM);
     }
     private static Vec3 lockedPosition(F35DisplayState state){if(!state.ownship().shipDetected())return null;if(state.selectedTrack()!=null)return state.selectedTrack().position();var t=F35TargetLockClient.lockedDetection(state.detections());return t==null?null:t.position();}

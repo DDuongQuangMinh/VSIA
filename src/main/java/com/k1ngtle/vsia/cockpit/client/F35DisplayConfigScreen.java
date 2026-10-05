@@ -458,7 +458,7 @@ public final class F35DisplayConfigScreen
         );
 
         text(graphics, "GREEN AIRCRAFT = ALLY", 232, 270, GREEN);
-        text(graphics, "RED TRIANGLE = HOSTILE", 232, 286, RED);
+        text(graphics, "RED DIAMOND = ENEMY", 232, 286, RED);
         text(graphics, "AMBER DIAMOND = UNKNOWN", 232, 302, MAGENTA);
         text(graphics, "IDS", 391, 329, GREEN);
     }

@@ -57,7 +57,7 @@ public final class F35HologramPainter {
         else{
             // No fixed-position target diamond: the only target symbol is projected
             // onto the actual detected contact by the pilot's camera overlay.
-            centered(d,"LOCK "+locked.label()+" / "+(locked.friendly()?"FRIEND AUTH":"UNKNOWN"),260,297,1);
+            centered(d,"LOCK "+locked.label()+" / "+(locked.friendly()?"FRIEND AUTH":locked.hostile()?"ENEMY":"UNKNOWN"),260,297,1);
             centered(d,"RNG "+n(locked.position().distanceTo(t.position()))+" M",260,320,1);
         }
     }

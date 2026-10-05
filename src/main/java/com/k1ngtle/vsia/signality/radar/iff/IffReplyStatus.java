@@ -5,5 +5,6 @@ public enum IffReplyStatus {
     NO_REPLY,
     AUTHENTICATED,
     AUTH_FAILED,
-    CODE_REPLY
+    CODE_REPLY,
+    NO_REPLY_TIMEOUT
 }

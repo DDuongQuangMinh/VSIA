@@ -6,6 +6,8 @@ import java.util.Locale;
 public final class F35ContactSymbols {
     @FunctionalInterface public interface Lines { void line(float x1,float y1,float x2,float y2,int color); }
     private F35ContactSymbols() { }
+    public static boolean hostile(String affiliation){return affiliation!=null&&affiliation.toUpperCase(Locale.ROOT).split("/",2)[0].trim().equals("HOSTILE");}
+    public static String label(boolean authenticated,String affiliation){return friendly(authenticated,affiliation)?"FRIEND AUTH":hostile(affiliation)?"ENEMY":"UNKNOWN";}
     public static boolean friendly(boolean authenticated,String affiliation) {
         if (!authenticated || affiliation == null) return false;
         String value = affiliation.toUpperCase(Locale.ROOT).split("/",2)[0].trim();

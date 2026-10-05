@@ -2472,6 +2472,7 @@ public final class F35PanoramicDisplayRenderer {
     private static boolean detectionContactVisible(
             F35DetectionContact contact
     ) {
+        if(contact.type()==F35DetectionType.SHIP&&!F35DisplayClientConfig.radarTrackVisible(contact.iffStatus()))return false;
         return switch (contact.type()) {
             case MOB ->
                     F35DisplayClientConfig.detectMobs();
@@ -2488,6 +2489,7 @@ public final class F35PanoramicDisplayRenderer {
             F35DetectionContact contact
     ) {
         if(F35ContactSymbols.friendly(contact.iffAuthenticated(),contact.iffStatus()))return F35DisplayPalette.GREEN;
+        if(F35ContactSymbols.hostile(contact.iffStatus()))return F35DisplayPalette.RED;
         return switch (contact.type()) {
             case SHIP -> F35DisplayPalette.AMBER;
             case PLAYER -> F35DisplayPalette.AMBER;
@@ -2731,7 +2733,7 @@ public final class F35PanoramicDisplayRenderer {
                         detection
                 )
         );
-        canvas.text(detection.iffAuthenticated()?(detection.iffTelemetry().startsWith("M5")?"FRIEND M5":"FRIEND M4"):"IFF UNKNOWN",x+5.0F,y+36.0F,0.55F,detectionColor(detection));
+        canvas.text(detection.iffAuthenticated()?(detection.iffTelemetry().startsWith("M5")?"FRIEND M5":"FRIEND M4"):F35ContactSymbols.hostile(detection.iffStatus())?"ENEMY / IFF TIMEOUT":"IFF UNKNOWN",x+5.0F,y+36.0F,0.55F,detectionColor(detection));
 
         canvas.text(
                 "R "
@@ -2909,6 +2911,9 @@ public final class F35PanoramicDisplayRenderer {
     private static String iffSummary(
             F35DisplayState state
     ) {
+        long hostiles=state.tracks().stream().filter(t->radarTrackVisible(t)&&F35ContactSymbols.hostile(t.iffAffiliation())).count()
+                +state.detections().stream().filter(t->detectionContactVisible(t)&&F35ContactSymbols.hostile(t.iffStatus())).count();
+        if(hostiles>0)return "E "+hostiles;
         long friendlies =
                 state.tracks()
                         .stream()
