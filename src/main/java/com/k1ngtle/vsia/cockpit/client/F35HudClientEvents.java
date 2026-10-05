@@ -48,9 +48,14 @@ public final class F35HudClientEvents {
     }
     private static void render(GuiGraphics graphics,int width,int height){
         Minecraft mc=Minecraft.getInstance();F35CockpitSeatBlockEntity cockpit=F35CockpitClientContext.seated();Frame f=frame;
+        boolean helmet=F35HelmetHudClient.visible(mc);
+        if(helmet&&cockpit==null){F35HelmetHudClient.status(graphics,width,height,"HELMET / NO COCKPIT LINK");return;}
+        if(helmet&&!installed(cockpit)){F35HelmetHudClient.status(graphics,width,height,"HELMET / NO DISPLAY DRIVE");return;}
+        if(helmet&&(f==null||f.level()!=mc.level||f.connection()!=mc.getConnection()||!f.cockpit().equals(cockpit.cockpitId())||System.nanoTime()-f.atNanos()>250_000_000L)){F35HelmetHudClient.status(graphics,width,height,"HELMET / WAITING FOR COCKPIT");return;}
         if(!eligible(mc,cockpit)||f==null||f.level()!=mc.level||f.connection()!=mc.getConnection()||!f.cockpit().equals(cockpit.cockpitId())||System.nanoTime()-f.atNanos()>250_000_000L)return;
         F35DisplayClientConfig.bind(cockpit);F35TargetLockClient.bind(cockpit.cockpitId());
         var contacts=F35HudContacts.select(f.state(),cockpit.displaySettings(),F35TargetLockClient.kind(),F35TargetLockClient.targetId());
+        if(helmet)F35HelmetHudClient.flight(graphics,width,height,f.state(),contacts,F35TargetLockClient.hasLock(),F35HudContacts.hasLiveLock(f.state(),F35TargetLockClient.kind(),F35TargetLockClient.targetId()));
         int color=F35DisplayClientConfig.applyBrightness(F35HologramPainter.GREEN);
         // Undo GUI magnification only for these sensor cues. Projection stays in
         // GUI coordinates; converting both the point and pose preserves alignment.
@@ -79,7 +84,7 @@ public final class F35HudClientEvents {
             }
         }finally{graphics.pose().popPose();}
     }
-    private static void stroke(GuiGraphics g,float a,float b,float c,float d,int thickness,int color,int width,int height){
+    static void stroke(GuiGraphics g,float a,float b,float c,float d,int thickness,int color,int width,int height){
         int steps=Math.max(1,(int)Math.ceil(Math.max(Math.abs(c-a),Math.abs(d-b))));
         for(int i=0;i<=steps;i++){
             float t=i/(float)steps;int x=Math.round(a+(c-a)*t)-thickness/2,y=Math.round(b+(d-b)*t)-thickness/2;

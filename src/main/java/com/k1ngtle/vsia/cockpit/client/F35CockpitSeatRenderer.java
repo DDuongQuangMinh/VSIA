@@ -186,7 +186,7 @@ public final class F35CockpitSeatRenderer
             }
         }
 
-        if (F35HudClientEvents.installed(animatable)) {
+        if (F35HudClientEvents.installed(animatable)&&!F35HelmetHudClient.suppressPhysical(animatable)) {
             renderHologramAboveMonitor(poseStack, bufferSource, animatable, bone, monitorCube, partialTick);
         }
 

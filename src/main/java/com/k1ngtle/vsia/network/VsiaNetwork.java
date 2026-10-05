@@ -52,9 +52,9 @@ public class VsiaNetwork {
     public static void register() {
         SimpleChannel net = NetworkRegistry.ChannelBuilder
                 .named(new ResourceLocation(Vsia.MOD_ID, "messages"))
-                .networkProtocolVersion(() -> "f35-2.7.5")
-                .clientAcceptedVersions("f35-2.7.5"::equals)
-                .serverAcceptedVersions("f35-2.7.5"::equals)
+                .networkProtocolVersion(() -> "f35-2.7.9")
+                .clientAcceptedVersions("f35-2.7.9"::equals)
+                .serverAcceptedVersions("f35-2.7.9"::equals)
                 .simpleChannel();
 
         INSTANCE = net;
@@ -347,7 +347,7 @@ public class VsiaNetwork {
                 .encoder(S2CF35DetectionSnapshotPacket::toBytes)
                 .consumerMainThread(S2CF35DetectionSnapshotPacket::handle)
                 .add();
-        // BEGIN F35 COCKPIT v2.7.8
+        // BEGIN F35 COCKPIT v2.7.9
         net.messageBuilder(C2SF35IffRequestPacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
                 .decoder(C2SF35IffRequestPacket::new).encoder(C2SF35IffRequestPacket::toBytes)
                 .consumerMainThread(C2SF35IffRequestPacket::handle).add();
@@ -369,7 +369,7 @@ public class VsiaNetwork {
         net.messageBuilder(C2SDisplaySourceChunkPacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
                 .decoder(C2SDisplaySourceChunkPacket::new).encoder(C2SDisplaySourceChunkPacket::toBytes)
                 .consumerMainThread(C2SDisplaySourceChunkPacket::handle).add();
-        // END F35 COCKPIT v2.7.8
+        // END F35 COCKPIT v2.7.9
     }
 
     public static <MSG> void sendToServer(MSG message) {

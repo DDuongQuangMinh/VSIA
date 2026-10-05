@@ -2,6 +2,7 @@ package com.k1ngtle.vsia.registry;
 
 import com.k1ngtle.vsia.Vsia;
 import com.k1ngtle.vsia.item.HelmetItem;
+import com.k1ngtle.vsia.item.F35HelmetItem;
 import com.k1ngtle.vsia.item.GhillieHelmetItem;
 import com.k1ngtle.vsia.item.SandHelmetItem;
 import com.k1ngtle.vsia.item.SnowHelmetItem;
@@ -26,6 +27,9 @@ import net.minecraftforge.registries.RegistryObject;
 
 public class ModItems {
     public static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, Vsia.MOD_ID);
+
+    public static final RegistryObject<Item> F35_HELMET = ITEMS.register("f35_helmet",
+            () -> new F35HelmetItem(new Item.Properties().stacksTo(1)));
 
     public static final RegistryObject<Item> BASE_HELMET = ITEMS.register("base_helmet",
             () -> new HelmetItem(ArmorMaterials.IRON, ArmorItem.Type.HELMET, new Item.Properties()));

@@ -22,5 +22,8 @@
   "key.vsia.f35_display_config": "Configure F-35 Display",
   "item.vsia.display_hard_drive": "Display Hard Drive",
   "item.vsia.create_hard_drive": "Create Hard Drive",
-  "item.vsia.display_laptop": "Display Programming Laptop"
+  "item.vsia.display_laptop": "Display Programming Laptop",
+  "item.vsia.f35_helmet": "F-35 Pilot Helmet",
+  "tooltip.vsia.f35_helmet.hud": "Wear in the head slot for the green helmet-mounted flight HUD.",
+  "tooltip.vsia.f35_helmet.link": "Live flight and target data require a seated cockpit with a supported display drive."
 }
