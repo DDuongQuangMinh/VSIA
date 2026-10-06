@@ -24,6 +24,8 @@ public final class F35LiveContactCatalog {
     private final Map<UUID,Target> targets;
     public F35LiveContactCatalog(Map<UUID,Target> targets){this.targets=Map.copyOf(targets);}
     public Target get(UUID source){return source==null?null:targets.get(source);}
+    /** Authenticate the host ship, not a radar beacon/provider's unrelated display UUID. */
+    public UUID iffIdentity(UUID source){Target target=get(source);return target==null?source:target.iffIdentity();}
     public Map<UUID,Target> targets(){return targets;}
     public static F35LiveContactCatalog capture(ServerLevel level,ServerPlayer viewer) {
         Map<UUID,Target> result=new HashMap<>();
@@ -56,6 +58,7 @@ public final class F35LiveContactCatalog {
     }
     private static boolean finite(Vec3 v){return Double.isFinite(v.x)&&Double.isFinite(v.y)&&Double.isFinite(v.z);}
     public record Target(UUID canonicalId,F35DetectionType type,String label,Vec3 position,Vec3 velocity,Long shipId,boolean ownCrew){
+        public UUID iffIdentity(){return type==F35DetectionType.SHIP&&shipId!=null?F35VsShipHelper.shipContactId(shipId):canonicalId;}
         public boolean own(long ownShip){return ownCrew||(shipId!=null&&shipId==ownShip);}
         public F35DetectionContact raw(){return type==null?null:new F35DetectionContact(canonicalId,type,label,position,velocity);}
     }

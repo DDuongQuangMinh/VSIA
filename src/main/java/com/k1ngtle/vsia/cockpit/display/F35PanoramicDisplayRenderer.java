@@ -2691,7 +2691,7 @@ public final class F35PanoramicDisplayRenderer {
                             selected
                     )
             );
-            canvas.text(selected.iffAuthenticated()?(selected.iffTelemetry().startsWith("M5")?"FRIEND M5":"FRIEND M4"):"IFF UNKNOWN",x+5.0F,y+36.0F,0.55F,trackColor(selected));
+            canvas.text(selected.iffAuthenticated()?(selected.iffTelemetry().startsWith("M5")?"FRIEND M5":"FRIEND M4"):F35ContactSymbols.replyLabel(selected.iffAffiliation(),selected.iffReplyStatus()),x+5.0F,y+36.0F,0.55F,trackColor(selected));
 
             canvas.text(
                     "R "
@@ -2733,7 +2733,7 @@ public final class F35PanoramicDisplayRenderer {
                         detection
                 )
         );
-        canvas.text(detection.iffAuthenticated()?(detection.iffTelemetry().startsWith("M5")?"FRIEND M5":"FRIEND M4"):F35ContactSymbols.hostile(detection.iffStatus())?"ENEMY / IFF TIMEOUT":"IFF UNKNOWN",x+5.0F,y+36.0F,0.55F,detectionColor(detection));
+        canvas.text(detection.iffAuthenticated()?(detection.iffTelemetry().startsWith("M5")?"FRIEND M5":"FRIEND M4"):F35ContactSymbols.replyLabel(detection.iffStatus()),x+5.0F,y+36.0F,0.55F,detectionColor(detection));
 
         canvas.text(
                 "R "

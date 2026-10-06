@@ -8,6 +8,21 @@ public final class F35ContactSymbols {
     private F35ContactSymbols() { }
     public static boolean hostile(String affiliation){return affiliation!=null&&affiliation.toUpperCase(Locale.ROOT).split("/",2)[0].trim().equals("HOSTILE");}
     public static String label(boolean authenticated,String affiliation){return friendly(authenticated,affiliation)?"FRIEND AUTH":hostile(affiliation)?"ENEMY":"UNKNOWN";}
+    public static String replyLabel(String affiliation,String reply){
+        if(hostile(affiliation))return "ENEMY / IFF TIMEOUT";
+        String value=reply==null?"":reply.toUpperCase(Locale.ROOT).trim();
+        return switch(value){
+            case "NO_REPLY" -> "IFF NO REPLY";
+            case "NO_TRANSPONDER" -> "IFF NO TRANSPONDER";
+            case "AUTH_FAILED" -> "IFF AUTH FAILED";
+            case "CODE_REPLY" -> "IFF CODES ONLY";
+            default -> "IFF UNKNOWN";
+        };
+    }
+    public static String replyLabel(String status){
+        String[] parts=status==null?new String[0]:status.split("/",2);
+        return replyLabel(parts.length==2?parts[0]:"",parts.length==2?parts[1]:status);
+    }
     public static boolean friendly(boolean authenticated,String affiliation) {
         if (!authenticated || affiliation == null) return false;
         String value = affiliation.toUpperCase(Locale.ROOT).split("/",2)[0].trim();

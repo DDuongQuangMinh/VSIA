@@ -326,8 +326,10 @@ public final class F35DisplaySectionScreen extends Screen {
         rect(g,580,104,245,112,GRID); text(g,"KEY OPERATIONS",594,118,CYAN); text(g,"[CREATE SHARED MISSION]",594,140,WHITE); text(g,"[DISTRIBUTE / LOAD / ROTATE]",594,164,CYAN); text(g,"[ZEROIZE THIS COCKPIT]",594,192,RED);
         text(g,"MODE 5 AUTHENTICATED DATA",350,226,CYAN); String[] fields={"POSITION","VELOCITY","HEADING","MISSION"};
         for(int i=0;i<4;i++){int x=350+(i%2)*230,y=254+(i/2)*38;rect(g,x,y-8,210,28,GRID);text(g,fields[i]+"  "+(s.telemetry(i)?"SEND":"HOLD"),x+12,y,s.telemetry(i)?GREEN:DIM);}
-        text(g,"Server owns keys and authentication. Secret material is never sent to clients.",350,340,DIM);
-        text(g,"Public HKDF/HMAC-SHA-256 + AES-256-GCM analogue; not classified military crypto.",350,358,AMBER);
+        text(g,"Server owns keys and authentication. Secret material is never sent to clients.",350,330,DIM);
+        text(g,"Public HKDF/HMAC-SHA-256 + AES-256-GCM analogue; not classified military crypto.",350,346,AMBER);
+        text(g,"NORM/EMER: 10S timer needs no key. FRIEND needs authentication.",350,362,CYAN);
+        text(g,"Diagnostic: /f35iff status  (reply and elapsed game seconds)",350,378,DIM);
     }
 
     private static int iffActionAt(double x,double y){
@@ -683,7 +685,7 @@ public final class F35DisplaySectionScreen extends Screen {
             text(graphics, "R " + format0(distance) + " M", x + 10, y + 54, WHITE);
             text(graphics, "V " + format0(radar.speedMps()) + " M/S", x + 10, y + 72, WHITE);
             text(graphics, "Q " + format1(radar.quality()), x + 10, y + 90, GREEN);
-            text(graphics, radar.iffAuthenticated() ? "AUTH " + (radar.iffTelemetry().startsWith("M5")?"M5":"M4") : "IFF " + radar.iffReplyStatus(), x + 10, y + 106, trackColor(radar));
+            text(graphics, radar.iffAuthenticated() ? "AUTH " + (radar.iffTelemetry().startsWith("M5")?"M5":"M4") : com.k1ngtle.vsia.cockpit.display.F35ContactSymbols.replyLabel(radar.iffAffiliation(),radar.iffReplyStatus()), x + 10, y + 106, trackColor(radar));
             return;
         }
 
@@ -696,7 +698,7 @@ public final class F35DisplaySectionScreen extends Screen {
             text(graphics, "R " + format0(distance) + " M", x + 10, y + 54, WHITE);
             text(graphics, "V " + format0(contact.speedMps()) + " M/S", x + 10, y + 72, WHITE);
             text(graphics, contact.label(), x + 10, y + 90, DIM);
-            text(graphics, contact.iffAuthenticated() ? "AUTH " + (contact.iffTelemetry().startsWith("M5")?"M5":"M4") : com.k1ngtle.vsia.cockpit.display.F35ContactSymbols.hostile(contact.iffStatus())?"ENEMY / IFF TIMEOUT":"IFF UNKNOWN", x + 10, y + 106, detectionColor(contact));
+            text(graphics, contact.iffAuthenticated() ? "AUTH " + (contact.iffTelemetry().startsWith("M5")?"M5":"M4") : com.k1ngtle.vsia.cockpit.display.F35ContactSymbols.replyLabel(contact.iffStatus()), x + 10, y + 106, detectionColor(contact));
             return;
         }
 

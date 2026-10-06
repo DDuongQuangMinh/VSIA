@@ -80,11 +80,20 @@ public final class F35IffService {
                     distance*2/299792458.0*1e6+3,telemetry);
         }catch(GeneralSecurityException|java.io.IOException|IllegalArgumentException|IllegalStateException failure){return IffResult.unknown(IffReplyStatus.AUTH_FAILED);}
     }
-    /** Local OFF/STBY, no enabled modes or unusable verifier keys must not condemn every other ship. */
-    public static boolean canInterrogate(F35IffConfig own,F35IffMissions vault,long now){
-        if(!operating(own))return false;
-        if(own.mode4Enabled()||own.mode5Enabled())return vault.usable(own.key(0),now)||vault.usable(own.key(1),now);
-        return own.mode1Enabled()||own.mode2Enabled()||own.mode3aEnabled();
+    /** The game timeout is independent of whether this cockpit can prove FRIEND. */
+    public static boolean canInterrogate(F35IffConfig own){
+        return own!=null&&operating(own)&&(own.mode1Enabled()||own.mode2Enabled()||own.mode3aEnabled()||own.mode4Enabled()||own.mode5Enabled());
+    }
+    public static boolean canInterrogate(F35IffConfig own,F35IffMissions vault,long now){return canInterrogate(own);}
+    public static boolean hasVerifier(F35IffConfig own,F35IffMissions vault,long now){
+        return vault.usable(own.key(0),now)||vault.usable(own.key(1),now);
+    }
+    /** Public setup information only; never key bytes. Fits the existing 24-character snapshot field. */
+    public static String localStatus(F35IffConfig own,F35IffMissions vault,long now){
+        if(!operating(own))return own.master().name()+" / TIMER OFF";
+        if(!canInterrogate(own))return "MODES OFF / TIMER OFF";
+        if(!own.mode4Enabled()&&!own.mode5Enabled())return "TIMER ON / CODES ONLY";
+        return hasVerifier(own,vault,now)?"TIMER ON / AUTH READY":"TIMER ON / NO AUTH KEY";
     }
     public static boolean operating(F35IffConfig i){return i.master()==F35IffConfig.Master.NORM||i.master()==F35IffConfig.Master.EMER;}
 }
