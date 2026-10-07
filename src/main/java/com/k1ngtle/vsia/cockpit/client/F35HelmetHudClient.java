@@ -7,6 +7,7 @@ import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.entity.EquipmentSlot;
+import com.mojang.math.Axis;
 
 /** Head-following transparent flight instruments; sensors/lock remain cockpit-owned. */
 public final class F35HelmetHudClient {
@@ -33,7 +34,7 @@ public final class F35HelmetHudClient {
         graphics.pose().pushPose();
         try{
             graphics.pose().scale(pixelScale,pixelScale,1);
-            F35HologramPainter.paint(new F35HologramPainter.Draw(){
+            F35HelmetFlightPainter.paint(new F35HelmetFlightPainter.Draw(){
                 public float textWidth(String text,float size){return mc.font.width(text)*size;}
                 public void line(float a,float b,float c,float d,int color){F35HudClientEvents.stroke(graphics,layout.left()+a*layout.scale(),layout.top()+b*layout.scale(),layout.left()+c*layout.scale(),layout.top()+d*layout.scale(),1,F35DisplayClientConfig.applyBrightness(color),pixelWidth,pixelHeight);}
                 public void text(String text,float x,float y,float size,int color){
@@ -41,7 +42,16 @@ public final class F35HelmetHudClient {
                     try{
                         graphics.pose().translate(layout.left()+x*layout.scale(),layout.top()+y*layout.scale(),0);
                         graphics.pose().scale(size*layout.scale(),size*layout.scale(),1);
-                        graphics.drawString(mc.font,text,0,0,F35DisplayClientConfig.applyBrightness(color),true);
+                        graphics.drawString(mc.font,text,0,0,F35DisplayClientConfig.applyBrightness(color),false);
+                    }finally{graphics.pose().popPose();}
+                }
+                public void rotatedText(String text,float x,float y,float size,float degrees,int color){
+                    graphics.pose().pushPose();
+                    try{
+                        graphics.pose().translate(layout.left()+x*layout.scale(),layout.top()+y*layout.scale(),0);
+                        graphics.pose().mulPose(Axis.ZP.rotationDegrees(degrees));
+                        graphics.pose().scale(size*layout.scale(),size*layout.scale(),1);
+                        graphics.drawString(mc.font,text,0,0,F35DisplayClientConfig.applyBrightness(color),false);
                     }finally{graphics.pose().popPose();}
                 }
             },state,contacts,hasLock,liveLock);

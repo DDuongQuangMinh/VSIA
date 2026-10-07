@@ -68,6 +68,11 @@ public final class F35HudClientEvents {
         graphics.pose().pushPose();
         try{
             graphics.pose().scale(pixelScale,pixelScale,1);
+            if(helmet){
+                var velocityWorld=F35HelmetFlightPainter.velocityPoint(f.state().ownship(),f.camera());
+                var velocityCue=F35HudProjection.project(velocityWorld,f.camera(),f.view(),f.projection(),width,height);
+                if(velocityCue!=null)F35HelmetFlightPainter.flightPath((a,b,c,d,tint)->stroke(graphics,a,b,c,d,1,tint,pixelWidth,pixelHeight),velocityCue.x()*pixelsPerGui,velocityCue.y()*pixelsPerGui,color);
+            }
             for(var contact:contacts){
                 var point=F35HudProjection.project(contact.position(),f.camera(),f.view(),f.projection(),width,height);
                 if(point==null)continue;
@@ -78,11 +83,18 @@ public final class F35HudClientEvents {
                 F35ContactSymbols.draw((a,b,c,d,tint)->stroke(graphics,a,b,c,d,1,tint,pixelWidth,pixelHeight),x,y,radius,contact.friendly(),contact.locked(),color,color);
                 if(F35DisplayClientConfig.trackLabels()||contact.locked()){
                     String label=(contact.locked()?"LOCK ":"")+contact.label()+" "+(contact.friendly()?"FRIEND":contact.hostile()?"ENEMY":"UNK")+" "+Math.round(contact.position().distanceTo(f.state().ownship().position()))+"M";
-                    int labelX=Math.max(0,Math.min(pixelWidth-(int)Math.ceil(mc.font.width(label)*1.5f),(int)x+28)),labelY=Math.max(0,Math.min(pixelHeight-14,(int)y-7));
+                    // Visor cue is short and split over two rows, like the reference.
+                    String range=helmet?F35HelmetFlightPainter.rangeLabel(contact.position().distanceTo(f.state().ownship().position())):"";
+                    if(helmet)label=(contact.locked()?"L ":"")+contact.label()+" "+(contact.friendly()?"FRIEND":contact.hostile()?"ENEMY":"UNK");
+                    float fontSize=helmet?1.25f:1.5f;
+                    int labelWidth=(int)Math.ceil(mc.font.width(label)*fontSize);
+                    if(helmet)labelWidth=Math.max(labelWidth,(int)Math.ceil(mc.font.width(range)*fontSize));
+                    int labelX=Math.max(0,Math.min(pixelWidth-labelWidth,(int)x+(helmet?23:28))),labelY=Math.max(0,Math.min(pixelHeight-(helmet?26:14),(int)y-7));
                     graphics.pose().pushPose();
                     try{
-                        graphics.pose().translate(labelX,labelY,0);graphics.pose().scale(1.5f,1.5f,1);
-                        graphics.drawString(mc.font,label,0,0,color,true);
+                        graphics.pose().translate(labelX,labelY,0);graphics.pose().scale(fontSize,fontSize,1);
+                        graphics.drawString(mc.font,label,0,0,color,!helmet);
+                        if(helmet)graphics.drawString(mc.font,range,0,10,color,false);
                     }finally{graphics.pose().popPose();}
                 }
             }
