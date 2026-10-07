@@ -68,10 +68,11 @@ public final class F35HudClientEvents {
         graphics.pose().pushPose();
         try{
             graphics.pose().scale(pixelScale,pixelScale,1);
+            try(var batch=new F35HudBatch(graphics,mc.font,pixelWidth,pixelHeight)){
             if(helmet){
                 var velocityWorld=F35HelmetFlightPainter.velocityPoint(f.state().ownship(),f.camera());
                 var velocityCue=F35HudProjection.project(velocityWorld,f.camera(),f.view(),f.projection(),width,height);
-                if(velocityCue!=null)F35HelmetFlightPainter.flightPath((a,b,c,d,tint)->stroke(graphics,a,b,c,d,1,tint,pixelWidth,pixelHeight),velocityCue.x()*pixelsPerGui,velocityCue.y()*pixelsPerGui,color);
+                if(velocityCue!=null)F35HelmetFlightPainter.flightPath((a,b,c,d,tint)->batch.line(a,b,c,d,1,tint),velocityCue.x()*pixelsPerGui,velocityCue.y()*pixelsPerGui,color);
             }
             for(var contact:contacts){
                 var point=F35HudProjection.project(contact.position(),f.camera(),f.view(),f.projection(),width,height);
@@ -79,8 +80,8 @@ public final class F35HudClientEvents {
                 float x=point.x()*pixelsPerGui,y=point.y()*pixelsPerGui,radius=contact.locked()?14:10;
                 // One actual screen-pixel green stroke with a narrow contrast edge,
                 // not two/five GUI pixels enlarged by the user's GUI scale.
-                F35ContactSymbols.draw((a,b,c,d,tint)->stroke(graphics,a,b,c,d,3,0xc0001800,pixelWidth,pixelHeight),x,y,radius,contact.friendly(),contact.locked(),color,color);
-                F35ContactSymbols.draw((a,b,c,d,tint)->stroke(graphics,a,b,c,d,1,tint,pixelWidth,pixelHeight),x,y,radius,contact.friendly(),contact.locked(),color,color);
+                F35ContactSymbols.draw((a,b,c,d,tint)->batch.line(a,b,c,d,3,0xc0001800),x,y,radius,contact.friendly(),contact.locked(),color,color);
+                F35ContactSymbols.draw((a,b,c,d,tint)->batch.line(a,b,c,d,1,tint),x,y,radius,contact.friendly(),contact.locked(),color,color);
                 if(F35DisplayClientConfig.trackLabels()||contact.locked()){
                     String label=(contact.locked()?"LOCK ":"")+contact.label()+" "+(contact.friendly()?"FRIEND":contact.hostile()?"ENEMY":"UNK")+" "+Math.round(contact.position().distanceTo(f.state().ownship().position()))+"M";
                     // Visor cue is short and split over two rows, like the reference.
@@ -90,24 +91,13 @@ public final class F35HudClientEvents {
                     int labelWidth=(int)Math.ceil(mc.font.width(label)*fontSize);
                     if(helmet)labelWidth=Math.max(labelWidth,(int)Math.ceil(mc.font.width(range)*fontSize));
                     int labelX=Math.max(0,Math.min(pixelWidth-labelWidth,(int)x+(helmet?23:28))),labelY=Math.max(0,Math.min(pixelHeight-(helmet?26:14),(int)y-7));
-                    graphics.pose().pushPose();
-                    try{
-                        graphics.pose().translate(labelX,labelY,0);graphics.pose().scale(fontSize,fontSize,1);
-                        graphics.drawString(mc.font,label,0,0,color,!helmet);
-                        if(helmet)graphics.drawString(mc.font,range,0,10,color,false);
-                    }finally{graphics.pose().popPose();}
+                    batch.text(label,labelX,labelY,fontSize,0,color,!helmet);
+                    if(helmet)batch.text(range,labelX,labelY+10*fontSize,fontSize,0,color,false);
                 }
+            }
             }
             if(helmet&&mc.isWindowActive())F35GazeLockClient.progress(graphics,pixelWidth,pixelHeight,color,System.nanoTime());
         }finally{graphics.pose().popPose();}
-    }
-    static void stroke(GuiGraphics g,float a,float b,float c,float d,int thickness,int color,int width,int height){
-        int steps=Math.max(1,(int)Math.ceil(Math.max(Math.abs(c-a),Math.abs(d-b))));
-        for(int i=0;i<=steps;i++){
-            float t=i/(float)steps;int x=Math.round(a+(c-a)*t)-thickness/2,y=Math.round(b+(d-b)*t)-thickness/2;
-            int left=Math.max(0,x),top=Math.max(0,y),right=Math.min(width,x+thickness),bottom=Math.min(height,y+thickness);
-            if(right>left&&bottom>top)g.fill(left,top,right,bottom,color);
-        }
     }
     @Mod.EventBusSubscriber(modid=Vsia.MOD_ID,value=Dist.CLIENT,bus=Mod.EventBusSubscriber.Bus.MOD)
     public static final class Registration {

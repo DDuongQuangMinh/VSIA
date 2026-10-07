@@ -7,7 +7,6 @@ import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.entity.EquipmentSlot;
-import com.mojang.math.Axis;
 
 /** Head-following transparent flight instruments; sensors/lock remain cockpit-owned. */
 public final class F35HelmetHudClient {
@@ -30,31 +29,29 @@ public final class F35HelmetHudClient {
     public static void flight(GuiGraphics graphics,int width,int height,F35DisplayState state,List<F35HudContacts.Contact> contacts,boolean hasLock,boolean liveLock){
         Minecraft mc=Minecraft.getInstance();float pixelScale=F35HudStroke.guiPixelScale(mc.getWindow().getGuiScale()),pixelsPerGui=1/pixelScale;
         int pixelWidth=Math.max(1,Math.round(width*pixelsPerGui)),pixelHeight=Math.max(1,Math.round(height*pixelsPerGui));
-        var layout=F35HelmetHudRules.layout(pixelWidth,pixelHeight);if(layout==null)return;
+        var presentation=F35HelmetHudRules.presentation(pixelWidth,pixelHeight,mc.getWindow().getGuiScale());if(presentation==null)return;
         graphics.pose().pushPose();
         try{
             graphics.pose().scale(pixelScale,pixelScale,1);
-            F35HelmetFlightPainter.paint(new F35HelmetFlightPainter.Draw(){
+            try(var batch=new F35HudBatch(graphics,mc.font,pixelWidth,pixelHeight)){
+                F35HelmetFlightPainter.paint(draw(batch,mc,presentation.flight()),state,contacts,hasLock,liveLock);
+                if(presentation.tactical()!=null)F35HelmetTacticalPainter.paint(draw(batch,mc,presentation.tactical()),state,contacts,hasLock,liveLock);
+            }
+        }finally{graphics.pose().popPose();}
+    }
+    private static F35HelmetTacticalPainter.Draw draw(F35HudBatch batch,Minecraft mc,F35HelmetHudRules.Layout layout){
+        return new F35HelmetTacticalPainter.Draw(){
+                public void panel(float x,float y,float width,float height,int color){
+                    batch.panel(layout.left()+x*layout.scale(),layout.top()+y*layout.scale(),layout.left()+(x+width)*layout.scale(),layout.top()+(y+height)*layout.scale(),color);
+                }
                 public float textWidth(String text,float size){return mc.font.width(text)*size;}
-                public void line(float a,float b,float c,float d,int color){F35HudClientEvents.stroke(graphics,layout.left()+a*layout.scale(),layout.top()+b*layout.scale(),layout.left()+c*layout.scale(),layout.top()+d*layout.scale(),1,F35DisplayClientConfig.applyBrightness(color),pixelWidth,pixelHeight);}
+                public void line(float a,float b,float c,float d,int color){batch.line(layout.left()+a*layout.scale(),layout.top()+b*layout.scale(),layout.left()+c*layout.scale(),layout.top()+d*layout.scale(),1,F35DisplayClientConfig.applyBrightness(color));}
                 public void text(String text,float x,float y,float size,int color){
-                    graphics.pose().pushPose();
-                    try{
-                        graphics.pose().translate(layout.left()+x*layout.scale(),layout.top()+y*layout.scale(),0);
-                        graphics.pose().scale(size*layout.scale(),size*layout.scale(),1);
-                        graphics.drawString(mc.font,text,0,0,F35DisplayClientConfig.applyBrightness(color),false);
-                    }finally{graphics.pose().popPose();}
+                    batch.text(text,layout.left()+x*layout.scale(),layout.top()+y*layout.scale(),size*layout.scale(),0,F35DisplayClientConfig.applyBrightness(color),false);
                 }
                 public void rotatedText(String text,float x,float y,float size,float degrees,int color){
-                    graphics.pose().pushPose();
-                    try{
-                        graphics.pose().translate(layout.left()+x*layout.scale(),layout.top()+y*layout.scale(),0);
-                        graphics.pose().mulPose(Axis.ZP.rotationDegrees(degrees));
-                        graphics.pose().scale(size*layout.scale(),size*layout.scale(),1);
-                        graphics.drawString(mc.font,text,0,0,F35DisplayClientConfig.applyBrightness(color),false);
-                    }finally{graphics.pose().popPose();}
+                    batch.text(text,layout.left()+x*layout.scale(),layout.top()+y*layout.scale(),size*layout.scale(),degrees,F35DisplayClientConfig.applyBrightness(color),false);
                 }
-            },state,contacts,hasLock,liveLock);
-        }finally{graphics.pose().popPose();}
+            };
     }
 }

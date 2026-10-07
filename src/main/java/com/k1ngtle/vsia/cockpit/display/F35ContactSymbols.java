@@ -5,6 +5,8 @@ import java.util.Locale;
 /** Shared, non-rectangular IFF/lock symbols across physical HUD, GUI and custom radar. */
 public final class F35ContactSymbols {
     @FunctionalInterface public interface Lines { void line(float x1,float y1,float x2,float y2,int color); }
+    private static final float[] CIRCLE_X=new float[41],CIRCLE_Y=new float[41];
+    static {for(int i=0;i<=40;i++){double a=i*Math.PI/20;CIRCLE_X[i]=(float)Math.cos(a);CIRCLE_Y[i]=(float)Math.sin(a);}}
     private F35ContactSymbols() { }
     public static boolean hostile(String affiliation){return affiliation!=null&&affiliation.toUpperCase(Locale.ROOT).split("/",2)[0].trim().equals("HOSTILE");}
     public static String label(boolean authenticated,String affiliation){return friendly(authenticated,affiliation)?"FRIEND AUTH":hostile(affiliation)?"ENEMY":"UNKNOWN";}
@@ -30,7 +32,7 @@ public final class F35ContactSymbols {
     }
     public static void circle(Lines d,float x,float y,float radius,int color) {
         float px=x+radius,py=y;
-        for(int i=1;i<=40;i++){double a=i*Math.PI/20;float nx=x+(float)Math.cos(a)*radius,ny=y+(float)Math.sin(a)*radius;d.line(px,py,nx,ny,color);px=nx;py=ny;}
+        for(int i=1;i<=40;i++){float nx=x+CIRCLE_X[i]*radius,ny=y+CIRCLE_Y[i]*radius;d.line(px,py,nx,ny,color);px=nx;py=ny;}
     }
     public static void diamond(Lines d,float x,float y,float radius,int color) {
         d.line(x,y-radius,x+radius,y,color);d.line(x+radius,y,x,y+radius,color);
